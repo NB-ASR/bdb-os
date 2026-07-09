@@ -5,7 +5,7 @@ const modules = [
   { name: "Customers", icon: "👥", href: "/customers", position: "top-[15%] right-[8%]" },
   { name: "Comms", icon: "💬", href: "/Communications", position: "top-1/2 right-[0%] -translate-y-1/2" },
   { name: "Calendar", icon: "📅", href: "/calendar", position: "bottom-[15%] right-[8%]" },
-  { name: "AI Employee", icon: "✧", href: "/ai-employee", position: "bottom-[0%] left-1/2 -translate-x-1/2" },
+  { name: "Automation Hub", icon: "✧", href: "/automation-hub", position: "bottom-[0%] left-1/2 -translate-x-1/2" },
   { name: "Documents", icon: "📄", href: "/documents", position: "bottom-[15%] left-[8%]" },
   { name: "Banking", icon: "🏦", href: "/banking", position: "top-1/2 left-[0%] -translate-y-1/2" },
   { name: "Reports", icon: "📊", href: "/reports", position: "top-[15%] left-[8%]" },
