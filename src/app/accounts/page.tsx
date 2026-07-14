@@ -1,97 +1,95 @@
-import Link from "next/link";
+"use client";
 
-const accountTools = [
-  { name: "Invoices", icon: "🧾", description: "Create and manage invoices." },
-  { name: "Credit Notes", icon: "📄", description: "Reverse or adjust invoices." },
-  { name: "Delivery Notes", icon: "🚚", description: "Track delivered goods." },
-  { name: "Payments", icon: "💳", description: "Record incoming payments." },
-  { name: "Reconciliation", icon: "📊", description: "Match invoices to payments." },
-  { name: "Reports", icon: "📈", description: "Financial summaries and analysis." },
-];
+import { useMemo, useState, type FormEvent } from "react";
+import { BadgePoundSterling, CircleCheckBig, Clock3, Plus, ReceiptText } from "lucide-react";
+import { useBdb } from "@/lib/store";
+import { formatDate, formatMoney } from "@/lib/format";
+import { Badge, Button, Card, Dialog, PageHeader, StatCard } from "@/components/ui";
+import type { InvoiceStatus } from "@/lib/types";
+
+const statusTone: Record<InvoiceStatus, "neutral" | "gold" | "green" | "red"> = {
+  draft: "neutral",
+  sent: "gold",
+  paid: "green",
+  overdue: "red",
+};
 
 export default function AccountsPage() {
+  const { state, addInvoice, markInvoicePaid } = useBdb();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | InvoiceStatus>("all");
+  const [form, setForm] = useState({ customerId: state.customers[0]?.id ?? "", description: "", amount: "", dueAt: "2026-07-28", status: "sent" as InvoiceStatus });
+
+  const visible = useMemo(() => state.invoices.filter((invoice) => {
+    const customer = state.customers.find((item) => item.id === invoice.customerId);
+    const matches = [invoice.number, invoice.description, customer?.name, customer?.company].join(" ").toLowerCase().includes(query.toLowerCase());
+    return matches && (filter === "all" || invoice.status === filter);
+  }), [filter, query, state.customers, state.invoices]);
+
+  const received = state.invoices.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
+  const outstanding = state.invoices.filter((item) => ["sent", "overdue"].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!form.customerId || !form.description || !form.amount) return;
+    addInvoice({ ...form, amount: Number(form.amount) });
+    setForm({ customerId: state.customers[0]?.id ?? "", description: "", amount: "", dueAt: "2026-07-28", status: "sent" });
+    setOpen(false);
+  }
+
   return (
-    <main className="min-h-screen bg-[#151515] text-zinc-100">
-      <header className="border-b border-[#d6a735]/40 px-10 py-6">
-        <Link href="/" className="text-sm font-semibold text-[#d6a735] hover:underline">
-          ← Back to Business Hub
-        </Link>
+    <>
+      <PageHeader eyebrow="Finance workspace" title="Accounts" description="Create invoices, approve payments and keep every financial record connected." action={<Button onClick={() => setOpen(true)}><Plus size={17} /> New invoice</Button>} />
+      <div className="stat-grid">
+        <StatCard label="Received" value={formatMoney(received, state.settings.currency)} detail="Paid invoices" icon={<CircleCheckBig size={19} />} />
+        <StatCard label="Outstanding" value={formatMoney(outstanding, state.settings.currency)} detail="Awaiting payment" icon={<Clock3 size={19} />} />
+        <StatCard label="Overdue" value={String(state.invoices.filter((item) => item.status === "overdue").length)} detail="Needs a decision" icon={<BadgePoundSterling size={19} />} />
+        <StatCard label="Invoices" value={String(state.invoices.length)} detail="Across all statuses" icon={<ReceiptText size={19} />} />
+      </div>
 
-        <div className="mt-6 flex items-end justify-between">
-          <div>
-            <p className="text-sm font-semibold tracking-[0.35em] text-[#d6a735]">
-              BDB OS
-            </p>
-            <h1 className="mt-3 text-4xl font-bold text-[#d6a735]">
-              Accounts
-            </h1>
-            <p className="mt-3 max-w-2xl text-base text-zinc-400">
-              Invoices, credit notes, delivery notes, payments, reconciliation and reports.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-[#d6a735]/60 bg-[#202020] px-6 py-4 text-sm font-semibold text-[#d6a735] shadow-[0_0_25px_rgba(214,167,53,0.18)]">
-            Finance Workspace
-          </div>
+      <div className="toolbar">
+        <input className="filter-input" placeholder="Search invoices or customers…" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <div className="filter-tabs" role="group" aria-label="Filter invoices">
+          {(["all", "draft", "sent", "overdue", "paid"] as const).map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}
         </div>
-      </header>
+      </div>
 
-      <section className="mx-auto flex max-w-6xl flex-col items-center px-8 py-10">
-        <div className="relative h-[520px] w-[520px] rounded-full border-2 border-[#d6a735]/70 shadow-[0_0_70px_rgba(214,167,53,0.18)]">
-          <div className="absolute inset-14 rounded-full border border-dashed border-[#d6a735]/50" />
-          <div className="absolute inset-28 rounded-full border border-dotted border-[#d6a735]/35" />
+      <Card className="table-card">
+        <div className="table-scroll">
+          <table>
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Dates</th><th>Status</th><th className="align-right">Amount</th><th aria-label="Actions" /></tr></thead>
+            <tbody>
+              {visible.map((invoice) => {
+                const customer = state.customers.find((item) => item.id === invoice.customerId);
+                return (
+                  <tr key={invoice.id}>
+                    <td className="cell-stack"><strong>{invoice.number}</strong><span>{invoice.description}</span></td>
+                    <td className="cell-stack"><strong>{customer?.name ?? "Unknown"}</strong><span>{customer?.company}</span></td>
+                    <td className="cell-stack"><strong>{formatDate(invoice.issuedAt, { day: "numeric", month: "short" })}</strong><span>Due {formatDate(invoice.dueAt, { day: "numeric", month: "short" })}</span></td>
+                    <td><Badge tone={statusTone[invoice.status]}>{invoice.status}</Badge></td>
+                    <td className="align-right"><strong>{formatMoney(invoice.amount, state.settings.currency)}</strong></td>
+                    <td><div className="table-actions">{["sent", "overdue"].includes(invoice.status) ? <button className="link-button" onClick={() => markInvoicePaid(invoice.id)}>Approve paid</button> : <span className="muted small">—</span>}</div></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
-          <div className="absolute left-1/2 top-1/2 z-10 flex h-52 w-52 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-2 border-[#d6a735] bg-[#202020] text-center shadow-[0_0_45px_rgba(214,167,53,0.4)]">
-            <div className="text-4xl">📁</div>
-            <h2 className="mt-3 text-2xl font-bold text-[#d6a735]">
-              Accounts Hub
-            </h2>
-            <p className="mt-2 max-w-36 text-sm text-zinc-400">
-              Everything financial starts here.
-            </p>
+      <Dialog open={open} onClose={() => setOpen(false)} title="Create invoice" description="The invoice is saved locally first and remains available offline.">
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <div className="field field-full"><label htmlFor="invoice-customer">Customer</label><select id="invoice-customer" value={form.customerId} onChange={(event) => setForm({ ...form, customerId: event.target.value })}>{state.customers.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.company}</option>)}</select></div>
+            <div className="field field-full"><label htmlFor="invoice-description">Description</label><input id="invoice-description" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="e.g. July content retainer" /></div>
+            <div className="field"><label htmlFor="invoice-amount">Amount</label><input id="invoice-amount" required min="0" step="0.01" type="number" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="0.00" /></div>
+            <div className="field"><label htmlFor="invoice-due">Due date</label><input id="invoice-due" required type="date" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} /></div>
+            <div className="field"><label htmlFor="invoice-status">Initial status</label><select id="invoice-status" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as InvoiceStatus })}><option value="draft">Draft</option><option value="sent">Ready to send</option></select></div>
           </div>
-
-          {accountTools.map((tool, index) => {
-            const positions = [
-              "top-[-4%] left-1/2 -translate-x-1/2",
-              "top-[18%] right-[2%]",
-              "bottom-[18%] right-[2%]",
-              "bottom-[-4%] left-1/2 -translate-x-1/2",
-              "bottom-[18%] left-[2%]",
-              "top-[18%] left-[2%]",
-            ];
-
-            return (
-              <button
-                key={tool.name}
-                className={`absolute ${positions[index]} z-20 flex h-28 w-28 flex-col items-center justify-center rounded-full border-2 border-[#d6a735] bg-[#202020] text-center shadow-[0_0_30px_rgba(214,167,53,0.32)] transition hover:-translate-y-1 hover:scale-105 hover:shadow-[0_0_45px_rgba(214,167,53,0.55)]`}
-              >
-                <span className="text-3xl">{tool.icon}</span>
-                <span className="mt-2 text-xs font-bold text-zinc-100">
-                  {tool.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-10 grid w-full grid-cols-3 gap-4">
-          {accountTools.map((tool) => (
-            <div
-              key={tool.name}
-              className="rounded-2xl border border-[#d6a735]/35 bg-[#202020] p-5 shadow-[0_0_22px_rgba(214,167,53,0.1)]"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{tool.icon}</span>
-                <h3 className="text-lg font-bold text-[#d6a735]">
-                  {tool.name}
-                </h3>
-              </div>
-              <p className="mt-2 text-sm text-zinc-400">{tool.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </main>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit">Create invoice</Button></div>
+        </form>
+      </Dialog>
+    </>
   );
 }
