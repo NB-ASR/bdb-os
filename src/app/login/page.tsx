@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import { ArrowRight, CheckCircle2, KeyRound, Mail } from "lucide-react";
 import { BdbBrand } from "@/components/bdb-brand";
 import { createClient } from "@/lib/supabase/client";
 import { isDemoMode } from "@/lib/config";
 
 export default function LoginPage() {
+  return <Suspense fallback={<main className="auth-page"><div className="page-loading"><span /><p>Preparing secure sign-in…</p></div></main>}><LoginForm /></Suspense>;
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");

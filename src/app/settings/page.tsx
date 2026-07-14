@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import {
   Accessibility,
   Check,
@@ -27,6 +27,10 @@ import type { BusinessSettings } from "@/lib/types";
 type SettingsTab = "business" | "appearance" | "plan";
 
 export default function SettingsPage() {
+  return <Suspense fallback={<div className="page-loading"><span /><p>Opening settings…</p></div>}><SettingsContent /></Suspense>;
+}
+
+function SettingsContent() {
   const searchParams = useSearchParams();
   const { state, ready, updateSettings, resetDemo } = useBdb();
   const { mode, workspace, theme, hasFeature, updateTheme } = useSaas();
