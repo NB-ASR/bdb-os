@@ -82,4 +82,6 @@ npm run build
 
 Deploy to Vercel, add the values from `.env.example`, and set the Supabase authentication Site URL and redirect allow-list to the deployed domain. Add the founder email to `BDB_FOUNDER_EMAILS`; the first successful login securely bootstraps that account and requires MFA before `/admin` opens. Configure the Stripe webhook at `/api/stripe/webhook` and generate VAPID keys before enabling device notifications.
 
+The appointment reminder worker is `/api/cron/appointment-reminders`. Vercel Hobby only permits daily cron jobs, which is not frequent enough for timely reminders. On Vercel Pro, copy `docs/vercel-pro.cron.json` to `vercel.json` to run it every ten minutes; alternatively call the endpoint from a trusted external scheduler with `Authorization: Bearer $CRON_SECRET`.
+
 Suggested production domains are `bdb-os.com` for marketing, `app.bdb-os.com` for client workspaces, and `admin.bdb-os.com` for the founder control plane.
