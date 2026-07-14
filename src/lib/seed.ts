@@ -1,6 +1,16 @@
 import type { BdbState } from "./types";
 
 export const seedState: BdbState = {
+  theme: {
+    preset: "obsidian-gold",
+    mode: "dark",
+    accentColor: "#d3a84b",
+    fontFamily: "manrope",
+    textScale: 1,
+    density: "comfortable",
+    highContrast: false,
+    reducedMotion: false,
+  },
   settings: {
     businessName: "BDB Studio",
     ownerName: "Nicholas",

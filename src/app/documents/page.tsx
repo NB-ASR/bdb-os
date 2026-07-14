@@ -15,6 +15,7 @@ export default function DocumentsPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | undefined>();
   const [form, setForm] = useState({ name: "", type: "PDF", size: "", customerId: "", linkedTo: "Business" });
 
   const visible = state.documents.filter((item) => [item.name, item.type, item.linkedTo].join(" ").toLowerCase().includes(query.toLowerCase()));
@@ -22,6 +23,7 @@ export default function DocumentsPage() {
   function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
     setForm({ name: file.name, type: file.type.includes("image") ? "Image" : file.name.split(".").at(-1)?.toUpperCase() || "File", size: fileSize(file.size), customerId: "", linkedTo: "Business" });
     setOpen(true);
     event.target.value = "";
@@ -29,7 +31,8 @@ export default function DocumentsPage() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    addDocument({ ...form, customerId: form.customerId || undefined });
+    addDocument({ ...form, customerId: form.customerId || undefined }, selectedFile);
+    setSelectedFile(undefined);
     setOpen(false);
   }
 
