@@ -1,109 +1,91 @@
-"use client";
-
 import Link from "next/link";
-import {
-  Activity,
-  ArrowUpRight,
-  BarChart3,
-  CalendarDays,
-  CircleDollarSign,
-  Clock3,
-  FileText,
-  Landmark,
-  MessageSquareText,
-  Plus,
-  ReceiptText,
-  Sparkles,
-  UsersRound,
-} from "lucide-react";
-import { useBdb } from "@/lib/store";
-import { formatDate, formatMoney, formatTimeAgo } from "@/lib/format";
-import { Badge, Button, Card, SectionHeading, StatCard } from "@/components/ui";
+import { ArrowRight, Blocks, Check, ChevronRight, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 
-const modules = [
-  { name: "Accounts", description: "Invoices, payments and reconciliation", href: "/accounts", icon: CircleDollarSign },
-  { name: "Customers", description: "Every relationship in one record", href: "/customers", icon: UsersRound },
-  { name: "Calendar", description: "Bookings, people and availability", href: "/calendar", icon: CalendarDays },
-  { name: "Communications", description: "One inbox across every channel", href: "/communications", icon: MessageSquareText },
-  { name: "Documents", description: "Files connected to business records", href: "/documents", icon: FileText },
-  { name: "Banking", description: "Cash position and transaction matching", href: "/banking", icon: Landmark },
-  { name: "Reports", description: "Useful detail when you need it", href: "/reports", icon: BarChart3 },
-  { name: "Automation", description: "Smart assistance with human approval", href: "/automation-hub", icon: Sparkles },
+const plans = [
+  {
+    name: "Starter",
+    eyebrow: "A calm first step",
+    description: "Bring the essentials into one clear workspace and replace the daily patchwork of disconnected tools.",
+    examples: ["A focused core workspace", "Your highest-priority workflows", "Guided setup and ongoing support"],
+  },
+  {
+    name: "Growth",
+    eyebrow: "For connected operations",
+    description: "Connect more of the business, reduce repeated admin and give a growing team one reliable source of truth.",
+    examples: ["Broader connected operations", "Team roles and approvals", "Reporting and helpful automation"],
+    featured: true,
+  },
+  {
+    name: "Pro",
+    eyebrow: "The complete foundation",
+    description: "Build a deeply tailored operating system around a more complex business, team and client journey.",
+    examples: ["The broadest module mix", "Advanced workflows and controls", "Deeper tailoring as you evolve"],
+  },
 ];
 
-export default function HomePage() {
-  const { state } = useBdb();
-  const paid = state.invoices.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
-  const outstanding = state.invoices.filter((item) => ["sent", "overdue"].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
-  const unread = state.messages.filter((item) => item.unread).length;
-  const today = state.bookings.filter((item) => item.date === "2026-07-14");
-  const nextBooking = [...state.bookings].find((item) => `${item.date}${item.time}` >= "2026-07-1412:00");
-
+export default function MarketingPage() {
   return (
-    <>
-      <Card className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">Tuesday · 14 July</p>
-          <h1>Good morning, {state.settings.ownerName}. Your business is in order.</h1>
-          <p className="page-description">A clear view of what needs your attention, with every record connected behind the scenes.</p>
-          <div className="hero-actions">
-            <Link href="/accounts"><Button><Plus size={17} /> New invoice</Button></Link>
-            <Link href="/customers"><Button variant="secondary"><UsersRound size={17} /> Add customer</Button></Link>
-          </div>
+    <main className="marketing-shell">
+      <nav className="marketing-nav">
+        <Link href="/" className="marketing-brand"><span>B</span><strong>BDB OS</strong></Link>
+        <div className="marketing-links">
+          <a href="#how-it-works">How it works</a>
+          <a href="#plans">Plans</a>
+          <Link href="/workspace">View demo</Link>
+          <Link href="/discovery" className="marketing-nav-cta">Start discovery <ArrowRight size={15} /></Link>
         </div>
-        <div className="hero-signal">
-          <p className="eyebrow">Today at a glance</p>
-          <div className="signal-row"><span className="muted">Appointments</span><strong>{today.length}</strong></div>
-          <div className="signal-row"><span className="muted">Unread messages</span><strong>{unread}</strong></div>
-          <div className="signal-row"><span className="muted">Actions</span><strong>3</strong></div>
+      </nav>
+
+      <section className="marketing-hero">
+        <div className="marketing-hero-copy">
+          <p className="marketing-kicker"><Sparkles size={14} /> Business. Done. Better.</p>
+          <h1>Your business, finally working as one.</h1>
+          <p>BDB OS is a calm, connected operating system shaped around the way your business actually works—so your team spends less time chasing admin and more time moving forward.</p>
+          <div className="marketing-actions">
+            <Link href="/discovery" className="marketing-primary">Get a custom quote <ArrowRight size={17} /></Link>
+            <Link href="/workspace" className="marketing-secondary">Explore the product</Link>
+          </div>
+          <div className="marketing-trust"><span><Check size={14} /> Tailored module mix</span><span><Check size={14} /> Monthly billing</span><span><Check size={14} /> 3 or 6 month commitment</span></div>
         </div>
-      </Card>
+        <div className="marketing-product-card">
+          <div className="product-card-top"><span>Today</span><span className="live-dot">Everything in order</span></div>
+          <h2>A clear view of what matters.</h2>
+          <div className="product-stat-row"><div><small>Received</small><strong>£18,420</strong></div><div><small>Customers</small><strong>128</strong></div></div>
+          <div className="product-focus"><span className="focus-dot" /><div><strong>One useful next action</strong><p>Review a payment match before it is reconciled.</p></div><ChevronRight size={16} /></div>
+          <div className="product-modules"><span>Accounts</span><span>Customers</span><span>Calendar</span><span>Reports</span></div>
+        </div>
+      </section>
 
-      <div className="stat-grid">
-        <StatCard label="Received" value={formatMoney(paid, state.settings.currency)} detail="Across paid invoices" icon={<ReceiptText size={19} />} />
-        <StatCard label="Outstanding" value={formatMoney(outstanding, state.settings.currency)} detail="2 invoices need attention" icon={<Clock3 size={19} />} />
-        <StatCard label="Customers" value={String(state.customers.length)} detail="1 new this month" icon={<UsersRound size={19} />} />
-        <StatCard label="Next booking" value={nextBooking?.time ?? "Clear"} detail={nextBooking?.title ?? "No booking scheduled"} icon={<CalendarDays size={19} />} />
-      </div>
+      <section className="marketing-section" id="how-it-works">
+        <div className="marketing-section-heading"><p className="marketing-kicker">Built around you</p><h2>Software should fit the business—not the other way around.</h2><p>We start with discovery, shape the right workspace, then improve it with you over time.</p></div>
+        <div className="marketing-value-grid">
+          <article><span><Blocks size={20} /></span><h3>Choose the right starting shape</h3><p>Begin with Starter, Growth or Pro, then add or remove modules around your real needs.</p></article>
+          <article><span><Workflow size={20} /></span><h3>Connect the daily work</h3><p>Customers, money, bookings, messages and documents stay connected behind the scenes.</p></article>
+          <article><span><ShieldCheck size={20} /></span><h3>Stay supported</h3><p>Your monthly agreement includes an ongoing partnership, not a hand-off and a goodbye.</p></article>
+        </div>
+      </section>
 
-      <SectionHeading title="Your workspace" description="Open a module when the detail becomes useful." />
-      <div className="module-grid">
-        {modules.map((module) => {
-          const Icon = module.icon;
-          return (
-            <Link key={module.href} href={module.href} className="card card-interactive module-card">
-              <span className="module-icon"><Icon size={21} /></span>
-              <h3>{module.name}</h3>
-              <p>{module.description}</p>
-              <ArrowUpRight className="module-arrow" size={17} />
-            </Link>
-          );
-        })}
-      </div>
+      <section className="marketing-section" id="plans">
+        <div className="marketing-section-heading"><p className="marketing-kicker">Flexible plans</p><h2>Three clear places to begin.</h2><p>Every business receives a tailored quote and final scope. These plans help you choose the level of transformation that feels right.</p></div>
+        <div className="plan-grid">
+          {plans.map((plan) => (
+            <article className={`plan-card ${plan.featured ? "featured" : ""}`} key={plan.name}>
+              {plan.featured && <span className="plan-popular">Most popular starting point</span>}
+              <p className="plan-eyebrow">{plan.eyebrow}</p><h3>{plan.name}</h3>
+              <div className="custom-price">Custom quote</div>
+              <p>{plan.description}</p>
+              <div className="plan-divider" />
+              <small>Your plan could include:</small>
+              <ul>{plan.examples.map((item) => <li key={item}><Check size={15} /> {item}</li>)}</ul>
+              <Link href={`/discovery?plan=${plan.name.toLowerCase()}`}>Discuss {plan.name} <ArrowRight size={15} /></Link>
+            </article>
+          ))}
+        </div>
+        <p className="plan-note">Plans are starting points, not fixed feature lists. Final modules, monthly fee and contract scope are agreed after discovery. Minimum commitment: 3 or 6 months.</p>
+      </section>
 
-      <div className="two-column" style={{ marginTop: 28 }}>
-        <Card className="card-pad">
-          <SectionHeading title="Your focus" description="Three useful actions, no noise." action={<Badge tone="gold"><Sparkles size={11} /> Assisted</Badge>} />
-          <div className="focus-list">
-            <div className="focus-item"><span className="focus-dot" /><div><strong>Review the Vella payment match</strong><p>A £1,680 bank transaction closely matches overdue invoice BDB-1041. Your approval is required.</p></div></div>
-            <div className="focus-item"><span className="focus-dot" /><div><strong>Reply to Daniel’s timeline question</strong><p>A draft response is ready in Communications. Nothing will be sent without you.</p></div></div>
-            <div className="focus-item"><span className="focus-dot" /><div><strong>Prepare for the 14:30 discovery call</strong><p>Webb Property Group’s enquiry and draft invoice are connected to the booking.</p></div></div>
-          </div>
-        </Card>
-        <Card className="card-pad">
-          <SectionHeading title="Recent activity" action={<Link href="/activity" className="link-button">View all</Link>} />
-          <div className="quick-list">
-            {state.activity.slice(0, 4).map((item) => (
-              <div className="quick-row" key={item.id}>
-                <span className={`activity-icon ${item.tone}`}><Activity size={16} /></span>
-                <span className="quick-row-copy"><strong>{item.action}</strong><small>{item.detail}</small></span>
-                <span className="quick-row-time">{formatTimeAgo(item.timestamp)}</span>
-              </div>
-            ))}
-          </div>
-          <p className="muted small" style={{ margin: "16px 0 0" }}>Last local save · {formatDate("2026-07-14T11:58:00Z", { hour: "2-digit", minute: "2-digit" })}</p>
-        </Card>
-      </div>
-    </>
+      <section className="marketing-cta"><div><p className="marketing-kicker">Let’s make work feel lighter</p><h2>Tell us what is slowing your business down.</h2><p>We’ll map the right starting plan and prepare a quote around the outcome you need.</p></div><Link href="/discovery" className="marketing-primary">Start discovery <ArrowRight size={17} /></Link></section>
+      <footer className="marketing-footer"><span>© 2026 BDB OS</span><span>Calm, connected business operations.</span></footer>
+    </main>
   );
 }

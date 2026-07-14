@@ -27,7 +27,7 @@ import { useBdb } from "@/lib/store";
 import { SearchDialog } from "./search-dialog";
 
 export const navigation = [
-  { name: "Overview", href: "/", icon: Building2 },
+  { name: "Overview", href: "/workspace", icon: Building2 },
   { name: "Accounts", href: "/accounts", icon: CircleDollarSign },
   { name: "Customers", href: "/customers", icon: UsersRound },
   { name: "Calendar", href: "/calendar", icon: CalendarDays },
@@ -68,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <div className="brand-row">
-          <Link href="/" className="brand" onClick={() => setMobileOpen(false)}>
+          <Link href="/workspace" className="brand" onClick={() => setMobileOpen(false)}>
             <span className="brand-mark">B</span>
             <span><strong>BDB OS</strong><small>Business. Done. Better.</small></span>
           </Link>

@@ -1,6 +1,6 @@
 # BDB OS
 
-BDB OS is a connected, offline-first operating workspace for small businesses. It brings invoicing, customers, bookings, communication, documents, banking, reporting, and lightweight automation into one calm interface.
+BDB OS is a connected operating system for small businesses. It combines a public discovery experience with private, offline-friendly workspaces for invoicing, customers, bookings, communication, documents, banking, reporting, and lightweight automation.
 
 ## What is included
 
@@ -10,10 +10,19 @@ BDB OS is a connected, offline-first operating workspace for small businesses. I
 - Document tracking and upload metadata
 - Banking reconciliation with human review
 - Reports, automation controls, and business settings
-- Browser persistence through `localStorage`
+- Browser persistence through `localStorage` in demo mode
 - An installable web-app manifest and offline service worker
+- Passwordless Supabase authentication foundations with tenant data protected by RLS
+- Stripe server dependency ready for negotiated recurring subscriptions
 
-The app ships with realistic demo data so every workflow is ready to explore immediately. Data stays in the current browser; no external database or third-party account is required for this MVP.
+The app ships with realistic demo data so every workflow is ready to explore immediately. Without environment variables, data stays in the current browser and no third-party account is required.
+
+## Commercial model
+
+- Starter, Growth and Pro are flexible starting points, not fixed feature bundles.
+- Every client receives a tailored scope and quote after discovery.
+- Clients pay monthly with an agreed minimum commitment of 3 or 6 months.
+- A custom Stripe subscription should only be created after the quote and contract are agreed.
 
 ## Run locally
 
@@ -23,6 +32,8 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Copy `.env.example` to `.env.local` to enable Supabase authentication. Never expose the server-only Supabase or Stripe keys with a `NEXT_PUBLIC_` prefix.
 
 ## Quality checks
 
@@ -35,7 +46,10 @@ npm run build
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Daily overview and priorities |
+| `/` | Marketing, plans and custom-quote journey |
+| `/discovery` | Client discovery enquiry |
+| `/login` | Passwordless client sign-in |
+| `/workspace` | Daily overview and priorities |
 | `/accounts` | Invoices and cash flow |
 | `/customers` | Customer records |
 | `/calendar` | Bookings and schedule |
@@ -53,8 +67,14 @@ npm run build
 - React 19
 - TypeScript
 - Lucide icons
-- Plain CSS with no UI runtime dependency
+- Supabase Auth/Postgres foundation
+- Stripe subscription foundation
+- Plain CSS design system
 
 ## Current scope
 
-This version is a production-buildable front-end MVP. Persistence is intentionally local to the browser. A future multi-user release can replace the store layer with authenticated APIs and a database without changing the page-level product model.
+## Deployment
+
+Deploy to Vercel, add the values from `.env.example`, and set the Supabase authentication Site URL and redirect allow-list to the deployed domain. The discovery form intentionally stays in preview mode until an approved inbox or CRM destination is selected.
+
+Suggested production domains are `bdb-os.com` for marketing, `app.bdb-os.com` for client workspaces, and `admin.bdb-os.com` for the founder control plane.
