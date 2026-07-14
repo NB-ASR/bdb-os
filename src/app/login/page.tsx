@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { ArrowLeft, LogIn } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { BdbMonogram } from "@/components/brand";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -21,5 +22,5 @@ export default function LoginPage() {
     setLoading(false);
   }
 
-  return <main className="discovery-shell"><Link href="/" className="back-link"><ArrowLeft size={16} /> BDB OS</Link><div className="discovery-layout"><section><p className="marketing-kicker">Client access</p><h1>Welcome back.</h1><p className="discovery-lead">Sign in to the private workspace created for your business.</p></section><section className="discovery-card"><form className="discovery-form" onSubmit={signIn}><div className="field field-full"><label htmlFor="email">Work email</label><input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@company.com" /></div><button className="marketing-primary" disabled={loading}><LogIn size={17} /> {loading ? "Sending…" : "Email me a sign-in link"}</button>{message && <p className="field-full muted">{message}</p>}<Link className="field-full link-button" href="/workspace">Open the product demo</Link></form></section></div></main>;
+  return <main className="discovery-shell"><Link href="/" className="back-link"><ArrowLeft size={16} /> Back</Link><div className="login-brand"><BdbMonogram /></div><div className="discovery-layout login-layout"><section><p className="marketing-kicker">Secure client access</p><h1>Welcome back.</h1><p className="discovery-lead">Sign in to the private workspace created for your business. Founder accounts will be asked for MFA before entering the control plane.</p></section><section className="discovery-card"><form className="discovery-form" onSubmit={signIn}><div className="field field-full"><label htmlFor="email">Work email</label><input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@company.com" /></div><button className="marketing-primary" disabled={loading}><LogIn size={17} /> {loading ? "Sending…" : "Email me a secure sign-in link"}</button>{message && <p className="field-full muted">{message}</p>}<Link className="field-full link-button" href="/workspace">Open the product demo</Link></form></section></div></main>;
 }

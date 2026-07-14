@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Activity,
@@ -25,6 +26,8 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { useBdb } from "@/lib/store";
 import { SearchDialog } from "./search-dialog";
+import { BdbMonogram, PoweredByBdb } from "./brand";
+import { MobileActions } from "./mobile-actions";
 
 export const navigation = [
   { name: "Overview", href: "/workspace", icon: Building2 },
@@ -68,10 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <div className="brand-row">
-          <Link href="/workspace" className="brand" onClick={() => setMobileOpen(false)}>
-            <span className="brand-mark">B</span>
-            <span><strong>BDB OS</strong><small>Business. Done. Better.</small></span>
-          </Link>
+          <span onClick={() => setMobileOpen(false)}>{state.theme.clientLogoUrl ? <Link href="/workspace" className="client-brand"><Image src={state.theme.clientLogoUrl} alt={`${state.settings.businessName} logo`} width={42} height={42} unoptimized /><span><strong>{state.settings.businessName}</strong><small>Business workspace</small></span></Link> : <BdbMonogram href="/workspace" />}</span>
           <button className="icon-button mobile-only" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={20} /></button>
         </div>
 
@@ -99,6 +99,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="profile-avatar">NB</div>
           <div><strong>{state.settings.ownerName}</strong><small>Workspace owner</small></div>
         </div>
+        <PoweredByBdb />
       </aside>
       {mobileOpen ? <button className="sidebar-overlay" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
 
@@ -110,6 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span>{state.settings.businessName}</span>
           </div>
           <div className="topbar-actions">
+            <MobileActions />
             <button className="topbar-search" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Search workspace</span></button>
             <span className={`connection-pill ${online ? "online" : "offline"}`}>
               {online ? <Wifi size={15} /> : <WifiOff size={15} />}

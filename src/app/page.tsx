@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Blocks, Check, ChevronRight, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { BdbMonogram } from "@/components/brand";
 
 const plans = [
   {
@@ -27,7 +28,7 @@ export default function MarketingPage() {
   return (
     <main className="marketing-shell">
       <nav className="marketing-nav">
-        <Link href="/" className="marketing-brand"><span>B</span><strong>BDB OS</strong></Link>
+        <BdbMonogram />
         <div className="marketing-links">
           <a href="#how-it-works">How it works</a>
           <a href="#plans">Plans</a>

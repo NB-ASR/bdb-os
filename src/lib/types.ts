@@ -93,6 +93,19 @@ export interface BusinessSettings {
   vatRate: number;
 }
 
+export interface WorkspaceTheme {
+  preset: "obsidian-gold" | "ocean" | "forest" | "clay" | "slate" | "custom";
+  mode: "dark" | "light" | "system";
+  accentColor: string;
+  fontFamily: "manrope" | "dm-sans" | "system";
+  textScale: number;
+  density: "compact" | "comfortable" | "spacious";
+  highContrast: boolean;
+  reducedMotion: boolean;
+  clientLogoPath?: string;
+  clientLogoUrl?: string;
+}
+
 export interface BdbState {
   customers: Customer[];
   invoices: Invoice[];
@@ -103,4 +116,5 @@ export interface BdbState {
   automations: Automation[];
   activity: ActivityItem[];
   settings: BusinessSettings;
+  theme: WorkspaceTheme;
 }
