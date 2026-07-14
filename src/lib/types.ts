@@ -54,6 +54,7 @@ export interface BusinessDocument {
   customerId?: string;
   linkedTo: string;
   uploadedAt: string;
+  storagePath?: string;
 }
 
 export interface BankTransaction {
