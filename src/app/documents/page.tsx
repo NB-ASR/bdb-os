@@ -1,97 +1,75 @@
-import Link from "next/link";
+"use client";
 
-const documentTools = [
-  { name: "Document\nLibrary", icon: "📁", description: "Store and organise business documents." },
-  { name: "Customer\nFiles", icon: "👥", description: "Link documents directly to customer profiles." },
-  { name: "Invoice\nDocuments", icon: "🧾", description: "Keep invoices, credit notes and delivery notes together." },
-  { name: "Upload\nCentre", icon: "⬆️", description: "Upload PDFs, images and important files." },
-  { name: "AI\nScanning", icon: "✨", description: "Extract useful information from documents." },
-  { name: "Document\nHistory", icon: "🕘", description: "Track when documents were added or changed." },
-];
+import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { FileImage, Files, FileText, ScanText, UploadCloud } from "lucide-react";
+import { useBdb } from "@/lib/store";
+import { formatDate } from "@/lib/format";
+import { Badge, Button, Card, Dialog, PageHeader, StatCard } from "@/components/ui";
+
+function fileSize(bytes: number) {
+  return bytes > 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+}
 
 export default function DocumentsPage() {
+  const { state, addDocument } = useBdb();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState({ name: "", type: "PDF", size: "", customerId: "", linkedTo: "Business" });
+
+  const visible = state.documents.filter((item) => [item.name, item.type, item.linkedTo].join(" ").toLowerCase().includes(query.toLowerCase()));
+
+  function chooseFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setForm({ name: file.name, type: file.type.includes("image") ? "Image" : file.name.split(".").at(-1)?.toUpperCase() || "File", size: fileSize(file.size), customerId: "", linkedTo: "Business" });
+    setOpen(true);
+    event.target.value = "";
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    addDocument({ ...form, customerId: form.customerId || undefined });
+    setOpen(false);
+  }
+
   return (
-    <main className="min-h-screen bg-[#151515] text-zinc-100">
-      <header className="border-b border-[#d6a735]/40 px-10 py-6">
-        <Link href="/" className="text-sm font-semibold text-[#d6a735] hover:underline">
-          ← Back to Business Hub
-        </Link>
+    <>
+      <PageHeader eyebrow="Connected files" title="Documents" description="Business files organised around the customers, invoices and bookings they belong to." action={<Button onClick={() => inputRef.current?.click()}><UploadCloud size={17} /> Upload file</Button>} />
+      <input ref={inputRef} type="file" hidden onChange={chooseFile} accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" />
+      <div className="stat-grid">
+        <StatCard label="Documents" value={String(state.documents.length)} detail="In your library" icon={<Files size={19} />} />
+        <StatCard label="PDF files" value={String(state.documents.filter((item) => item.type === "PDF").length)} detail="Ready to search" icon={<FileText size={19} />} />
+        <StatCard label="Images" value={String(state.documents.filter((item) => item.type === "Image").length)} detail="Visual references" icon={<FileImage size={19} />} />
+        <StatCard label="AI scanned" value={String(Math.max(0, state.documents.length - 1))} detail="Suggested connections" icon={<ScanText size={19} />} />
+      </div>
 
-        <div className="mt-6 flex items-end justify-between">
-          <div>
-            <p className="text-sm font-semibold tracking-[0.35em] text-[#d6a735]">
-              BDB OS
-            </p>
-            <h1 className="mt-3 text-4xl font-bold text-[#d6a735]">
-              Documents
-            </h1>
-            <p className="mt-3 max-w-2xl text-base text-zinc-400">
-              Store, organise and connect documents to customers, invoices, appointments and business history.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-[#d6a735]/60 bg-[#202020] px-6 py-4 text-sm font-semibold text-[#d6a735] shadow-[0_0_25px_rgba(214,167,53,0.18)]">
-            Connected Document Workspace
-          </div>
+      <div className="two-column" style={{ marginBottom: 18 }}>
+        <div className="upload-zone">
+          <UploadCloud size={26} />
+          <p>Drop a file here or click to choose</p>
+          <small>PDF, image, Word or spreadsheet · metadata is available offline</small>
+          <input type="file" aria-label="Upload document" onChange={chooseFile} accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" />
         </div>
-      </header>
+        <Card className="card-pad"><p className="eyebrow">Smart filing</p><h2>Every file finds its context</h2><p className="muted small" style={{ marginBottom: 0 }}>BDB suggests a customer and linked record after upload. You approve the final filing location.</p></Card>
+      </div>
 
-      <section className="mx-auto flex max-w-6xl flex-col items-center px-8 py-10">
-        <div className="relative h-[520px] w-[520px] rounded-full border-2 border-[#d6a735]/70 shadow-[0_0_70px_rgba(214,167,53,0.18)]">
-          <div className="absolute inset-14 rounded-full border border-dashed border-[#d6a735]/50" />
-          <div className="absolute inset-28 rounded-full border border-dotted border-[#d6a735]/35" />
+      <div className="toolbar"><input className="filter-input" placeholder="Search documents or linked records…" value={query} onChange={(event) => setQuery(event.target.value)} /><Badge tone="neutral">{visible.length} files</Badge></div>
+      <Card className="table-card"><div className="table-scroll"><table><thead><tr><th>Document</th><th>Linked record</th><th>Customer</th><th>Uploaded</th><th>Size</th></tr></thead><tbody>{visible.map((document) => {
+        const customer = state.customers.find((item) => item.id === document.customerId);
+        return <tr key={document.id}><td><div style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="result-icon">{document.type === "Image" ? <FileImage size={17} /> : <FileText size={17} />}</span><span className="cell-stack"><strong>{document.name}</strong><span>{document.type}</span></span></div></td><td><Badge tone="blue">{document.linkedTo}</Badge></td><td>{customer?.name ?? <span className="muted">Business</span>}</td><td>{formatDate(document.uploadedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td><td className="muted">{document.size}</td></tr>;
+      })}</tbody></table></div></Card>
 
-          <div className="absolute left-1/2 top-1/2 z-10 flex h-52 w-52 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-2 border-[#d6a735] bg-[#202020] text-center shadow-[0_0_45px_rgba(214,167,53,0.4)]">
-            <div className="text-4xl">📄</div>
-            <h2 className="mt-3 text-2xl font-bold text-[#d6a735]">
-              Documents Hub
-            </h2>
-            <p className="mt-2 max-w-36 text-sm text-zinc-400">
-              Every file in the right place.
-            </p>
+      <Dialog open={open} onClose={() => setOpen(false)} title="File this document" description="BDB suggests context; you approve where the file belongs.">
+        <form onSubmit={submit}>
+          <div className="form-grid">
+            <div className="field field-full"><label htmlFor="document-name">File name</label><input id="document-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
+            <div className="field"><label htmlFor="document-customer">Customer</label><select id="document-customer" value={form.customerId} onChange={(event) => setForm({ ...form, customerId: event.target.value })}><option value="">Business file</option>{state.customers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
+            <div className="field"><label htmlFor="document-link">Linked record</label><input id="document-link" required value={form.linkedTo} onChange={(event) => setForm({ ...form, linkedTo: event.target.value })} placeholder="Invoice, booking or business" /></div>
           </div>
-
-          {documentTools.map((tool, index) => {
-            const positions = [
-              "top-[-4%] left-1/2 -translate-x-1/2",
-              "top-[18%] right-[2%]",
-              "bottom-[18%] right-[2%]",
-              "bottom-[-4%] left-1/2 -translate-x-1/2",
-              "bottom-[18%] left-[2%]",
-              "top-[18%] left-[2%]",
-            ];
-
-            return (
-              <button
-                key={tool.name}
-                className={`absolute ${positions[index]} z-20 flex h-28 w-28 flex-col items-center justify-center rounded-full border-2 border-[#d6a735] bg-[#202020] text-center shadow-[0_0_30px_rgba(214,167,53,0.32)] transition hover:scale-105 hover:shadow-[0_0_45px_rgba(214,167,53,0.55)]`}
-              >
-                <span className="text-3xl">{tool.icon}</span>
-                <span className="mt-2 whitespace-pre-line text-xs font-bold leading-tight text-zinc-100">
-                  {tool.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-10 grid w-full grid-cols-3 gap-4">
-          {documentTools.map((tool) => (
-            <div
-              key={tool.name}
-              className="rounded-2xl border border-[#d6a735]/35 bg-[#202020] p-5 shadow-[0_0_22px_rgba(214,167,53,0.1)]"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{tool.icon}</span>
-                <h3 className="whitespace-pre-line text-lg font-bold leading-tight text-[#d6a735]">
-                  {tool.name}
-                </h3>
-              </div>
-              <p className="mt-2 text-sm text-zinc-400">{tool.description}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </main>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit">Approve upload</Button></div>
+        </form>
+      </Dialog>
+    </>
   );
 }
