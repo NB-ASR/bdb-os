@@ -5,7 +5,6 @@ import {
   Activity,
   Building2,
   Check,
-  CircleDollarSign,
   CreditCard,
   KeyRound,
   Layers3,
@@ -82,7 +81,10 @@ export default function AdminPage() {
     setSelected((current) => current && dashboard.workspaces.some((workspace) => workspace.id === current) ? current : dashboard.workspaces[0]?.id ?? null);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   async function mutate(payload: Record<string, unknown>, key: string, success = "Change saved.") {
     setBusy(key);

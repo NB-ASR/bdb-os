@@ -5,8 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const profiles = new Set(["owner", "manager", "employee", "custom"]);
 const memberStatuses = new Set(["active", "suspended"]);
-const actions = ["view", "create", "edit", "delete", "approve", "export"] as const;
-type PermissionAction = (typeof actions)[number];
+type PermissionAction = "view" | "create" | "edit" | "delete" | "approve" | "export";
 type PermissionInput = { featureKey: string } & Record<`can_${PermissionAction}`, boolean>;
 
 function mappedRole(accessProfile: string) {

@@ -95,7 +95,10 @@ export default function TeamPage() {
     setSelectedId((current) => current && next.members.some((member) => member.user_id === current) ? current : next.members[0]?.user_id ?? null);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   const selected = useMemo(
     () => data?.members.find((member) => member.user_id === selectedId) ?? null,
@@ -104,9 +107,12 @@ export default function TeamPage() {
 
   useEffect(() => {
     if (!selected || !data) return;
-    setDraftProfile(selected.access_profile);
-    setDraftStatus(selected.status === "invited" ? "active" : selected.status);
-    setPermissionDraft(makeDraft(selected, data.features, data.permissions));
+    const timer = window.setTimeout(() => {
+      setDraftProfile(selected.access_profile);
+      setDraftStatus(selected.status === "invited" ? "active" : selected.status);
+      setPermissionDraft(makeDraft(selected, data.features, data.permissions));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [selected, data]);
 
   async function invite(event: FormEvent<HTMLFormElement>) {
