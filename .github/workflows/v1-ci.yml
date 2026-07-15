@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -16,48 +16,17 @@ jobs:
       - name: Check out pull request branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           show-progress: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Validate or regenerate dependency lockfile
-        id: lockfile
+      - name: Verify dependency lockfile
         shell: bash
         run: |
-          set -euo pipefail
           test -f package.json
-          valid=false
-          if test -f package-lock.json; then
-            if node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8'))" 2>/dev/null; then
-              valid=true
-            fi
-          fi
-          if test "$valid" != true; then
-            rm -f package-lock.json
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-            node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Regenerated lockfile is valid JSON')"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "Regenerate dependency lockfile"
-            git push origin HEAD:${{ github.head_ref }}
-            echo "regenerated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "regenerated=false" >> "$GITHUB_OUTPUT"
-          fi
+          test -f package-lock.json
+          node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Dependency lockfile is valid JSON')"
 
-      - name: Stop after lockfile regeneration
-        if: steps.lockfile.outputs.regenerated == 'true'
-        run: |
-          echo "A valid dependency lockfile was pushed. The next run will perform full validation."
-          exit 1
-
-      - name: Enable npm cache
-        if: steps.lockfile.outputs.regenerated != 'true'
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -65,17 +34,13 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install locked dependencies
-        if: steps.lockfile.outputs.regenerated != 'true'
         run: npm ci
 
       - name: TypeScript
-        if: steps.lockfile.outputs.regenerated != 'true'
         run: npx tsc --noEmit
 
       - name: ESLint
-        if: steps.lockfile.outputs.regenerated != 'true'
         run: npm run lint
 
       - name: Production build
-        if: steps.lockfile.outputs.regenerated != 'true'
         run: npm run build
