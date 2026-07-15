@@ -34,12 +34,13 @@ export default function ChangePasswordPage() {
       return;
     }
     const response = await fetch("/api/auth/password-changed", { method: "POST" });
+    const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setMessage("Your password changed, but the account state could not be confirmed. Please sign in again.");
+      setMessage("The new credential was saved, but the account state could not be confirmed. Please sign in again.");
       setLoading(false);
       return;
     }
-    window.location.href = "/mfa";
+    window.location.href = result.next ?? "/workspace";
   }
 
   return (
@@ -47,9 +48,9 @@ export default function ChangePasswordPage() {
       <BdbMonogram />
       <section className="mfa-card">
         <span className="mfa-icon"><ShieldCheck size={25} /></span>
-        <p className="marketing-kicker">First-login security</p>
+        <p className="marketing-kicker">Account security</p>
         <h1>Create your private password</h1>
-        <p>The temporary founder password cannot be reused after this step. Choose a unique password that you do not use elsewhere.</p>
+        <p>Choose a unique password of at least 12 characters that you do not use elsewhere.</p>
         <form onSubmit={submit}>
           <div className="field"><label htmlFor="password">New password</label><input id="password" type="password" minLength={12} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></div>
           <div className="field"><label htmlFor="confirm">Confirm password</label><input id="confirm" type="password" minLength={12} autoComplete="new-password" value={confirm} onChange={(event) => setConfirm(event.target.value)} required /></div>
