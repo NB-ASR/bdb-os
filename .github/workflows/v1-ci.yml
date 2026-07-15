@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
@@ -16,67 +16,31 @@ jobs:
       - name: Check out pull request branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           show-progress: false
 
-      - name: Apply known ESLint corrections
+      - name: Verify dependency lockfile
         shell: bash
         run: |
-          set -euo pipefail
-          python <<'PY'
-          from pathlib import Path
+          test -f package.json
+          test -f package-lock.json
+          node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Dependency lockfile is valid JSON')"
 
-          admin = Path('src/app/admin/page.tsx')
-          text = admin.read_text()
-          text = text.replace('  CircleDollarSign,\n', '')
-          text = text.replace(
-              '  useEffect(() => { void load(); }, [load]);',
-              '  useEffect(() => {\n    const timer = window.setTimeout(() => void load(), 0);\n    return () => window.clearTimeout(timer);\n  }, [load]);',
-          )
-          admin.write_text(text)
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-          team = Path('src/app/team/page.tsx')
-          text = team.read_text()
-          text = text.replace(
-              '  useEffect(() => { void load(); }, [load]);',
-              '  useEffect(() => {\n    const timer = window.setTimeout(() => void load(), 0);\n    return () => window.clearTimeout(timer);\n  }, [load]);',
-          )
-          text = text.replace(
-              '''  useEffect(() => {
-    if (!selected || !data) return;
-    setDraftProfile(selected.access_profile);
-    setDraftStatus(selected.status === "invited" ? "active" : selected.status);
-    setPermissionDraft(makeDraft(selected, data.features, data.permissions));
-  }, [selected, data]);''',
-              '''  useEffect(() => {
-    if (!selected || !data) return;
-    const timer = window.setTimeout(() => {
-      setDraftProfile(selected.access_profile);
-      setDraftStatus(selected.status === "invited" ? "active" : selected.status);
-      setPermissionDraft(makeDraft(selected, data.features, data.permissions));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [selected, data]);''',
-          )
-          team.write_text(text)
+      - name: Install locked dependencies
+        run: npm ci
 
-          route = Path('src/app/api/workspace/team/route.ts')
-          text = route.read_text()
-          text = text.replace(
-              'const actions = ["view", "create", "edit", "delete", "approve", "export"] as const;\ntype PermissionAction = (typeof actions)[number];',
-              'type PermissionAction = "view" | "create" | "edit" | "delete" | "approve" | "export";',
-          )
-          route.write_text(text)
-          PY
+      - name: TypeScript
+        run: npx tsc --noEmit
 
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/app/admin/page.tsx src/app/team/page.tsx src/app/api/workspace/team/route.ts
-          git commit -m "Resolve V1 lint findings"
-          git push origin HEAD:${{ github.head_ref }}
+      - name: ESLint
+        run: npm run lint
 
-      - name: Stop after applying corrections
-        run: |
-          echo "Corrections were pushed. A clean validation run will follow."
-          exit 1
+      - name: Production build
+        run: npm run build
