@@ -40,7 +40,25 @@ jobs:
         run: npx tsc --noEmit
 
       - name: ESLint
-        run: npm run lint
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee eslint.log
+
+      - name: Upload ESLint diagnostics
+        if: steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-diagnostics
+          path: eslint.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Stop after ESLint failure
+        if: steps.lint.outcome == 'failure'
+        run: exit 1
 
       - name: Production build
         run: npm run build
