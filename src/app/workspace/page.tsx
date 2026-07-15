@@ -33,17 +33,20 @@ const modules = [
 
 export default function WorkspacePage() {
   const { state } = useBdb();
+  const now = new Date();
+  const todayKey = now.toLocaleDateString("en-CA");
+  const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(now);
   const paid = state.invoices.filter((item) => item.status === "paid").reduce((sum, item) => sum + item.amount, 0);
   const outstanding = state.invoices.filter((item) => ["sent", "overdue"].includes(item.status)).reduce((sum, item) => sum + item.amount, 0);
   const unread = state.messages.filter((item) => item.unread).length;
-  const today = state.bookings.filter((item) => item.date === "2026-07-14");
-  const nextBooking = [...state.bookings].find((item) => `${item.date}${item.time}` >= "2026-07-1412:00");
+  const today = state.bookings.filter((item) => item.date === todayKey);
+  const nextBooking = [...state.bookings].find((item) => new Date(`${item.date}T${item.time}`).getTime() >= now.getTime());
 
   return (
     <>
       <Card className="hero-panel">
         <div className="hero-copy">
-          <p className="eyebrow">Tuesday · 14 July</p>
+          <p className="eyebrow">{dateLabel}</p>
           <h1>Good morning, {state.settings.ownerName}. Your business is in order.</h1>
           <p className="page-description">A clear view of what needs your attention, with every record connected behind the scenes.</p>
           <div className="hero-actions">

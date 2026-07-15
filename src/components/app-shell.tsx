@@ -43,7 +43,7 @@ export const navigation = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { state } = useBdb();
+  const { state, mode } = useBdb();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [online, setOnline] = useState(true);
@@ -113,9 +113,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="topbar-actions">
             <MobileActions />
             <button className="topbar-search" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Search workspace</span></button>
-            <span className={`connection-pill ${online ? "online" : "offline"}`}>
+            <span className={`connection-pill ${online && mode === "cloud" ? "online" : "offline"}`}>
               {online ? <Wifi size={15} /> : <WifiOff size={15} />}
-              {online ? "Synced" : "Offline · changes saved"}
+              {!online ? "Offline · changes saved" : mode === "cloud" ? "Cloud synced" : "Demo data · local only"}
             </span>
           </div>
         </header>
