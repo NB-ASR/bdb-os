@@ -113,7 +113,7 @@ Confirm denied actions fail at the Supabase/API layer even when a direct route o
 
 ## 10. Required automated checks
 
-Run before merge:
+The `BDB OS V1 Validation` GitHub Actions workflow must pass on the Pull Request. It runs:
 
 ```bash
 npm ci
@@ -126,4 +126,4 @@ Also review the Supabase security and performance advisors after applying the mi
 
 ## Merge rule
 
-Keep PR #6 in draft until the Preview deployment, migrations, Founder bootstrap, invitation emails, permissions, and isolation tests above have passed. Do not merge directly into `main` without Founder approval.
+Keep PR #6 in draft until the GitHub and Vercel checks, Preview deployment, migrations, Founder bootstrap, invitation emails, permissions, and isolation tests above have passed. Do not merge directly into `main` without Founder approval.
