@@ -7,13 +7,18 @@ function authorised(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!authorised(request)) return Response.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!authorised(request)) {
+    return Response.json({ error: "FORBIDDEN" }, { status: 403 });
+  }
   const admin = createAdminClient();
   const temporaryPassword = process.env.FOUNDER_INITIAL_PASSWORD;
   const founderEmails = (process.env.BDB_FOUNDER_EMAILS ?? "")
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
+  const founderNames = (process.env.BDB_FOUNDER_NAMES ?? "")
+    .split(",")
+    .map((name) => name.trim());
 
   if (!admin || !temporaryPassword || founderEmails.length === 0) {
     return Response.json({ error: "Founder bootstrap is not configured." }, { status: 503 });
@@ -27,14 +32,15 @@ export async function POST(request: Request) {
   const existingByEmail = new Map(userPage.users.map((user) => [user.email?.toLowerCase(), user]));
   const results: Array<{ email: string; status: string }> = [];
 
-  for (const email of founderEmails) {
+  for (const [index, email] of founderEmails.entries()) {
+    const fullName = founderNames[index] || email.split("@")[0];
     let user = existingByEmail.get(email);
     if (!user) {
       const created = await admin.auth.admin.createUser({
         email,
         password: temporaryPassword,
         email_confirm: true,
-        user_metadata: { founder_bootstrap: true },
+        user_metadata: { founder_bootstrap: true, full_name: fullName },
       });
       if (created.error || !created.data.user) {
         results.push({ email, status: created.error?.message ?? "creation failed" });
@@ -45,7 +51,7 @@ export async function POST(request: Request) {
       const updated = await admin.auth.admin.updateUserById(user.id, {
         password: temporaryPassword,
         email_confirm: true,
-        user_metadata: { ...user.user_metadata, founder_bootstrap: true },
+        user_metadata: { ...user.user_metadata, founder_bootstrap: true, full_name: fullName },
       });
       if (updated.error) {
         results.push({ email, status: updated.error.message });
@@ -55,7 +61,7 @@ export async function POST(request: Request) {
 
     await admin.from("profiles").upsert({
       id: user.id,
-      full_name: user.user_metadata?.full_name ?? email.split("@")[0],
+      full_name: fullName,
       must_change_password: true,
       is_active: true,
     }, { onConflict: "id" });
@@ -69,7 +75,7 @@ export async function POST(request: Request) {
       action: "platform.founder_bootstrap_prepared",
       entity_type: "platform_admin",
       entity_id: user.id,
-      metadata: { email },
+      metadata: { email, full_name: fullName },
     });
     results.push({ email, status: "ready" });
   }
