@@ -27,10 +27,20 @@ export async function POST(request: Request) {
 
     const result = await activatePendingMemberships(userData.user.id);
     if (!result.activated.length) {
-      const message = result.expired.length
-        ? "This invitation has expired. Ask the Business Owner or BDB Founder to resend it."
-        : "No pending business invitation was found for this account.";
-      return Response.json({ error: message, code: result.expired.length ? "INVITATION_EXPIRED" : "NO_INVITATION" }, { status: 409 });
+      const blocked = result.blocked.length > 0;
+      const expired = result.expired.length > 0;
+      const message = blocked
+        ? "This account already belongs to a separate business. BDB must first link the companies inside an approved Business Group, or the new business must use a separate login email."
+        : expired
+          ? "This invitation has expired. Ask the Business Owner or BDB Founder to resend it."
+          : "No pending business invitation was found for this account.";
+      return Response.json(
+        {
+          error: message,
+          code: blocked ? "UNLINKED_BUSINESS" : expired ? "INVITATION_EXPIRED" : "NO_INVITATION",
+        },
+        { status: 409 },
+      );
     }
 
     return Response.json({ ok: true, workspaceId: result.activated[0] });
