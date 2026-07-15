@@ -71,9 +71,17 @@ set search_path = ''
 as $$
 declare
   remaining_founders integer;
+  removes_founder boolean := false;
 begin
-  if old.role = 'founder' and old.active
-    and (tg_op = 'DELETE' or new.role <> 'founder' or not new.active) then
+  if old.role = 'founder' and old.active then
+    if tg_op = 'DELETE' then
+      removes_founder := true;
+    elsif new.role <> 'founder' or not new.active then
+      removes_founder := true;
+    end if;
+  end if;
+
+  if removes_founder then
     select count(*) into remaining_founders
     from public.platform_admins
     where role = 'founder'
@@ -84,7 +92,11 @@ begin
       raise exception 'The final active Founder cannot be removed or suspended';
     end if;
   end if;
-  return case when tg_op = 'DELETE' then old else new end;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
 end;
 $$;
 
