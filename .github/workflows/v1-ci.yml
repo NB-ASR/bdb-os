@@ -24,11 +24,17 @@ jobs:
           set -euo pipefail
           test -f package.json
           test -f package-lock.json
-          if head -n 1 package-lock.json | grep -q '^Warning: truncated output'; then
-            tail -n +3 package-lock.json > package-lock.fixed.json
-            mv package-lock.fixed.json package-lock.json
-          fi
-          node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Lockfile is valid JSON for this validation run')"
+          node <<'NODE'
+          const fs = require('fs');
+          const source = fs.readFileSync('package-lock.json', 'utf8');
+          const start = source.indexOf('{');
+          const end = source.lastIndexOf('}');
+          if (start < 0 || end < start) throw new Error('package-lock.json does not contain a complete JSON object');
+          const repaired = source.slice(start, end + 1);
+          JSON.parse(repaired);
+          fs.writeFileSync('package-lock.json', repaired + '\n');
+          console.log('Lockfile is valid JSON for this validation run');
+          NODE
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
