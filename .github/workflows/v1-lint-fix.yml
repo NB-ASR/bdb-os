@@ -1,0 +1,29 @@
+name: Apply BDB OS V1 Lint Corrections
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          show-progress: false
+
+      - name: Apply corrections
+        run: node scripts/fix-v1-lint.mjs
+
+      - name: Commit corrections
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/app/admin/page.tsx src/app/team/page.tsx src/app/api/workspace/team/route.ts
+          git commit -m "Resolve V1 lint findings"
+          git push origin HEAD:${{ github.head_ref }}
