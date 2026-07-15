@@ -23,7 +23,25 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        id: install
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee npm-ci.log
+
+      - name: Upload install diagnostics
+        if: steps.install.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-ci-diagnostics
+          path: npm-ci.log
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Stop after install failure
+        if: steps.install.outcome == 'failure'
+        run: exit 1
 
       - name: TypeScript
         run: npx tsc --noEmit
