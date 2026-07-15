@@ -14,6 +14,7 @@ export default function LoginPage() {
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
+    setMessage("");
     if (!isSupabaseConfigured()) {
       setMessage("Cloud sign-in is not configured for this deployment.");
       return;
@@ -26,12 +27,23 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+
     const response = await fetch("/api/auth/post-login", { method: "POST" });
     const result = await response.json().catch(() => ({}));
-    window.location.href = response.ok ? result.next ?? "/workspace" : "/workspace";
+    if (!response.ok) {
+      await supabase.auth.signOut();
+      setMessage(result.error === "NOT_CONFIGURED" ? "BDB OS authentication is not fully configured." : "The account could not be opened. Please try again.");
+      setLoading(false);
+      return;
+    }
+    window.location.href = result.next ?? "/workspace";
   }
 
   async function resetPassword() {
+    if (!isSupabaseConfigured()) {
+      setMessage("Cloud authentication is not configured for this deployment.");
+      return;
+    }
     if (!email) {
       setMessage("Enter your email first, then choose reset password.");
       return;
