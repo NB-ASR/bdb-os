@@ -38,3 +38,14 @@ create index if not exists profiles_active_workspace_idx
   where active_workspace_id is not null;
 create index if not exists business_group_workspaces_workspace_group_idx
   on public.business_group_workspaces(workspace_id, group_id);
+create index if not exists business_groups_created_by_idx
+  on public.business_groups(created_by)
+  where created_by is not null;
+create index if not exists business_group_workspaces_created_by_idx
+  on public.business_group_workspaces(created_by)
+  where created_by is not null;
+create index if not exists workspace_member_permissions_created_by_idx
+  on public.workspace_member_permissions(created_by)
+  where created_by is not null;
+create index if not exists workspace_member_permissions_feature_idx
+  on public.workspace_member_permissions(feature_key);
