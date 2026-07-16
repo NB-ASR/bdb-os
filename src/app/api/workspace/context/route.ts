@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -25,13 +24,15 @@ function failure(error: unknown) {
   return Response.json({ error: message, code }, { status });
 }
 
+type LinkedWorkspace = { workspace_id: string; is_active?: boolean };
+
 export async function GET() {
   try {
     const { supabase, admin, userId } = await identity();
     const { data, error } = await supabase.rpc("get_my_linked_workspaces");
     if (error) throw error;
-    const workspaces = data ?? [];
-    const current = workspaces.find((workspace: { is_active?: boolean }) => workspace.is_active) ?? workspaces[0];
+    const workspaces = (data ?? []) as LinkedWorkspace[];
+    const current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
 
     if (current) {
       const { data: profile } = await admin
@@ -40,7 +41,11 @@ export async function GET() {
         .eq("id", userId)
         .maybeSingle();
       if (!profile?.active_workspace_id) {
-        await admin.from("profiles").update({ active_workspace_id: current.workspace_id }).eq("id", userId);
+        const { error: profileError } = await admin
+          .from("profiles")
+          .update({ active_workspace_id: current.workspace_id })
+          .eq("id", userId);
+        if (profileError) throw profileError;
       }
     }
 
@@ -59,38 +64,20 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { admin, userId } = await identity();
+    const { supabase, admin, userId } = await identity();
     const body = (await request.json()) as { workspaceId?: string };
     const targetWorkspaceId = String(body.workspaceId ?? "");
     if (!targetWorkspaceId) return Response.json({ error: "Choose a business." }, { status: 400 });
 
-    const { data: targetMembership } = await admin
-      .from("workspace_memberships")
-      .select("workspace_id,status")
-      .eq("workspace_id", targetWorkspaceId)
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .maybeSingle();
-    if (!targetMembership) throw new Error("FORBIDDEN");
-
-    const cookieStore = await cookies();
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("active_workspace_id")
-      .eq("id", userId)
-      .maybeSingle();
-    const currentWorkspaceId = profile?.active_workspace_id ?? cookieStore.get("bdb-workspace")?.value ?? null;
-
-    if (currentWorkspaceId && currentWorkspaceId !== targetWorkspaceId) {
-      const { data: links, error: linksError } = await admin
-        .from("business_group_workspaces")
-        .select("group_id,workspace_id")
-        .in("workspace_id", [currentWorkspaceId, targetWorkspaceId]);
-      if (linksError) throw linksError;
-      const currentGroups = new Set((links ?? []).filter((link) => link.workspace_id === currentWorkspaceId).map((link) => link.group_id));
-      const linked = (links ?? []).some((link) => link.workspace_id === targetWorkspaceId && currentGroups.has(link.group_id));
-      if (!linked) throw new Error("FORBIDDEN");
-    }
+    // Use the database-owned allowlist instead of trusting a cookie or performing
+    // a second, slightly different linkage calculation in application code.
+    const { data, error } = await supabase.rpc("get_my_linked_workspaces");
+    if (error) throw error;
+    const workspaces = (data ?? []) as LinkedWorkspace[];
+    const target = workspaces.find((workspace) => workspace.workspace_id === targetWorkspaceId);
+    if (!target) throw new Error("FORBIDDEN");
+    const current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
+    const currentWorkspaceId = current?.workspace_id ?? null;
 
     const { error: profileError } = await admin
       .from("profiles")

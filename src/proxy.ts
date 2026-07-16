@@ -101,10 +101,13 @@ export async function proxy(request: NextRequest) {
   if (!route) return response;
 
   const requestedFeature = featureRoutes[route];
-  const preferredWorkspace = request.cookies.get("bdb-workspace")?.value ?? profile?.active_workspace_id ?? undefined;
+  // The database-backed profile is authoritative. A stale cookie must never move
+  // a request into an unrelated workspace.
+  const preferredWorkspace = profile?.active_workspace_id ?? request.cookies.get("bdb-workspace")?.value ?? undefined;
   let membershipQuery = supabase
     .from("workspace_memberships")
     .select("workspace_id,role,access_profile,workspaces!inner(plan_id,status)")
+    .eq("user_id", claims.sub)
     .eq("status", "active");
   if (preferredWorkspace) membershipQuery = membershipQuery.eq("workspace_id", preferredWorkspace);
   const { data: memberships } = await membershipQuery.limit(1);

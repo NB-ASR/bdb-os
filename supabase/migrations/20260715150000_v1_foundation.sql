@@ -1,14 +1,13 @@
 -- BDB OS V1 foundation
 -- Founder bootstrap state, invitation-based client access, granular permissions,
--- linked business groups, and server-enforced workspace selection.
+-- linked business groups, and action-aware workspace permissions.
 
 alter table public.profiles
   add column if not exists must_change_password boolean not null default false,
   add column if not exists active_workspace_id uuid references public.workspaces(id) on delete set null;
 
 alter table public.workspace_memberships
-  add column if not exists access_profile text not null default 'employee'
-    check (access_profile in ('owner', 'manager', 'employee', 'custom'));
+  add column if not exists access_profile text not null default 'employee';
 
 update public.workspace_memberships
 set access_profile = case role::text
@@ -17,7 +16,15 @@ set access_profile = case role::text
   when 'manager' then 'manager'
   else 'employee'
 end
-where access_profile = 'employee';
+where access_profile = 'employee'
+   or access_profile is null
+   or access_profile not in ('owner', 'manager', 'employee', 'custom');
+
+alter table public.workspace_memberships
+  drop constraint if exists workspace_memberships_access_profile_check;
+alter table public.workspace_memberships
+  add constraint workspace_memberships_access_profile_check
+  check (access_profile in ('owner', 'manager', 'employee', 'custom'));
 
 create table if not exists public.business_groups (
   id uuid primary key default gen_random_uuid(),
@@ -59,6 +66,59 @@ create index if not exists workspace_member_permissions_user_idx
 create index if not exists business_group_workspaces_group_idx
   on public.business_group_workspaces(group_id, workspace_id);
 
+-- Keep timestamps consistent with the existing SaaS foundation.
+drop trigger if exists business_groups_touch_updated_at on public.business_groups;
+create trigger business_groups_touch_updated_at
+before update on public.business_groups
+for each row execute function private.touch_updated_at();
+
+drop trigger if exists workspace_member_permissions_touch_updated_at on public.workspace_member_permissions;
+create trigger workspace_member_permissions_touch_updated_at
+before update on public.workspace_member_permissions
+for each row execute function private.touch_updated_at();
+
+create or replace function private.is_active_workspace_owner(target_workspace_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.is_platform_admin()
+    or exists (
+      select 1
+      from public.workspace_memberships membership
+      where membership.workspace_id = target_workspace_id
+        and membership.user_id = (select auth.uid())
+        and membership.status = 'active'
+        and membership.access_profile = 'owner'
+    );
+$$;
+
+create or replace function private.can_administer_member_permissions(
+  target_workspace_id uuid,
+  target_user_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.is_platform_admin()
+    or (
+      target_user_id <> (select auth.uid())
+      and private.is_active_workspace_owner(target_workspace_id)
+      and exists (
+        select 1
+        from public.workspace_memberships target_membership
+        where target_membership.workspace_id = target_workspace_id
+          and target_membership.user_id = target_user_id
+          and target_membership.access_profile <> 'owner'
+      )
+    );
+$$;
+
 create or replace function private.has_workspace_permission(
   target_workspace_id uuid,
   target_feature_key text,
@@ -71,7 +131,7 @@ security definer
 set search_path = ''
 as $$
   with membership as (
-    select m.role::text as role, m.access_profile
+    select m.access_profile
     from public.workspace_memberships m
     where m.workspace_id = target_workspace_id
       and m.user_id = (select auth.uid())
@@ -87,8 +147,18 @@ as $$
   )
   select case
     when private.is_platform_admin() then true
-    when not private.has_feature(target_workspace_id, target_feature_key) then false
     when not exists (select 1 from membership) then false
+    when target_feature_key = 'team_members' then case
+      when (select access_profile from membership) = 'owner' then true
+      when not private.has_feature(target_workspace_id, target_feature_key) then false
+      when (select access_profile from membership) = 'manager' then target_action = 'view'
+      when (select access_profile from membership) = 'custom'
+        and target_action = 'view'
+        and exists (select 1 from explicit_permission)
+        then (select can_view from explicit_permission)
+      else false
+    end
+    when not private.has_feature(target_workspace_id, target_feature_key) then false
     when (select access_profile from membership) = 'owner' then true
     when exists (select 1 from explicit_permission) then case target_action
       when 'view' then (select can_view from explicit_permission)
@@ -99,13 +169,19 @@ as $$
       when 'export' then (select can_export from explicit_permission)
       else false
     end
-    when (select access_profile from membership) = 'manager' then target_action in ('view', 'create', 'edit', 'approve', 'export')
-    when (select access_profile from membership) = 'employee' then target_action in ('view', 'create', 'edit')
+    when (select access_profile from membership) = 'manager'
+      then target_action in ('view', 'create', 'edit', 'approve', 'export')
+    when (select access_profile from membership) = 'employee'
+      then target_action in ('view', 'create', 'edit')
     else false
   end;
 $$;
 
+revoke all on function private.is_active_workspace_owner(uuid) from public;
+revoke all on function private.can_administer_member_permissions(uuid, uuid) from public;
 revoke all on function private.has_workspace_permission(uuid, text, text) from public;
+grant execute on function private.is_active_workspace_owner(uuid) to authenticated;
+grant execute on function private.can_administer_member_permissions(uuid, uuid) to authenticated;
 grant execute on function private.has_workspace_permission(uuid, text, text) to authenticated;
 
 create or replace function public.get_my_linked_workspaces()
@@ -121,17 +197,43 @@ returns table (
 )
 language sql
 stable
-security invoker
+security definer
 set search_path = ''
 as $$
-  with current_profile as (
-    select p.active_workspace_id
-    from public.profiles p
-    where p.id = (select auth.uid())
-  ), current_group as (
+  with selected_workspace as (
+    select coalesce(
+      (
+        select profile.active_workspace_id
+        from public.profiles profile
+        join public.workspace_memberships active_membership
+          on active_membership.workspace_id = profile.active_workspace_id
+         and active_membership.user_id = profile.id
+         and active_membership.status = 'active'
+        join public.workspaces active_workspace
+          on active_workspace.id = active_membership.workspace_id
+         and active_workspace.status in ('trial', 'active')
+        where profile.id = (select auth.uid())
+      ),
+      (
+        select membership.workspace_id
+        from public.workspace_memberships membership
+        join public.workspaces workspace on workspace.id = membership.workspace_id
+        where membership.user_id = (select auth.uid())
+          and membership.status = 'active'
+          and workspace.status in ('trial', 'active')
+        order by case membership.access_profile
+          when 'owner' then 0
+          when 'manager' then 1
+          when 'employee' then 2
+          else 3
+        end, membership.created_at, membership.workspace_id
+        limit 1
+      )
+    ) as workspace_id
+  ), selected_group as (
     select link.group_id
     from public.business_group_workspaces link
-    join current_profile profile on profile.active_workspace_id = link.workspace_id
+    join selected_workspace selected on selected.workspace_id = link.workspace_id
   )
   select workspace.id,
          workspace.name,
@@ -140,16 +242,17 @@ as $$
          group_record.name,
          membership.role::text,
          membership.access_profile,
-         workspace.id = (select active_workspace_id from current_profile)
+         workspace.id = (select selected.workspace_id from selected_workspace selected)
   from public.workspace_memberships membership
   join public.workspaces workspace on workspace.id = membership.workspace_id
   left join public.business_group_workspaces link on link.workspace_id = workspace.id
   left join public.business_groups group_record on group_record.id = link.group_id
   where membership.user_id = (select auth.uid())
     and membership.status = 'active'
+    and workspace.status in ('trial', 'active')
     and (
-      workspace.id = (select active_workspace_id from current_profile)
-      or link.group_id in (select group_id from current_group)
+      workspace.id = (select selected.workspace_id from selected_workspace selected)
+      or link.group_id in (select selected_group.group_id from selected_group)
     )
   order by workspace.name;
 $$;
@@ -164,6 +267,8 @@ alter table public.workspace_member_permissions enable row level security;
 grant select on public.business_groups, public.business_group_workspaces to authenticated;
 grant select, insert, update, delete on public.workspace_member_permissions to authenticated;
 
+-- Initial group visibility is narrowed further once active-context enforcement is installed.
+drop policy if exists "Members can view their approved business groups" on public.business_groups;
 create policy "Members can view their approved business groups"
 on public.business_groups for select to authenticated
 using (
@@ -171,142 +276,96 @@ using (
     select 1
     from public.business_group_workspaces link
     join public.workspace_memberships membership on membership.workspace_id = link.workspace_id
-    where link.group_id = id
+    where link.group_id = business_groups.id
       and membership.user_id = (select auth.uid())
       and membership.status = 'active'
   )
 );
 
+drop policy if exists "Members can view approved group links" on public.business_group_workspaces;
 create policy "Members can view approved group links"
 on public.business_group_workspaces for select to authenticated
 using (
   private.is_platform_admin() or exists (
-    select 1 from public.workspace_memberships membership
+    select 1
+    from public.workspace_memberships membership
     where membership.workspace_id = business_group_workspaces.workspace_id
       and membership.user_id = (select auth.uid())
       and membership.status = 'active'
   )
 );
 
-create policy "Managers can view member permissions"
+drop policy if exists "Managers can view member permissions" on public.workspace_member_permissions;
+drop policy if exists "Owners and members can view member permissions" on public.workspace_member_permissions;
+create policy "Owners and members can view member permissions"
 on public.workspace_member_permissions for select to authenticated
 using (
-  private.has_workspace_permission(workspace_id, 'team_members', 'view')
+  private.is_platform_admin()
+  or private.is_active_workspace_owner(workspace_id)
   or user_id = (select auth.uid())
 );
 
-create policy "Managers can create member permissions"
+drop policy if exists "Managers can create member permissions" on public.workspace_member_permissions;
+drop policy if exists "Owners can create member permissions" on public.workspace_member_permissions;
+create policy "Owners can create member permissions"
 on public.workspace_member_permissions for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'team_members', 'edit'));
+with check (private.can_administer_member_permissions(workspace_id, user_id));
 
-create policy "Managers can update member permissions"
+drop policy if exists "Managers can update member permissions" on public.workspace_member_permissions;
+drop policy if exists "Owners can update member permissions" on public.workspace_member_permissions;
+create policy "Owners can update member permissions"
 on public.workspace_member_permissions for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'team_members', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'team_members', 'edit'));
+using (private.can_administer_member_permissions(workspace_id, user_id))
+with check (private.can_administer_member_permissions(workspace_id, user_id));
 
-create policy "Managers can delete member permissions"
+drop policy if exists "Managers can delete member permissions" on public.workspace_member_permissions;
+drop policy if exists "Owners can delete member permissions" on public.workspace_member_permissions;
+create policy "Owners can delete member permissions"
 on public.workspace_member_permissions for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'team_members', 'edit'));
+using (private.can_administer_member_permissions(workspace_id, user_id));
 
--- Replace broad module policies with action-aware policies.
-drop policy if exists "Customers feature read" on public.customers;
-drop policy if exists "Customers feature insert" on public.customers;
-drop policy if exists "Customers feature update" on public.customers;
-drop policy if exists "Customers feature delete" on public.customers;
-create policy "Customers permission read" on public.customers for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'customers', 'view'));
-create policy "Customers permission insert" on public.customers for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'customers', 'create'));
-create policy "Customers permission update" on public.customers for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'customers', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'customers', 'edit'));
-create policy "Customers permission delete" on public.customers for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'customers', 'delete'));
+-- Replace broad module policies with action-aware policies while retaining the
+-- existing operational tables, notifications, reminders and storage helpers.
+do $$
+declare
+  module record;
+begin
+  for module in
+    select * from (values
+      ('customers', 'Customers', 'customers'),
+      ('invoices', 'Accounts', 'accounts'),
+      ('bookings', 'Calendar', 'calendar'),
+      ('messages', 'Communications', 'communications'),
+      ('documents', 'Documents', 'documents'),
+      ('bank_transactions', 'Banking', 'banking'),
+      ('automations', 'Automation', 'automation')
+    ) as modules(table_name, policy_prefix, feature_key)
+  loop
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' feature read', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' feature insert', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' feature update', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' feature delete', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' permission read', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' permission insert', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' permission update', module.table_name);
+    execute format('drop policy if exists %I on public.%I', module.policy_prefix || ' permission delete', module.table_name);
 
-drop policy if exists "Accounts feature read" on public.invoices;
-drop policy if exists "Accounts feature insert" on public.invoices;
-drop policy if exists "Accounts feature update" on public.invoices;
-drop policy if exists "Accounts feature delete" on public.invoices;
-create policy "Accounts permission read" on public.invoices for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'accounts', 'view'));
-create policy "Accounts permission insert" on public.invoices for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'accounts', 'create'));
-create policy "Accounts permission update" on public.invoices for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'accounts', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'accounts', 'edit'));
-create policy "Accounts permission delete" on public.invoices for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'accounts', 'delete'));
-
-drop policy if exists "Calendar feature read" on public.bookings;
-drop policy if exists "Calendar feature insert" on public.bookings;
-drop policy if exists "Calendar feature update" on public.bookings;
-drop policy if exists "Calendar feature delete" on public.bookings;
-create policy "Calendar permission read" on public.bookings for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'calendar', 'view'));
-create policy "Calendar permission insert" on public.bookings for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'calendar', 'create'));
-create policy "Calendar permission update" on public.bookings for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'calendar', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'calendar', 'edit'));
-create policy "Calendar permission delete" on public.bookings for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'calendar', 'delete'));
-
-drop policy if exists "Communications feature read" on public.messages;
-drop policy if exists "Communications feature insert" on public.messages;
-drop policy if exists "Communications feature update" on public.messages;
-drop policy if exists "Communications feature delete" on public.messages;
-create policy "Communications permission read" on public.messages for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'communications', 'view'));
-create policy "Communications permission insert" on public.messages for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'communications', 'create'));
-create policy "Communications permission update" on public.messages for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'communications', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'communications', 'edit'));
-create policy "Communications permission delete" on public.messages for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'communications', 'delete'));
-
-drop policy if exists "Documents feature read" on public.documents;
-drop policy if exists "Documents feature insert" on public.documents;
-drop policy if exists "Documents feature update" on public.documents;
-drop policy if exists "Documents feature delete" on public.documents;
-create policy "Documents permission read" on public.documents for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'documents', 'view'));
-create policy "Documents permission insert" on public.documents for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'documents', 'create'));
-create policy "Documents permission update" on public.documents for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'documents', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'documents', 'edit'));
-create policy "Documents permission delete" on public.documents for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'documents', 'delete'));
-
-drop policy if exists "Banking feature read" on public.bank_transactions;
-drop policy if exists "Banking feature insert" on public.bank_transactions;
-drop policy if exists "Banking feature update" on public.bank_transactions;
-drop policy if exists "Banking feature delete" on public.bank_transactions;
-create policy "Banking permission read" on public.bank_transactions for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'banking', 'view'));
-create policy "Banking permission insert" on public.bank_transactions for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'banking', 'create'));
-create policy "Banking permission update" on public.bank_transactions for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'banking', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'banking', 'edit'));
-create policy "Banking permission delete" on public.bank_transactions for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'banking', 'delete'));
-
-drop policy if exists "Automation feature read" on public.automations;
-drop policy if exists "Automation feature insert" on public.automations;
-drop policy if exists "Automation feature update" on public.automations;
-drop policy if exists "Automation feature delete" on public.automations;
-create policy "Automation permission read" on public.automations for select to authenticated
-using (private.has_workspace_permission(workspace_id, 'automation', 'view'));
-create policy "Automation permission insert" on public.automations for insert to authenticated
-with check (private.has_workspace_permission(workspace_id, 'automation', 'create'));
-create policy "Automation permission update" on public.automations for update to authenticated
-using (private.has_workspace_permission(workspace_id, 'automation', 'edit'))
-with check (private.has_workspace_permission(workspace_id, 'automation', 'edit'));
-create policy "Automation permission delete" on public.automations for delete to authenticated
-using (private.has_workspace_permission(workspace_id, 'automation', 'delete'));
-
--- Owners always retain full access and cannot be accidentally orphaned by a
--- custom permission profile. Client applications still enforce final-owner
--- protections before membership mutations.
+    execute format(
+      'create policy %I on public.%I for select to authenticated using (private.has_workspace_permission(workspace_id, %L, ''view''))',
+      module.policy_prefix || ' permission read', module.table_name, module.feature_key
+    );
+    execute format(
+      'create policy %I on public.%I for insert to authenticated with check (private.has_workspace_permission(workspace_id, %L, ''create''))',
+      module.policy_prefix || ' permission insert', module.table_name, module.feature_key
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (private.has_workspace_permission(workspace_id, %L, ''edit'')) with check (private.has_workspace_permission(workspace_id, %L, ''edit''))',
+      module.policy_prefix || ' permission update', module.table_name, module.feature_key, module.feature_key
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated using (private.has_workspace_permission(workspace_id, %L, ''delete''))',
+      module.policy_prefix || ' permission delete', module.table_name, module.feature_key
+    );
+  end loop;
+end;
+$$;

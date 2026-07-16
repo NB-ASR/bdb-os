@@ -36,17 +36,15 @@ async function context() {
   if (!membership) throw new Error("FORBIDDEN");
 
   let canView = membership.access_profile === "owner" || membership.access_profile === "manager";
-  let canEdit = canView;
   if (!canView && membership.access_profile === "custom") {
     const { data: permission } = await admin
       .from("workspace_member_permissions")
-      .select("can_view,can_edit")
+      .select("can_view")
       .eq("workspace_id", workspaceId)
       .eq("user_id", userId)
       .eq("feature_key", "team_members")
       .maybeSingle();
     canView = Boolean(permission?.can_view);
-    canEdit = Boolean(permission?.can_edit);
   }
   if (!canView) throw new Error("FORBIDDEN");
 
@@ -54,9 +52,8 @@ async function context() {
     admin,
     workspaceId,
     userId,
-    actorRole: String(membership.role),
     actorProfile: String(membership.access_profile),
-    canEdit,
+    canEdit: membership.access_profile === "owner",
   };
 }
 
@@ -66,16 +63,20 @@ function failure(error: unknown) {
     message === "NOT_CONFIGURED" ? 503
       : message === "UNAUTHENTICATED" ? 401
         : message === "NO_WORKSPACE" ? 409
-          : ["FORBIDDEN", "LAST_OWNER", "CANNOT_MANAGE_OWNER"].includes(message) ? 403
-            : message === "NOT_FOUND" ? 404
-              : 500;
+          : ["FORBIDDEN", "LAST_OWNER", "CANNOT_MANAGE_OWNER", "SELF_PRIVILEGE_CHANGE"].includes(message) ? 403
+            : ["MEMBER_EXISTS", "INVITATION_PENDING"].includes(message) ? 409
+              : message === "NOT_FOUND" ? 404
+                : 500;
   const publicMessage =
     message === "NOT_CONFIGURED" ? "Cloud administration is not configured."
       : message === "LAST_OWNER" ? "A business must keep at least one active Owner."
         : message === "CANNOT_MANAGE_OWNER" ? "Only an Owner can change another Owner's access."
-          : message === "FORBIDDEN" ? "You do not have permission to manage this team."
-            : message === "NOT_FOUND" ? "Team member not found."
-              : "The team change could not be completed.";
+          : message === "SELF_PRIVILEGE_CHANGE" ? "Your own privileged access must be changed by another Owner."
+            : message === "MEMBER_EXISTS" ? "This person already has membership or a pending invitation for this business."
+              : message === "INVITATION_PENDING" ? "Pending invitations must be activated by the invited person before access can be edited."
+                : message === "FORBIDDEN" ? "You do not have permission to manage this team."
+                  : message === "NOT_FOUND" ? "Team member not found."
+                    : "The team change could not be completed.";
   return Response.json({ error: publicMessage, code: message }, { status });
 }
 
@@ -111,15 +112,15 @@ async function ensureCanChangeOwner(
   admin: NonNullable<ReturnType<typeof createAdminClient>>,
   workspaceId: string,
   actorProfile: string,
-  target: { role: string; status: string },
+  target: { access_profile: string; status: string },
   nextProfile?: string,
   nextStatus?: string,
 ) {
-  if (target.role === "owner" && actorProfile !== "owner") {
+  if (target.access_profile === "owner" && actorProfile !== "owner") {
     throw new Error("CANNOT_MANAGE_OWNER");
   }
   const removesActiveOwner =
-    target.role === "owner" &&
+    target.access_profile === "owner" &&
     target.status === "active" &&
     ((nextProfile && nextProfile !== "owner") || nextStatus === "suspended");
   if (!removesActiveOwner) return;
@@ -128,14 +129,14 @@ async function ensureCanChangeOwner(
     .from("workspace_memberships")
     .select("user_id", { count: "exact", head: true })
     .eq("workspace_id", workspaceId)
-    .eq("role", "owner")
+    .eq("access_profile", "owner")
     .eq("status", "active");
   if ((count ?? 0) <= 1) throw new Error("LAST_OWNER");
 }
 
 export async function GET() {
   try {
-    const { admin, workspaceId, canEdit } = await context();
+    const { admin, workspaceId, userId, canEdit } = await context();
     const [membersResult, permissionsResult, featuresResult, users] = await Promise.all([
       admin
         .from("workspace_memberships")
@@ -157,6 +158,7 @@ export async function GET() {
     if (failed?.error) throw failed.error;
 
     return Response.json({
+      actorUserId: userId,
       canEdit,
       features: featuresResult.data ?? [],
       permissions: permissionsResult.data ?? [],
@@ -183,14 +185,15 @@ export async function POST(request: Request) {
 
     if (body.action === "resend") {
       const targetUserId = String(body.userId ?? "");
+      if (targetUserId === userId) throw new Error("SELF_PRIVILEGE_CHANGE");
       const { data: membership } = await admin
         .from("workspace_memberships")
-        .select("user_id,role,status")
+        .select("user_id,access_profile,status")
         .eq("workspace_id", workspaceId)
         .eq("user_id", targetUserId)
         .maybeSingle();
       if (!membership) throw new Error("NOT_FOUND");
-      if (membership.role === "owner" && actorProfile !== "owner") throw new Error("CANNOT_MANAGE_OWNER");
+      if (membership.access_profile === "owner" && actorProfile !== "owner") throw new Error("CANNOT_MANAGE_OWNER");
       if (membership.status !== "invited") {
         return Response.json({ error: "Only pending invitations can be resent." }, { status: 409 });
       }
@@ -201,7 +204,7 @@ export async function POST(request: Request) {
       const redirectTo = `${origin}/auth/callback?next=/activate`;
       await sendExistingUserInvite(email, redirectTo);
       const now = new Date();
-      await admin
+      const { error: updateError } = await admin
         .from("workspace_memberships")
         .update({
           invitation_last_sent_at: now.toISOString(),
@@ -209,6 +212,7 @@ export async function POST(request: Request) {
         })
         .eq("workspace_id", workspaceId)
         .eq("user_id", targetUserId);
+      if (updateError) throw updateError;
       await admin.from("audit_logs").insert({
         workspace_id: workspaceId,
         actor_user_id: userId,
@@ -227,15 +231,24 @@ export async function POST(request: Request) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return Response.json({ error: "Enter a valid work email." }, { status: 400 });
     }
-    if (actorProfile !== "owner" && accessProfile === "owner") {
-      throw new Error("CANNOT_MANAGE_OWNER");
-    }
 
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
     const redirectTo = `${origin}/auth/callback?next=/activate`;
     const existing = await findUserByEmail(admin, email);
-    let invitedUser = existing;
+    if (existing?.id === userId) throw new Error("SELF_PRIVILEGE_CHANGE");
 
+    if (existing) {
+      const { data: existingMembership, error: membershipLookupError } = await admin
+        .from("workspace_memberships")
+        .select("user_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", existing.id)
+        .maybeSingle();
+      if (membershipLookupError) throw membershipLookupError;
+      if (existingMembership) throw new Error("MEMBER_EXISTS");
+    }
+
+    let invitedUser = existing;
     if (!invitedUser) {
       const invite = await admin.auth.admin.inviteUserByEmail(email, {
         data: { workspace_id: workspaceId, access_profile: accessProfile },
@@ -253,20 +266,17 @@ export async function POST(request: Request) {
     const role = mappedRole(accessProfile);
     const { error: membershipError } = await admin
       .from("workspace_memberships")
-      .upsert(
-        {
-          workspace_id: workspaceId,
-          user_id: invitedUser.id,
-          role,
-          access_profile: accessProfile,
-          status: "invited",
-          invited_by: userId,
-          joined_at: null,
-          invitation_last_sent_at: now.toISOString(),
-          invitation_expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        },
-        { onConflict: "workspace_id,user_id" },
-      );
+      .insert({
+        workspace_id: workspaceId,
+        user_id: invitedUser.id,
+        role,
+        access_profile: accessProfile,
+        status: "invited",
+        invited_by: userId,
+        joined_at: null,
+        invitation_last_sent_at: now.toISOString(),
+        invitation_expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      });
     if (membershipError) {
       if (!existing) await admin.auth.admin.deleteUser(invitedUser.id);
       throw membershipError;
@@ -275,15 +285,15 @@ export async function POST(request: Request) {
     if (accessProfile === "custom") {
       const { data: features } = await admin.from("features").select("key").eq("is_active", true);
       if (features?.length) {
-        await admin.from("workspace_member_permissions").upsert(
+        const { error: permissionError } = await admin.from("workspace_member_permissions").insert(
           features.map((feature) => ({
             workspace_id: workspaceId,
-            user_id: invitedUser!.id,
+            user_id: invitedUser.id,
             feature_key: feature.key,
             created_by: userId,
           })),
-          { onConflict: "workspace_id,user_id,feature_key" },
         );
+        if (permissionError) throw permissionError;
       }
     }
 
@@ -318,6 +328,7 @@ export async function PATCH(request: Request) {
     if (!targetUserId || (!accessProfile && !status && !permissions)) {
       return Response.json({ error: "Choose a valid team change." }, { status: 400 });
     }
+    if (targetUserId === userId) throw new Error("SELF_PRIVILEGE_CHANGE");
 
     const { data: targetMembership } = await admin
       .from("workspace_memberships")
@@ -326,7 +337,7 @@ export async function PATCH(request: Request) {
       .eq("user_id", targetUserId)
       .maybeSingle();
     if (!targetMembership) throw new Error("NOT_FOUND");
-    if (accessProfile === "owner" && actorProfile !== "owner") throw new Error("CANNOT_MANAGE_OWNER");
+    if (targetMembership.status === "invited") throw new Error("INVITATION_PENDING");
     await ensureCanChangeOwner(admin, workspaceId, actorProfile, targetMembership, accessProfile, status);
 
     const changes = {
@@ -342,34 +353,43 @@ export async function PATCH(request: Request) {
       if (error) throw error;
     }
 
-    if (permissions) {
-      if ((accessProfile ?? targetMembership.access_profile) === "owner") {
-        await admin
-          .from("workspace_member_permissions")
-          .delete()
-          .eq("workspace_id", workspaceId)
-          .eq("user_id", targetUserId);
-      } else {
-        const rows = permissions
-          .filter((permission) => permission.featureKey)
-          .map((permission) => ({
+    const effectiveProfile = accessProfile ?? targetMembership.access_profile;
+    if (effectiveProfile !== "custom") {
+      const { error } = await admin
+        .from("workspace_member_permissions")
+        .delete()
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", targetUserId);
+      if (error) throw error;
+    } else if (permissions) {
+      const { data: activeFeatures, error: featureError } = await admin
+        .from("features")
+        .select("key")
+        .eq("is_active", true);
+      if (featureError) throw featureError;
+      const allowedFeatures = new Set((activeFeatures ?? []).map((feature) => feature.key));
+      const rows = permissions
+        .filter((permission) => allowedFeatures.has(permission.featureKey))
+        .map((permission) => {
+          const isTeamAccess = permission.featureKey === "team_members";
+          return {
             workspace_id: workspaceId,
             user_id: targetUserId,
             feature_key: permission.featureKey,
             can_view: Boolean(permission.can_view),
-            can_create: Boolean(permission.can_create),
-            can_edit: Boolean(permission.can_edit),
-            can_delete: Boolean(permission.can_delete),
-            can_approve: Boolean(permission.can_approve),
-            can_export: Boolean(permission.can_export),
+            can_create: isTeamAccess ? false : Boolean(permission.can_create),
+            can_edit: isTeamAccess ? false : Boolean(permission.can_edit),
+            can_delete: isTeamAccess ? false : Boolean(permission.can_delete),
+            can_approve: isTeamAccess ? false : Boolean(permission.can_approve),
+            can_export: isTeamAccess ? false : Boolean(permission.can_export),
             created_by: userId,
-          }));
-        if (rows.length) {
-          const { error } = await admin
-            .from("workspace_member_permissions")
-            .upsert(rows, { onConflict: "workspace_id,user_id,feature_key" });
-          if (error) throw error;
-        }
+          };
+        });
+      if (rows.length) {
+        const { error } = await admin
+          .from("workspace_member_permissions")
+          .upsert(rows, { onConflict: "workspace_id,user_id,feature_key" });
+        if (error) throw error;
       }
     }
 
@@ -379,7 +399,7 @@ export async function PATCH(request: Request) {
       action: "team.member_updated",
       entity_type: "membership",
       entity_id: targetUserId,
-      metadata: { ...changes, permissions_updated: Boolean(permissions) },
+      metadata: { ...changes, permissions_updated: effectiveProfile === "custom" && Boolean(permissions) },
     });
     return Response.json({ ok: true });
   } catch (error) {
@@ -394,6 +414,7 @@ export async function DELETE(request: Request) {
     const body = (await request.json()) as { userId?: string };
     const targetUserId = String(body.userId ?? "");
     if (!targetUserId) return Response.json({ error: "Choose a team member." }, { status: 400 });
+    if (targetUserId === userId) throw new Error("SELF_PRIVILEGE_CHANGE");
 
     const { data: targetMembership } = await admin
       .from("workspace_memberships")
