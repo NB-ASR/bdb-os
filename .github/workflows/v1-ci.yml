@@ -1,0 +1,46 @@
+name: BDB OS V1 Validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          show-progress: false
+
+      - name: Verify dependency lockfile
+        shell: bash
+        run: |
+          test -f package.json
+          test -f package-lock.json
+          node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Dependency lockfile is valid JSON')"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
