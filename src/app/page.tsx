@@ -32,7 +32,7 @@ export default function MarketingPage() {
         <div className="marketing-links">
           <a href="#how-it-works">How it works</a>
           <a href="#plans">Plans</a>
-          <Link href="/workspace">View demo</Link>
+          <Link href="/login">Login</Link>
           <Link href="/discovery" className="marketing-nav-cta">Start discovery <ArrowRight size={15} /></Link>
         </div>
       </nav>
@@ -44,15 +44,15 @@ export default function MarketingPage() {
           <p>BDB OS is a calm, connected operating system shaped around the way your business actually works—so your team spends less time chasing admin and more time moving forward.</p>
           <div className="marketing-actions">
             <Link href="/discovery" className="marketing-primary">Get a custom quote <ArrowRight size={17} /></Link>
-            <Link href="/workspace" className="marketing-secondary">Explore the product</Link>
+            <Link href="/login" className="marketing-secondary">Login to BDB OS</Link>
           </div>
           <div className="marketing-trust"><span><Check size={14} /> Tailored module mix</span><span><Check size={14} /> Monthly billing</span><span><Check size={14} /> 3 or 6 month commitment</span></div>
         </div>
         <div className="marketing-product-card">
-          <div className="product-card-top"><span>Today</span><span className="live-dot">Everything in order</span></div>
+          <div className="product-card-top"><span>Live workspace</span><span className="live-dot">Connected and secure</span></div>
           <h2>A clear view of what matters.</h2>
-          <div className="product-stat-row"><div><small>Received</small><strong>£18,420</strong></div><div><small>Customers</small><strong>128</strong></div></div>
-          <div className="product-focus"><span className="focus-dot" /><div><strong>One useful next action</strong><p>Review a payment match before it is reconciled.</p></div><ChevronRight size={16} /></div>
+          <div className="product-stat-row"><div><small>Business records</small><strong>Live</strong></div><div><small>Departments</small><strong>Connected</strong></div></div>
+          <div className="product-focus"><span className="focus-dot" /><div><strong>One useful next action</strong><p>See what needs attention without searching across disconnected tools.</p></div><ChevronRight size={16} /></div>
           <div className="product-modules"><span>Accounts</span><span>Customers</span><span>Calendar</span><span>Reports</span></div>
         </div>
       </section>
