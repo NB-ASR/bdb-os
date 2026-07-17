@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Client Experience V2 Founder Review</title>
+<style>
+:root{--bg:#090a09;--panel:#181916;--panel2:#22231f;--line:rgba(255,255,255,.1);--gold:#d6ad55;--gold2:#f0cf86;--text:#f4f2eb;--muted:#aaa89f;--green:#79ba83}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+.deck{height:100vh}.slide{position:absolute;inset:0;display:none;padding:7vh 6vw 8vh;background:radial-gradient(circle at 78% -5%,rgba(214,173,85,.14),transparent 33%),var(--bg);overflow:auto}
+.slide.active{display:block;animation:enter .45s cubic-bezier(.2,.75,.2,1) both}.kicker{color:var(--gold);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.16em}
+h1{max-width:1200px;margin:2.5vh 0 2vh;font-size:clamp(45px,6vw,88px);line-height:.98;letter-spacing:-.065em}h2{font-size:clamp(28px,3vw,45px);letter-spacing:-.05em;margin:0 0 14px}.sub{max-width:1050px;color:var(--muted);font-size:clamp(17px,1.55vw,25px);line-height:1.48}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:5vh}.grid.two{grid-template-columns:1fr 1fr}.card{border:1px solid var(--line);border-radius:28px;background:rgba(24,25,22,.92);padding:26px;min-height:190px;box-shadow:0 35px 90px rgba(0,0,0,.2)}
+.card.gold{border-color:rgba(214,173,85,.5);background:linear-gradient(145deg,rgba(214,173,85,.15),rgba(24,25,22,.94))}.card h3{font-size:19px;margin:0 0 12px}.card p,.card li{color:var(--muted);font-size:14px;line-height:1.55}.card ul{padding-left:20px;margin:0}.big{font-size:clamp(58px,8vw,120px);letter-spacing:-.08em;color:var(--gold2);font-weight:900;line-height:.9}
+.quote{max-width:1250px;margin-top:8vh;font-size:clamp(31px,4vw,63px);line-height:1.1;letter-spacing:-.055em}.quote strong{color:var(--gold2)}
+.footer{position:absolute;left:6vw;right:6vw;bottom:3vh;display:flex;justify-content:space-between;color:#77776e;font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+.flow{display:flex;align-items:center;gap:14px;margin-top:7vh}.step{flex:1;min-height:145px;border:1px solid var(--line);border-radius:24px;background:var(--panel);padding:22px}.step b{display:block;color:var(--gold2);font-size:17px;margin-bottom:9px}.step span{color:var(--muted);font-size:13px;line-height:1.45}.arrow{font-size:27px;color:var(--gold)}
+.frame{position:relative;margin-top:3vh;height:68vh;border:1px solid rgba(214,173,85,.32);border-radius:30px;background:#0d0e0d;overflow:hidden;box-shadow:0 45px 120px rgba(0,0,0,.55)}
+.frame iframe{width:100%;height:100%;border:0;background:#0d0e0d}.frameBadge{position:absolute;left:18px;top:16px;z-index:2;padding:8px 11px;border-radius:999px;background:rgba(9,10,9,.88);border:1px solid rgba(214,173,85,.3);color:var(--gold2);font-size:10px;backdrop-filter:blur(12px);pointer-events:none}
+.featureRow{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:5vh}.feature{min-height:150px;border:1px solid var(--line);border-radius:23px;background:var(--panel);padding:19px}.feature b{display:block;font-size:15px;margin-bottom:9px}.feature span{color:var(--muted);font-size:12px;line-height:1.45}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:5vh}.roles .card{min-height:350px}.roles h3{font-size:28px}.roles li{font-size:15px;margin:10px 0}
+.controls{position:fixed;right:22px;bottom:18px;z-index:50;display:flex;gap:8px}.controls button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(24,25,22,.93);color:var(--text);font-size:20px;cursor:pointer}.controls button:hover{border-color:var(--gold);color:var(--gold2)}.counter{position:fixed;left:22px;bottom:27px;color:var(--muted);font-size:11px;z-index:50}.hint{position:fixed;right:122px;bottom:30px;color:#74746c;font-size:10px;z-index:50}
+@keyframes enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(max-width:900px){html,body{overflow:auto}.slide{position:relative;display:none;min-height:100vh;padding:55px 20px 90px}.slide.active{display:block}.grid,.grid.two,.roles,.featureRow{grid-template-columns:1fr}.flow{flex-direction:column}.arrow{transform:rotate(90deg)}.footer{position:static;margin-top:45px}.frame{height:70vh;border-radius:20px}.hint{display:none}}
+</style>
+</head>
+<body>
+<div class="deck">
+<section class="slide active">
+  <div class="kicker">BDB OS · Founder review</div>
+  <h1>Client Experience V2</h1>
+  <p class="sub">A full interactive redesign of the client-facing business operating system, built to be tested rather than admired from a respectful distance.</p>
+  <div class="grid">
+    <div class="card gold"><h3>Interactive product</h3><p>Ten complete departments, working controls, role changes, forms, drawers, filters and responsive behaviour.</p></div>
+    <div class="card"><h3>Isolated branch</h3><p>No production data, no live writes and no change to Founder Admin or <code>main</code>.</p></div>
+    <div class="card"><h3>Founder approval gate</h3><p>Giovanni, Matthew and Niki review the experience before any controlled migration.</p></div>
+  </div>
+  <div class="footer"><span>BDB OS · Client Experience V2</span><span>01</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">01 · The correction</div>
+  <h1>A prototype should behave like the product.</h1>
+  <div class="quote">The previous page explained the design. <strong>V2 lets you use it.</strong></div>
+  <div class="grid">
+    <div class="card gold"><h3>Before</h3><p>Static navigation and descriptive cards suggested future behaviour.</p></div>
+    <div class="card"><h3>Now</h3><p>Actions update state, forms progress, drawers open, filters work and roles change the interface.</p></div>
+    <div class="card"><h3>Why</h3><p>Founder review needs evidence of usability, not a brochure claiming usability.</p></div>
+  </div>
+  <div class="footer"><span>Interactive review standard</span><span>02</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">02 · Live product</div>
+  <h2>Explore the actual Client Experience V2 inside this presentation.</h2>
+  <p class="sub">Use the navigation, switch roles, create preview records, test banking, open drawers and try the command palette. The frame below is the real deployed React prototype.</p>
+  <div class="frame"><div class="frameBadge">Live interactive preview</div><iframe src="/design-preview" title="BDB OS Client Experience V2"></iframe></div>
+  <div class="footer"><span>Hands-on product review</span><span>03</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">03 · Whole product</div>
+  <h1>One operating system. Ten designed departments.</h1>
+  <div class="featureRow">
+    <div class="feature"><b>Hub</b><span>Next actions, task completion, daily work and business pulse.</span></div>
+    <div class="feature"><b>Customers</b><span>Search, filters, notes, tabs, billing and connected documents.</span></div>
+    <div class="feature"><b>Calendar</b><span>Day/week modes, confirmation, drawers and booking flow.</span></div>
+    <div class="feature"><b>Communications</b><span>Unified inbox, editable AI drafts and preview sending.</span></div>
+    <div class="feature"><b>Accounts</b><span>Invoices, payments, recurring billing and mark-paid state.</span></div>
+    <div class="feature"><b>Banking</b><span>Feeds, reconciliation, transaction matching and payouts.</span></div>
+    <div class="feature"><b>Documents</b><span>Search, categories, favourites, list/grid and file context.</span></div>
+    <div class="feature"><b>Reports</b><span>Metric switching, comparisons and useful business signals.</span></div>
+    <div class="feature"><b>Team</b><span>Members, roles and an explicit permissions matrix.</span></div>
+    <div class="feature"><b>Settings</b><span>Integrations, offline behaviour and accessibility preferences.</span></div>
+  </div>
+  <div class="footer"><span>Full workspace coverage</span><span>04</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">04 · Role-aware design</div>
+  <h1>Owner and Staff are genuinely different products.</h1>
+  <div class="roles">
+    <div class="card gold"><h3>Owner</h3><ul><li>Accounts, banking and reports</li><li>Team and role management</li><li>Financial quick actions</li><li>Management-level attention items</li><li>Full client workspace, excluding Founder Admin</li></ul></div>
+    <div class="card"><h3>Staff</h3><ul><li>Customers, calendar and communications</li><li>Documents needed for daily work</li><li>Appointment and follow-up actions</li><li>No financial leakage</li><li>No disabled management clutter</li></ul></div>
+  </div>
+  <div class="footer"><span>Responsibility, not greyed-out temptation</span><span>05</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">05 · Premium interaction</div>
+  <h1>Small details now explain state.</h1>
+  <div class="grid">
+    <div class="card gold"><h3>Spatial continuity</h3><p>View transitions, drawers and modal flows preserve context instead of abruptly replacing the screen.</p></div>
+    <div class="card"><h3>Tactile feedback</h3><p>Pressed states, completion feedback, animated sync and success toasts confirm what happened.</p></div>
+    <div class="card"><h3>Progressive disclosure</h3><p>Command search, quick create, notifications and context drawers keep the main canvas calm.</p></div>
+    <div class="card"><h3>Business Pulse</h3><p>The circular BDB motif communicates workload and identity without becoming redundant navigation.</p></div>
+    <div class="card"><h3>Responsive mobile</h3><p>Mobile prioritises daily work with five tabs rather than shrinking the desktop hierarchy.</p></div>
+    <div class="card"><h3>Reduced motion</h3><p>Non-essential animation respects the user’s system preference.</p></div>
+  </div>
+  <div class="footer"><span>Premium without theatrical clutter</span><span>06</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">06 · Offline-first direction</div>
+  <h1>Offline behaviour is visible and honest.</h1>
+  <div class="grid">
+    <div class="card gold"><div class="big">2</div><h3>Queued changes</h3><p>The interface clearly states what will sync when the connection returns.</p></div>
+    <div class="card"><h3>Core records remain available</h3><p>Customers, today’s appointments, recent messages and selected documents are represented as local-capable.</p></div>
+    <div class="card"><h3>No false promises</h3><p>The prototype does not claim that persistence, conflicts or bank connections are already engineered.</p></div>
+  </div>
+  <div class="quote">A badge can explain offline state. It cannot implement distributed systems through optimism.</div>
+  <div class="footer"><span>Offline-first reliability</span><span>07</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">07 · Harsh review verdict</div>
+  <h1>This now qualifies as a serious client product direction.</h1>
+  <div class="grid">
+    <div class="card gold"><h3>Approved for founder review</h3><p>The complete interactive concept is coherent, premium, customer-centred and practical enough to test.</p></div>
+    <div class="card"><h3>Not approved for direct merge</h3><p>Static data and local state prove interaction, not production reliability.</p></div>
+    <div class="card"><h3>What must be challenged</h3><p>Task priority, business language, role boundaries, mobile density and financial trust.</p></div>
+  </div>
+  <div class="footer"><span>Design approval is not deployment approval</span><span>08</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">08 · Migration path</div>
+  <h1>Move deliberately or rebuild the same mess in nicer colours.</h1>
+  <div class="flow">
+    <div class="step"><b>1 · Approve</b><span>Giovanni, Matthew and Niki agree on the interactive direction.</span></div><div class="arrow">→</div>
+    <div class="step"><b>2 · Extract</b><span>Shared BDB tokens, primitives and central role visibility.</span></div><div class="arrow">→</div>
+    <div class="step"><b>3 · Migrate</b><span>Hub first, then customers, calendar, communications and finance.</span></div><div class="arrow">→</div>
+    <div class="step"><b>4 · Validate</b><span>Real users, permissions, offline queues, conflicts and accessibility.</span></div>
+  </div>
+  <div class="footer"><span>Controlled implementation</span><span>09</span></div>
+</section>
+<section class="slide">
+  <div class="kicker">09 · Founder responsibilities</div>
+  <h1>Three approvals. Three different lenses.</h1>
+  <div class="grid">
+    <div class="card gold"><h3>Giovanni</h3><p>Commercial credibility, business language, real owner workflows and whether customers would pay for it.</p></div>
+    <div class="card"><h3>Matthew</h3><p>AI behaviour, automation placement, integrations and honest cloud/offline boundaries.</p></div>
+    <div class="card"><h3>Niki</h3><p>Architecture, shared components, permissions, performance, accessibility and offline reliability.</p></div>
+  </div>
+  <div class="quote">No production migration until <strong>all three founders approve.</strong></div>
+  <div class="footer"><span>Founder review gate</span><span>10</span></div>
+</section>
+</div>
+<div class="counter"><span id="current">1</span> / 10</div><div class="hint">Arrow keys · swipe · embedded preview is interactive</div>
+<div class="controls"><button onclick="move(-1)" aria-label="Previous">‹</button><button onclick="move(1)" aria-label="Next">›</button></div>
+<script>
+let index=0;const slides=[...document.querySelectorAll('.slide')];
+function render(){slides.forEach((s,i)=>s.classList.toggle('active',i===index));document.getElementById('current').textContent=index+1}
+function move(delta){index=(index+delta+slides.length)%slides.length;render()}
+addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;if(['ArrowRight','PageDown',' '].includes(e.key)){e.preventDefault();move(1)}if(['ArrowLeft','PageUp'].includes(e.key)){e.preventDefault();move(-1)}})
+let touch=0;addEventListener('touchstart',e=>touch=e.touches[0].clientX);addEventListener('touchend',e=>{const d=e.changedTouches[0].clientX-touch;if(Math.abs(d)>55)move(d<0?1:-1)})
+</script>
+</body></html>
