@@ -21,14 +21,25 @@ export default function LoginPage() {
     }
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setMessage(error.message);
       setLoading(false);
       return;
     }
 
-    const response = await fetch("/api/auth/post-login", { method: "POST" });
+    const accessToken = data.session?.access_token;
+    if (!accessToken) {
+      await supabase.auth.signOut();
+      setMessage("A secure session could not be created. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/auth/post-login", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       await supabase.auth.signOut();
