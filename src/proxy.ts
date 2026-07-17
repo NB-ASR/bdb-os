@@ -63,6 +63,12 @@ export async function proxy(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const claims = data?.claims as { sub?: string; aal?: string } | undefined;
+
+  // API handlers own their authentication and return machine-readable responses.
+  // Page redirects here would turn API JSON into HTML and break login, password
+  // changes, workspace switching, and every other authenticated mutation.
+  if (effectivePath.startsWith("/api/")) return response;
+
   const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
   if (requiresAuth && !claims?.sub) {
     const login = request.nextUrl.clone();
