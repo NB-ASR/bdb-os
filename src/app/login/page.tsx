@@ -6,6 +6,14 @@ import { ArrowLeft, KeyRound, LogIn, Mail } from "lucide-react";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { BdbMonogram } from "@/components/brand";
 
+const postLoginMessages: Record<string, string> = {
+  NOT_CONFIGURED: "BDB OS authentication is not fully configured.",
+  MISSING_ACCESS_TOKEN: "The secure session token was not available. Please try again.",
+  UNAUTHENTICATED: "The secure session could not be verified. Please try again.",
+  ACCOUNT_LOOKUP_FAILED: "Your login worked, but BDB OS could not load the account record.",
+  ACCOUNT_NOT_ACTIVE: "This BDB OS account is not active.",
+};
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -42,8 +50,8 @@ export default function LoginPage() {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      await supabase.auth.signOut();
-      setMessage(result.error === "NOT_CONFIGURED" ? "BDB OS authentication is not fully configured." : "The account could not be opened. Please try again.");
+      const errorCode = typeof result.error === "string" ? result.error : "";
+      setMessage(postLoginMessages[errorCode] ?? "Your login worked, but BDB OS could not open the account.");
       setLoading(false);
       return;
     }
