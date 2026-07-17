@@ -1,35 +1,68 @@
-const CACHE_NAME = "bdb-os-v3";
-const APP_SHELL = ["/", "/workspace", "/accounts", "/customers", "/calendar", "/communications", "/documents", "/banking", "/reports", "/automation-hub", "/activity", "/settings", "/login", "/bdb-mark.svg"];
+const CACHE_NAME = "bdb-os-static-v4";
+const PRECACHE_ASSETS = ["/bdb-mark.svg"];
+
+function isCacheableStaticAsset(requestUrl) {
+  const url = new URL(requestUrl);
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith("/_next/static/")) return true;
+  return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
+}
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_ASSETS)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))));
-  self.clients.claim();
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || !event.request.url.startsWith(self.location.origin)) return;
+  const { request } = event;
+  if (request.method !== "GET" || !isCacheableStaticAsset(request.url)) return;
+
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (!response.ok || response.type !== "basic") return response;
         const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))),
+      });
+    }),
   );
 });
 
 self.addEventListener("push", (event) => {
   const data = event.data?.json() ?? {};
-  event.waitUntil(self.registration.showNotification(data.title ?? "BDB OS", { body: data.body ?? "You have a new update.", icon: "/bdb-mark.svg", badge: "/bdb-mark.svg", tag: data.tag, data: { url: data.url ?? "/workspace" } }));
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? "BDB OS", {
+      body: data.body ?? "You have a new update.",
+      icon: "/bdb-mark.svg",
+      badge: "/bdb-mark.svg",
+      tag: data.tag,
+      data: { url: data.url ?? "/workspace" },
+    }),
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => { const url = event.notification.data?.url ?? "/workspace"; const existing = clients.find((client) => "focus" in client); if (existing) { existing.navigate(url); return existing.focus(); } return self.clients.openWindow(url); }));
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const url = event.notification.data?.url ?? "/workspace";
+      const existing = clients.find((client) => "focus" in client);
+      if (existing) {
+        existing.navigate(url);
+        return existing.focus();
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });
