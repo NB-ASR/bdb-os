@@ -11,6 +11,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const isStandalone =
     pathname === "/" ||
     pathname.startsWith("/discovery") ||
+    pathname.startsWith("/design-preview") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/mfa") ||
     pathname.startsWith("/admin") ||
