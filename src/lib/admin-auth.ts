@@ -17,7 +17,18 @@ export async function requirePlatformAdmin(): Promise<AdminIdentity> {
 }
 
 export function adminErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "FORBIDDEN";
-  const status = message === "NOT_CONFIGURED" ? 503 : message === "UNAUTHENTICATED" ? 401 : message === "MFA_REQUIRED" ? 428 : 403;
-  return Response.json({ error: message }, { status });
+  const message = error instanceof Error ? error.message : "";
+  const knownStatuses: Record<string, number> = {
+    NOT_CONFIGURED: 503,
+    UNAUTHENTICATED: 401,
+    MFA_REQUIRED: 428,
+    FORBIDDEN: 403,
+  };
+
+  if (message in knownStatuses) {
+    return Response.json({ error: message }, { status: knownStatuses[message] });
+  }
+
+  console.error("Founder Admin request failed", error);
+  return Response.json({ error: "Founder Admin data could not be loaded." }, { status: 500 });
 }
