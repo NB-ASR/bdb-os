@@ -60,7 +60,7 @@ begin
   )
   values (
     v_workspace_id,
-    'bdb',
+    'obsidian-gold',
     'dark',
     '#d3a84b',
     'manrope',
