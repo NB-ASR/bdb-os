@@ -34,6 +34,72 @@ export async function POST(request: Request) {
     return Response.json({ error: "The temporary password must be at least 12 characters." }, { status: 400 });
   }
 
+  const { data: proPlan, error: planError } = await admin
+    .from("plans")
+    .select("id")
+    .eq("code", "pro")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (planError || !proPlan) {
+    return Response.json({ error: planError?.message ?? "The Pro plan is unavailable." }, { status: 500 });
+  }
+
+  const workspaceSlug = process.env.BDB_INTERNAL_WORKSPACE_SLUG?.trim() || "bdb-os";
+  const workspaceName = process.env.BDB_INTERNAL_WORKSPACE_NAME?.trim() || "BDB OS";
+  const { data: existingWorkspace, error: workspaceLookupError } = await admin
+    .from("workspaces")
+    .select("id")
+    .eq("slug", workspaceSlug)
+    .maybeSingle();
+  if (workspaceLookupError) {
+    return Response.json({ error: workspaceLookupError.message }, { status: 500 });
+  }
+
+  let workspaceId = existingWorkspace?.id as string | undefined;
+  if (workspaceId) {
+    const { error } = await admin
+      .from("workspaces")
+      .update({ name: workspaceName, status: "active", plan_id: proPlan.id })
+      .eq("id", workspaceId);
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+  } else {
+    const { data, error } = await admin
+      .from("workspaces")
+      .insert({ slug: workspaceSlug, name: workspaceName, status: "active", plan_id: proPlan.id })
+      .select("id")
+      .single();
+    if (error || !data) {
+      return Response.json({ error: error?.message ?? "Workspace creation failed." }, { status: 500 });
+    }
+    workspaceId = data.id;
+  }
+
+  const [{ error: settingsError }, { error: themeError }] = await Promise.all([
+    admin.from("workspace_settings").upsert({
+      workspace_id: workspaceId,
+      owner_name: "Founders",
+      email: founderEmails[0],
+      currency: "EUR",
+      invoice_prefix: "BDB",
+      vat_rate: 18,
+      timezone: "Europe/Malta",
+    }, { onConflict: "workspace_id" }),
+    admin.from("workspace_themes").upsert({
+      workspace_id: workspaceId,
+      preset: "obsidian-gold",
+      mode: "dark",
+      accent_color: "#d3a84b",
+      font_family: "manrope",
+      text_scale: 1,
+      density: "comfortable",
+      high_contrast: false,
+      reduced_motion: false,
+    }, { onConflict: "workspace_id" }),
+  ]);
+  if (settingsError || themeError) {
+    return Response.json({ error: settingsError?.message ?? themeError?.message }, { status: 500 });
+  }
+
   const { data: userPage, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   if (listError) return Response.json({ error: listError.message }, { status: 500 });
 
@@ -70,67 +136,77 @@ export async function POST(request: Request) {
       results.push({ email, status: adminLookupError.message });
       continue;
     }
-
-    if (existingAdmin) {
-      if (existingAdmin.role === "founder" && existingAdmin.active) {
-        results.push({ email, status: "ready", outcome: "already-configured" });
-      } else {
-        results.push({ email, status: "Existing platform access requires manual review." });
-      }
+    if (existingAdmin && (existingAdmin.role !== "founder" || !existingAdmin.active)) {
+      results.push({ email, status: "Existing platform access requires manual review." });
       continue;
     }
 
     try {
-      if (createdAuthUser) {
-        const { error: profileError } = await admin
-          .from("profiles")
-          .update({
-            full_name: fullName,
-            must_change_password: true,
-            is_active: true,
-          })
-          .eq("id", user.id);
-        if (profileError) throw profileError;
+      const { data: existingProfile, error: profileLookupError } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (profileLookupError) throw profileLookupError;
+
+      if (existingProfile) {
+        const updates: Record<string, unknown> = {
+          full_name: fullName,
+          is_active: true,
+          active_workspace_id: workspaceId,
+        };
+        if (createdAuthUser) updates.must_change_password = true;
+        const { error } = await admin.from("profiles").update(updates).eq("id", user.id);
+        if (error) throw error;
       } else {
-        const { data: existingProfile, error: profileLookupError } = await admin
-          .from("profiles")
-          .select("id")
-          .eq("id", user.id)
-          .maybeSingle();
-        if (profileLookupError) throw profileLookupError;
-        if (!existingProfile) {
-          const { error: profileInsertError } = await admin.from("profiles").insert({
-            id: user.id,
-            full_name: fullName,
-            is_active: true,
-          });
-          if (profileInsertError) throw profileInsertError;
-        }
+        const { error } = await admin.from("profiles").insert({
+          id: user.id,
+          full_name: fullName,
+          is_active: true,
+          must_change_password: createdAuthUser,
+          active_workspace_id: workspaceId,
+        });
+        if (error) throw error;
       }
 
-      const { error: platformAdminError } = await admin.from("platform_admins").insert({
+      if (!existingAdmin) {
+        const { error } = await admin.from("platform_admins").insert({
+          user_id: user.id,
+          role: "founder",
+          active: true,
+        });
+        if (error) throw error;
+      }
+
+      const { error: membershipError } = await admin.from("workspace_memberships").upsert({
+        workspace_id: workspaceId,
         user_id: user.id,
-        role: "founder",
-        active: true,
-      });
-      if (platformAdminError) throw platformAdminError;
+        role: "owner",
+        status: "active",
+        access_profile: "owner",
+        joined_at: new Date().toISOString(),
+        invitation_expires_at: null,
+      }, { onConflict: "workspace_id,user_id" });
+      if (membershipError) throw membershipError;
 
       await admin.from("audit_logs").insert({
         actor_user_id: user.id,
-        action: "platform.founder_bootstrap_prepared",
-        entity_type: "platform_admin",
-        entity_id: user.id,
+        workspace_id: workspaceId,
+        action: "platform.founder_workspace_ready",
+        entity_type: "workspace_membership",
+        entity_id: workspaceId,
         metadata: {
           email,
           full_name: fullName,
           auth_user_created: createdAuthUser,
+          workspace_role: "owner",
         },
       });
 
       results.push({
         email,
         status: "ready",
-        outcome: createdAuthUser ? "created" : "granted",
+        outcome: createdAuthUser ? "created" : existingAdmin ? "already-configured" : "granted",
       });
     } catch (error) {
       if (createdAuthUser) await admin.auth.admin.deleteUser(user.id);
@@ -141,5 +217,9 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({ ok: results.every((result) => result.status === "ready"), results });
+  return Response.json({
+    ok: results.every((result) => result.status === "ready"),
+    workspace: { id: workspaceId, slug: workspaceSlug, name: workspaceName, plan: "pro" },
+    results,
+  });
 }
