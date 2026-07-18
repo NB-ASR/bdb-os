@@ -28,6 +28,16 @@ export default function ActivateInvitationPage() {
     });
   }, [router]);
 
+  async function activationRequest(preflight: boolean) {
+    const response = await fetch("/api/auth/activate-invitation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fullName, preflight }),
+    });
+    const result = await response.json().catch(() => ({}));
+    return { response, result };
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setMessage("");
@@ -41,6 +51,17 @@ export default function ActivateInvitationPage() {
     }
 
     setLoading(true);
+
+    // Confirm the database invitation is still present and unexpired before
+    // changing the user's Auth password. This avoids leaving a changed
+    // password behind for an invitation that was already invalid.
+    const preflight = await activationRequest(true);
+    if (!preflight.response.ok) {
+      setMessage(preflight.result.error ?? "The invitation could not be activated.");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     const passwordResult = await supabase.auth.updateUser({
       password,
@@ -52,15 +73,13 @@ export default function ActivateInvitationPage() {
       return;
     }
 
-    const response = await fetch("/api/auth/activate-invitation", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName }),
-    });
-    const result = await response.json();
+    const activation = await activationRequest(false);
     setLoading(false);
-    if (!response.ok) {
-      setMessage(result.error ?? "The invitation could not be activated.");
+    if (!activation.response.ok) {
+      setMessage(
+        activation.result.error ??
+          "Your password was saved, but the business invitation could not be activated. Ask a BDB OS administrator to review the invitation before trying again.",
+      );
       return;
     }
 
@@ -109,7 +128,7 @@ export default function ActivateInvitationPage() {
               {loading ? <Loader2 className="spin" size={17} /> : <CheckCircle2 size={17} />}
               {loading ? "Activating…" : "Activate account"}
             </button>
-            {message && <p className="field-full mfa-error">{message}</p>}
+            {message && <p className="field-full mfa-error" role="status">{message}</p>}
           </form>
         </section>
       </div>
