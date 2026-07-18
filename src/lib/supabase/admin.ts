@@ -9,39 +9,6 @@ export function createAdminClient() {
   });
 }
 
-export async function bootstrapFounder(userId: string, email?: string | null) {
-  const allowed = (process.env.BDB_FOUNDER_EMAILS ?? "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  if (!email || !allowed.includes(email.toLowerCase())) return;
-  const admin = createAdminClient();
-  if (!admin) return;
-
-  const { data: existing } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  await admin
-    .from("platform_admins")
-    .upsert(
-      { user_id: userId, role: "founder", active: true },
-      { onConflict: "user_id" },
-    );
-
-  if (!existing) {
-    await admin.from("audit_logs").insert({
-      actor_user_id: userId,
-      action: "platform.founder_bootstrapped",
-      entity_type: "platform_admin",
-      entity_id: userId,
-      metadata: { email },
-    });
-  }
-}
-
 export async function activatePendingMemberships(userId: string) {
   const admin = createAdminClient();
   if (!admin) throw new Error("NOT_CONFIGURED");
