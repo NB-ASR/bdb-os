@@ -5,6 +5,7 @@ import "./v21-premium-audit.css";
 import "./v21-desktop-flowline.css";
 import "./v21-layout-bugfix.css";
 import "./v21-containment-fixes.css";
+import "./v21-pulse-dial.css";
 
 export const metadata: Metadata = {
   title: "Client Experience V2.1 Preview · BDB OS",
