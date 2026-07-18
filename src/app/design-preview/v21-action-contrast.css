@@ -1,0 +1,68 @@
+/*
+  BDB OS V2.1 · Primary action contrast
+  Keeps bright gold actions readable by reducing bloom and defining a clear
+  on-accent foreground for dark and light appearances.
+*/
+
+[class*="__previewRoot"] {
+  --bdb-on-accent: #17130b;
+}
+
+[class*="__previewRoot"][class*="__appearancelight"] {
+  --bdb-on-accent: #ffffff;
+}
+
+[class*="__previewRoot"] [class*="__primaryButton"],
+[class*="__previewRoot"] [class*="__createButton"],
+[class*="__previewRoot"] [class*="__sendButton"] {
+  color: var(--bdb-on-accent) !important;
+  font-weight: 850 !important;
+  text-shadow: none !important;
+  border: 1px solid color-mix(in srgb, var(--bdb-accent) 72%, var(--bdb-bg)) !important;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--bdb-accent-2) 68%, var(--bdb-accent)),
+      color-mix(in srgb, var(--bdb-accent) 90%, #8f6d28)
+    ) !important;
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--bdb-accent) 16%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .18) !important;
+}
+
+[class*="__previewRoot"] [class*="__primaryButton"] svg,
+[class*="__previewRoot"] [class*="__createButton"] svg,
+[class*="__previewRoot"] [class*="__sendButton"] svg {
+  color: currentColor !important;
+  stroke-width: 2.2 !important;
+}
+
+[class*="__previewRoot"] [class*="__primaryButton"]:hover,
+[class*="__previewRoot"] [class*="__createButton"]:hover,
+[class*="__previewRoot"] [class*="__sendButton"]:hover {
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--bdb-accent) 20%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .22) !important;
+}
+
+[class*="__previewRoot"][class*="__appearancelight"] [class*="__primaryButton"],
+[class*="__previewRoot"][class*="__appearancelight"] [class*="__createButton"],
+[class*="__previewRoot"][class*="__appearancelight"] [class*="__sendButton"] {
+  border-color: color-mix(in srgb, var(--bdb-accent) 76%, #000) !important;
+  background:
+    linear-gradient(
+      135deg,
+      var(--bdb-accent),
+      color-mix(in srgb, var(--bdb-accent) 82%, #000)
+    ) !important;
+  box-shadow:
+    0 9px 22px color-mix(in srgb, var(--bdb-accent) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .14) !important;
+}
+
+[class*="__previewRoot"] [class*="__primaryButton"]:focus-visible,
+[class*="__previewRoot"] [class*="__createButton"]:focus-visible,
+[class*="__previewRoot"] [class*="__sendButton"]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--bdb-focus) 82%, transparent) !important;
+  outline-offset: 3px !important;
+}
