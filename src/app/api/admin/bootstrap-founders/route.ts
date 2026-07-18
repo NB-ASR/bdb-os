@@ -1,9 +1,20 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  isFounderBootstrapEnabled,
+  matchesFounderBootstrapControl,
+} from "@/lib/security/bootstrap";
 
-function authorised(request: Request) {
-  const expected = process.env.FOUNDER_BOOTSTRAP_SECRET;
-  const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return Boolean(expected && supplied && expected === supplied);
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
+
+function json(body: unknown, init?: ResponseInit) {
+  return Response.json(body, {
+    ...init,
+    headers: { ...NO_STORE_HEADERS, ...init?.headers },
+  });
+}
+
+function suppliedControl(request: Request) {
+  return request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() ?? null;
 }
 
 type BootstrapResult = {
@@ -13,8 +24,13 @@ type BootstrapResult = {
 };
 
 export async function POST(request: Request) {
-  if (!authorised(request)) {
-    return Response.json({ error: "FORBIDDEN" }, { status: 403 });
+  if (!isFounderBootstrapEnabled()) {
+    return json({ error: "Founder bootstrap is disabled." }, { status: 410 });
+  }
+
+  const expectedControl = process.env.FOUNDER_BOOTSTRAP_SECRET;
+  if (!matchesFounderBootstrapControl(expectedControl, suppliedControl(request))) {
+    return json({ error: "FORBIDDEN" }, { status: 403 });
   }
 
   const admin = createAdminClient();
@@ -28,10 +44,26 @@ export async function POST(request: Request) {
     .map((name) => name.trim());
 
   if (!admin || !temporaryPassword || founderEmails.length === 0) {
-    return Response.json({ error: "Founder bootstrap is not configured." }, { status: 503 });
+    return json({ error: "Founder bootstrap is not configured." }, { status: 503 });
   }
-  if (temporaryPassword.length < 12) {
-    return Response.json({ error: "The temporary password must be at least 12 characters." }, { status: 400 });
+  if (temporaryPassword.length < 16) {
+    return json({ error: "The temporary password must be at least 16 characters." }, { status: 400 });
+  }
+  if (temporaryPassword === expectedControl) {
+    return json({ error: "Bootstrap control and temporary password must be different." }, { status: 400 });
+  }
+
+  const { count: configuredAdmins, error: adminCountError } = await admin
+    .from("platform_admins")
+    .select("user_id", { count: "exact", head: true });
+  if (adminCountError) return json({ error: "Founder bootstrap preflight failed." }, { status: 500 });
+  if ((configuredAdmins ?? 0) > 0 && process.env.BDB_FOUNDER_BOOTSTRAP_ALLOW_EXISTING !== "true") {
+    return json(
+      {
+        error: "Founder access already exists. Keep bootstrap disabled and use a reviewed manual recovery procedure.",
+      },
+      { status: 409 },
+    );
   }
 
   const { data: proPlan, error: planError } = await admin
@@ -41,7 +73,7 @@ export async function POST(request: Request) {
     .eq("is_active", true)
     .maybeSingle();
   if (planError || !proPlan) {
-    return Response.json({ error: planError?.message ?? "The Pro plan is unavailable." }, { status: 500 });
+    return json({ error: planError?.message ?? "The Pro plan is unavailable." }, { status: 500 });
   }
 
   const workspaceSlug = process.env.BDB_INTERNAL_WORKSPACE_SLUG?.trim() || "bdb-os";
@@ -52,7 +84,7 @@ export async function POST(request: Request) {
     .eq("slug", workspaceSlug)
     .maybeSingle();
   if (workspaceLookupError) {
-    return Response.json({ error: workspaceLookupError.message }, { status: 500 });
+    return json({ error: workspaceLookupError.message }, { status: 500 });
   }
 
   let workspaceId = existingWorkspace?.id as string | undefined;
@@ -61,7 +93,7 @@ export async function POST(request: Request) {
       .from("workspaces")
       .update({ name: workspaceName, status: "active", plan_id: proPlan.id })
       .eq("id", workspaceId);
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (error) return json({ error: error.message }, { status: 500 });
   } else {
     const { data, error } = await admin
       .from("workspaces")
@@ -69,7 +101,7 @@ export async function POST(request: Request) {
       .select("id")
       .single();
     if (error || !data) {
-      return Response.json({ error: error?.message ?? "Workspace creation failed." }, { status: 500 });
+      return json({ error: error?.message ?? "Workspace creation failed." }, { status: 500 });
     }
     workspaceId = data.id;
   }
@@ -97,11 +129,11 @@ export async function POST(request: Request) {
     }, { onConflict: "workspace_id" }),
   ]);
   if (settingsError || themeError) {
-    return Response.json({ error: settingsError?.message ?? themeError?.message }, { status: 500 });
+    return json({ error: settingsError?.message ?? themeError?.message }, { status: 500 });
   }
 
   const { data: userPage, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  if (listError) return Response.json({ error: listError.message }, { status: 500 });
+  if (listError) return json({ error: listError.message }, { status: 500 });
 
   const existingByEmail = new Map(userPage.users.map((user) => [user.email?.toLowerCase(), user]));
   const results: BootstrapResult[] = [];
@@ -152,10 +184,12 @@ export async function POST(request: Request) {
       if (existingProfile) {
         const updates: Record<string, unknown> = {
           full_name: fullName,
-          is_active: true,
           active_workspace_id: workspaceId,
         };
-        if (createdAuthUser) updates.must_change_password = true;
+        if (createdAuthUser) {
+          updates.is_active = true;
+          updates.must_change_password = true;
+        }
         const { error } = await admin.from("profiles").update(updates).eq("id", user.id);
         if (error) throw error;
       } else {
@@ -217,9 +251,19 @@ export async function POST(request: Request) {
     }
   }
 
-  return Response.json({
+  await admin.from("audit_logs").insert({
+    action: "platform.founder_bootstrap_executed",
+    entity_type: "platform",
+    metadata: {
+      configured_founders: results.filter((result) => result.status === "ready").length,
+      total_requested: founderEmails.length,
+    },
+  });
+
+  return json({
     ok: results.every((result) => result.status === "ready"),
     workspace: { id: workspaceId, slug: workspaceSlug, name: workspaceName, plan: "pro" },
     results,
+    next: "Disable BDB_FOUNDER_BOOTSTRAP_ENABLED and remove FOUNDER_INITIAL_PASSWORD after verification.",
   });
 }
