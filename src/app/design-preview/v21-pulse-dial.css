@@ -1,0 +1,488 @@
+/* V2.1 component-level correction layer.
+   Fixes status badge containment and replaces the Flowline with the BDB Pulse Dial.
+   Preview-only. Keep isolated until founder approval. */
+
+/* Status badges were inheriting the icon-box rules because both are direct <span> children.
+   Reset the badge itself instead of shrinking the text until the bug becomes harder to notice. */
+[class*="__previewRoot"] [class*="__bankCards"] article > [class*="__statusPill"] {
+  position: absolute !important;
+  top: 20px !important;
+  right: 20px !important;
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 40px) !important;
+  height: auto !important;
+  min-height: 31px !important;
+  margin: 0 !important;
+  padding: 7px 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  place-items: initial !important;
+  border-radius: 999px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+[class*="__previewRoot"] [class*="__documentCard"] {
+  grid-template-columns: 44px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-content: start !important;
+  min-height: 132px !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__documentCard"] > span:first-child {
+  grid-column: 1 !important;
+  grid-row: 1 / 3 !important;
+  width: 42px !important;
+  height: 42px !important;
+  margin: 0 !important;
+}
+
+[class*="__previewRoot"] [class*="__documentCard"] > div {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  min-width: 0 !important;
+  align-self: start !important;
+}
+
+[class*="__previewRoot"] [class*="__documentCard"] > [class*="__statusPill"] {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  justify-self: start !important;
+  align-self: start !important;
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 30px !important;
+  margin: 4px 0 0 !important;
+  padding: 7px 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  place-items: initial !important;
+  border-radius: 999px !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+[class*="__previewRoot"] [class*="__documentCard"] strong,
+[class*="__previewRoot"] [class*="__documentCard"] small {
+  max-width: 100% !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+}
+
+/* BDB Pulse Dial
+   A live local-first business signal inspired by instrument clusters rather than another dashboard chart.
+   The dial updates from the same three Hub actions, changes state offline and becomes calm when complete. */
+[class*="__previewRoot"] [class*="__businessPulse"] {
+  --dial-state: var(--bdb-accent);
+  --dial-muted: color-mix(in srgb, var(--bdb-border) 76%, transparent);
+  --dial-progress: 0deg;
+  width: min(500px, 41vw) !important;
+  min-width: 420px !important;
+  max-width: 500px !important;
+  height: 330px !important;
+  position: relative !important;
+  display: block !important;
+  justify-self: end !important;
+  overflow: hidden !important;
+  isolation: isolate !important;
+  filter: none !important;
+  transform: none !important;
+  cursor: default;
+}
+
+[class*="__businessPulse"][aria-label="Business pulse: 2 actions remaining"] { --dial-progress: 120deg; }
+[class*="__businessPulse"][aria-label="Business pulse: 1 actions remaining"] { --dial-progress: 240deg; }
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] {
+  --dial-progress: 360deg;
+  --dial-state: var(--bdb-success);
+}
+
+/* Crisp outer dotted halo. No blur and no travelling guide line. */
+[class*="__previewRoot"] [class*="__businessPulse"]::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 43% !important;
+  width: 276px !important;
+  height: 276px !important;
+  border: 3px dotted color-mix(in srgb, var(--dial-state) 50%, var(--dial-muted)) !important;
+  border-radius: 50% !important;
+  background: none !important;
+  opacity: .82 !important;
+  transform: translate(-50%, -50%) rotate(0deg) !important;
+  animation: bdbDialRotate 34s linear infinite !important;
+  filter: none !important;
+  box-shadow: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+}
+
+/* Progress arc. It fills as Hub actions are completed. */
+[class*="__previewRoot"] [class*="__businessPulse"]::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 43% !important;
+  width: 244px !important;
+  height: 244px !important;
+  border-radius: 50% !important;
+  background: conic-gradient(from -90deg,
+    var(--dial-state) 0 var(--dial-progress),
+    color-mix(in srgb, var(--bdb-border) 54%, transparent) var(--dial-progress) 360deg) !important;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)) !important;
+  mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px)) !important;
+  transform: translate(-50%, -50%) !important;
+  opacity: .9 !important;
+  animation: none !important;
+  filter: none !important;
+  border: 0 !important;
+  pointer-events: none !important;
+  z-index: 2 !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseRing"] {
+  position: absolute !important;
+  left: 50% !important;
+  top: 43% !important;
+  width: 212px !important;
+  height: 212px !important;
+  border: 3px dotted color-mix(in srgb, var(--dial-state) 70%, var(--bdb-border)) !important;
+  border-radius: 50% !important;
+  background: none !important;
+  opacity: .74 !important;
+  transform: translate(-50%, -50%) rotate(0deg) !important;
+  animation: bdbDialCounterRotate 25s linear infinite !important;
+  filter: none !important;
+  box-shadow: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+  z-index: 3 !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseRing"]::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 18px !important;
+  width: auto !important;
+  height: auto !important;
+  border: 2px dashed color-mix(in srgb, var(--dial-state) 38%, var(--bdb-border)) !important;
+  border-radius: 50% !important;
+  background: none !important;
+  transform: rotate(0deg) !important;
+  animation: bdbDialRotate 19s linear infinite !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseRing"]::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 40px !important;
+  width: auto !important;
+  height: auto !important;
+  border: 1px solid color-mix(in srgb, var(--dial-state) 42%, var(--bdb-border)) !important;
+  border-radius: 50% !important;
+  background: radial-gradient(circle, color-mix(in srgb, var(--dial-state) 7%, transparent), transparent 68%) !important;
+  transform: none !important;
+  animation: bdbDialBreathe 4.8s var(--ease-standard) infinite alternate !important;
+  filter: none !important;
+  box-shadow: none !important;
+}
+
+/* Retire the travelling point and its faint offset-path guide completely. */
+[class*="__previewRoot"] [class*="__pulseRingInner"] {
+  display: none !important;
+  animation: none !important;
+  offset-path: none !important;
+  box-shadow: none !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"] {
+  position: absolute !important;
+  left: 50% !important;
+  top: 43% !important;
+  z-index: 6 !important;
+  width: 138px !important;
+  height: 138px !important;
+  padding: 20px 16px !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto auto auto !important;
+  place-items: center !important;
+  align-content: center !important;
+  gap: 4px !important;
+  border: 1px solid color-mix(in srgb, var(--dial-state) 44%, var(--bdb-border)) !important;
+  border-radius: 50% !important;
+  background: color-mix(in srgb, var(--bdb-surface) 96%, var(--bdb-bg)) !important;
+  box-shadow:
+    inset 0 0 0 7px color-mix(in srgb, var(--dial-state) 4%, transparent),
+    0 18px 44px color-mix(in srgb, #000 28%, transparent) !important;
+  transform: translate(-50%, -50%) !important;
+  transition: border-color var(--motion-page), background var(--motion-page), transform var(--motion-page) var(--ease-emphasized) !important;
+  overflow: hidden !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[class*="__previewRoot"] [class*="__businessPulse"]:hover [class*="__pulseCore"] {
+  transform: translate(-50%, -50%) scale(1.025) !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"]::before {
+  content: "BUSINESS PULSE" !important;
+  position: static !important;
+  transform: none !important;
+  color: color-mix(in srgb, var(--bdb-muted) 82%, var(--bdb-text)) !important;
+  font-family: var(--font-body), "DM Sans", sans-serif !important;
+  font-size: 8.5px !important;
+  font-weight: 850 !important;
+  letter-spacing: .12em !important;
+  white-space: nowrap !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"]::after {
+  content: "LOCAL-FIRST" !important;
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+  background: none !important;
+  color: var(--dial-state) !important;
+  font-size: 8px !important;
+  font-weight: 850 !important;
+  letter-spacing: .13em !important;
+  line-height: 1 !important;
+  filter: none !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"] [class*="__brandMark"] {
+  display: none !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"] strong {
+  grid-area: auto !important;
+  margin: 0 !important;
+  color: var(--bdb-text) !important;
+  font-size: 50px !important;
+  font-weight: 700 !important;
+  line-height: .92 !important;
+  letter-spacing: -.06em !important;
+  text-align: center !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"] small {
+  grid-area: auto !important;
+  max-width: 96px !important;
+  margin: 0 !important;
+  color: color-mix(in srgb, var(--bdb-muted) 88%, var(--bdb-text)) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+}
+
+/* The three existing task nodes become useful mini-signals instead of ornamental dots. */
+[class*="__previewRoot"] [class*="__pulseDot"] {
+  --node-colour: var(--bdb-warning);
+  position: absolute !important;
+  top: 264px !important;
+  z-index: 7 !important;
+  width: 118px !important;
+  height: 50px !important;
+  padding: 9px 11px 8px 25px !important;
+  display: block !important;
+  border: 1px solid color-mix(in srgb, var(--node-colour) 31%, var(--bdb-border)) !important;
+  border-radius: 14px !important;
+  background: color-mix(in srgb, var(--bdb-surface) 95%, transparent) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  animation: none !important;
+  transition: transform var(--motion-fast), border-color var(--motion-page), background var(--motion-page) !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseDot"]:hover {
+  transform: translateY(-2px) !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseDot"]::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 10px !important;
+  top: 13px !important;
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 50% !important;
+  background: var(--node-colour) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-colour) 12%, transparent) !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseDot"]::after {
+  position: static !important;
+  display: block !important;
+  color: color-mix(in srgb, var(--bdb-muted) 84%, var(--bdb-text)) !important;
+  font-family: var(--font-body), "DM Sans", sans-serif !important;
+  font-size: 9px !important;
+  font-weight: 760 !important;
+  line-height: 1.38 !important;
+  letter-spacing: .02em !important;
+  white-space: pre-line !important;
+  text-align: left !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseDotOne"] {
+  left: 4% !important;
+  right: auto !important;
+  --node-colour: var(--bdb-danger);
+}
+[class*="__previewRoot"] [class*="__pulseDotOne"]::after { content: "FINANCE\A Review due" !important; }
+
+[class*="__previewRoot"] [class*="__pulseDotTwo"] {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  --node-colour: var(--bdb-accent);
+}
+[class*="__previewRoot"] [class*="__pulseDotTwo"]:hover { transform: translateX(-50%) translateY(-2px) !important; }
+[class*="__previewRoot"] [class*="__pulseDotTwo"]::after { content: "INBOX\A 2 unread" !important; }
+
+[class*="__previewRoot"] [class*="__pulseDotThree"] {
+  left: auto !important;
+  right: 4% !important;
+  --node-colour: var(--bdb-warning);
+}
+[class*="__previewRoot"] [class*="__pulseDotThree"]::after { content: "SCHEDULE\A 1 pending" !important; }
+
+/* Completed task signals become green and change copy in the same order as the Hub checklist. */
+[class*="__businessPulse"][aria-label="Business pulse: 2 actions remaining"] [class*="__pulseDotOne"],
+[class*="__businessPulse"][aria-label="Business pulse: 1 actions remaining"] [class*="__pulseDotOne"],
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotOne"],
+[class*="__businessPulse"][aria-label="Business pulse: 1 actions remaining"] [class*="__pulseDotTwo"],
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotTwo"],
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotThree"] {
+  --node-colour: var(--bdb-success);
+  background: color-mix(in srgb, var(--bdb-success) 7%, var(--bdb-surface)) !important;
+}
+
+[class*="__businessPulse"][aria-label="Business pulse: 2 actions remaining"] [class*="__pulseDotOne"]::after,
+[class*="__businessPulse"][aria-label="Business pulse: 1 actions remaining"] [class*="__pulseDotOne"]::after,
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotOne"]::after { content: "FINANCE\A Cleared" !important; }
+
+[class*="__businessPulse"][aria-label="Business pulse: 1 actions remaining"] [class*="__pulseDotTwo"]::after,
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotTwo"]::after { content: "INBOX\A Cleared" !important; }
+
+[class*="__businessPulse"][aria-label="Business pulse: 0 actions remaining"] [class*="__pulseDotThree"]::after { content: "SCHEDULE\A Cleared" !important; }
+
+[class*="__pulseOffline"] {
+  --dial-state: var(--bdb-warning) !important;
+}
+
+[class*="__pulseOffline"] [class*="__pulseCore"]::before { content: "LOCAL MODE" !important; }
+[class*="__pulseOffline"] [class*="__pulseCore"]::after { content: "SYNC PAUSED" !important; }
+[class*="__pulseOffline"]::before,
+[class*="__pulseOffline"] [class*="__pulseRing"],
+[class*="__pulseOffline"] [class*="__pulseRing"]::before,
+[class*="__pulseOffline"] [class*="__pulseRing"]::after {
+  animation-play-state: paused !important;
+}
+
+[class*="__pulseCalm"]::before,
+[class*="__pulseCalm"] [class*="__pulseRing"] {
+  opacity: .58 !important;
+  animation-duration: 52s !important;
+}
+
+@keyframes bdbDialRotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes bdbDialCounterRotate {
+  to { transform: translate(-50%, -50%) rotate(-360deg); }
+}
+
+@keyframes bdbDialBreathe {
+  from { opacity: .58; transform: scale(.985); }
+  to { opacity: 1; transform: scale(1.018); }
+}
+
+@media (max-width: 1260px) and (min-width: 821px) {
+  [class*="__previewRoot"] [class*="__businessPulse"] {
+    width: 430px !important;
+    min-width: 390px !important;
+    transform: scale(.92) !important;
+    transform-origin: 100% 50% !important;
+  }
+}
+
+@media (max-width: 820px) {
+  [class*="__previewRoot"] [class*="__businessPulse"] {
+    width: min(440px, 88vw) !important;
+    min-width: 0 !important;
+    height: 300px !important;
+    margin: 4px auto 0 !important;
+    transform: none !important;
+  }
+
+  [class*="__previewRoot"] [class*="__businessPulse"]::before {
+    width: 230px !important;
+    height: 230px !important;
+    top: 41% !important;
+  }
+
+  [class*="__previewRoot"] [class*="__businessPulse"]::after {
+    width: 202px !important;
+    height: 202px !important;
+    top: 41% !important;
+  }
+
+  [class*="__previewRoot"] [class*="__pulseRing"] {
+    width: 174px !important;
+    height: 174px !important;
+    top: 41% !important;
+  }
+
+  [class*="__previewRoot"] [class*="__pulseCore"] {
+    width: 118px !important;
+    height: 118px !important;
+    top: 41% !important;
+  }
+
+  [class*="__previewRoot"] [class*="__pulseCore"] strong { font-size: 42px !important; }
+  [class*="__previewRoot"] [class*="__pulseCore"] small { font-size: 9.5px !important; }
+
+  [class*="__previewRoot"] [class*="__pulseDot"] {
+    top: 238px !important;
+    width: 104px !important;
+    height: 45px !important;
+    padding: 8px 8px 7px 22px !important;
+  }
+
+  [class*="__previewRoot"] [class*="__pulseDot"]::after { font-size: 8px !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="__previewRoot"] [class*="__businessPulse"]::before,
+  [class*="__previewRoot"] [class*="__pulseRing"],
+  [class*="__previewRoot"] [class*="__pulseRing"]::before,
+  [class*="__previewRoot"] [class*="__pulseRing"]::after {
+    animation: none !important;
+  }
+}
+
+[class*="__reduceMotion"] [class*="__businessPulse"]::before,
+[class*="__reduceMotion"] [class*="__pulseRing"],
+[class*="__reduceMotion"] [class*="__pulseRing"]::before,
+[class*="__reduceMotion"] [class*="__pulseRing"]::after {
+  animation: none !important;
+}
