@@ -1,0 +1,29 @@
+/* Final Pulse Dial motion tuning. Loaded after v21-pulse-dial.css. */
+
+[class*="__previewRoot"] [class*="__pulseRing"]::before {
+  transform-origin: 50% 50% !important;
+  animation: bdbDialSpinOnly 19s linear infinite !important;
+}
+
+[class*="__previewRoot"] [class*="__pulseCore"] {
+  grid-template-rows: repeat(4, auto) !important;
+  padding: 14px !important;
+}
+
+@keyframes bdbDialSpinOnly {
+  to { transform: rotate(360deg); }
+}
+
+[class*="__pulseOffline"] [class*="__pulseRing"]::before {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="__previewRoot"] [class*="__pulseRing"]::before {
+    animation: none !important;
+  }
+}
+
+[class*="__reduceMotion"] [class*="__pulseRing"]::before {
+  animation: none !important;
+}
