@@ -31,7 +31,28 @@ When the official application domain is launched, replace the Vercel production 
 
 ## Link lifetime
 
-In **Authentication → Providers → Email**, set Email OTP Expiration to a customer-appropriate value no higher than 86400 seconds. BDB OS should display the same effective lifetime as Supabase; do not promise a longer invitation period than the authentication link actually supports.
+In **Authentication → Providers → Email**, set Email OTP Expiration to exactly:
+
+```text
+86400 seconds
+```
+
+The BDB membership record is also capped at one day by `20260718193500_invitation_expiry_guard.sql`. Do not display or promise a seven-day invitation. A resent invitation starts a new one-day window and the previous secure link must be treated as invalid.
+
+The activation screen preflights the pending membership before changing the user's password. This prevents an already expired or missing invitation from changing Auth credentials before the database accepts the business membership.
+
+## Leaked-password protection
+
+Before a paying pilot, open **Authentication → Attack Protection** and enable leaked-password protection.
+
+Acceptance check:
+
+1. Attempt to choose a password known to appear in breach lists using a dedicated test account.
+2. Confirm Supabase rejects it.
+3. Confirm a unique password of at least 12 characters is accepted.
+4. Record the test date in ClickUp Launch Readiness.
+
+This hosted Auth setting is not controlled by repository migrations and must be verified after every new Supabase production project is created.
 
 ## Email templates
 
@@ -69,7 +90,8 @@ Never forward customer authentication links through a founder mailbox. The secur
 2. Confirm the email is BDB branded and addressed directly to the owner.
 3. Open only the newest invitation.
 4. Confirm the browser opens the production BDB OS domain, not localhost.
-5. Create a password and activate the membership.
-6. Enter the correct workspace.
-7. Log out and sign back in with email and password.
-8. Resend an invitation and verify the old link is rejected cleanly.
+5. Confirm an expired invitation is rejected before a password change.
+6. Create a password and activate the membership.
+7. Enter the correct workspace.
+8. Log out and sign back in with email and password.
+9. Resend an invitation and verify the old link is rejected cleanly.
