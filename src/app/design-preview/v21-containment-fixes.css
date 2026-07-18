@@ -1,0 +1,262 @@
+/* V2.1 containment and collapsed-layout corrections from founder screenshots.
+   Loaded last so larger desktop typography remains readable without escaping its components. */
+
+/* A unified calm entrance with no horizontal slide. Horizontal movement was clipping content
+   against the collapsed rail while a department was entering. */
+[class*="__previewRoot"] [class*="__viewTransition"] {
+  animation: bdbUnifiedViewIn var(--motion-page) var(--ease-emphasized) both !important;
+  transform-origin: 50% 16%;
+}
+
+[class*="__previewRoot"] [class*="__tabStage"],
+[class*="__previewRoot"] [class*="__conversation"],
+[class*="__previewRoot"] [class*="__detailPanel"],
+[class*="__previewRoot"] [class*="__inspector"] {
+  animation-duration: var(--motion-page) !important;
+  animation-timing-function: var(--ease-emphasized) !important;
+}
+
+@keyframes bdbUnifiedViewIn {
+  0% { opacity: 0; transform: translate3d(0, 8px, 0) scale(.998); }
+  55% { opacity: .94; }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+/* Hub must remain contained after the rail collapses. */
+[class*="__previewRoot"] [class*="__mainCanvas"],
+[class*="__previewRoot"] [class*="__viewTransition"],
+[class*="__previewRoot"] [class*="__viewStack"],
+[class*="__previewRoot"] [class*="__heroCard"],
+[class*="__previewRoot"] [class*="__heroContent"] {
+  min-width: 0 !important;
+}
+
+[class*="__previewRoot"] [class*="__heroContent"] {
+  width: 100% !important;
+  max-width: 720px !important;
+  justify-self: start !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+[class*="__previewRoot"] [class*="__heroContent"] h1,
+[class*="__previewRoot"] [class*="__heroCopy"] {
+  max-width: 100% !important;
+  overflow-wrap: normal;
+}
+
+@media (min-width: 821px) {
+  [class*="__navIsCollapsed"] [class*="__heroCard"] {
+    grid-template-columns: minmax(420px, 1.08fr) minmax(430px, .92fr) !important;
+    column-gap: clamp(28px, 3vw, 54px) !important;
+    padding-inline: clamp(42px, 4vw, 64px) !important;
+  }
+
+  [class*="__navIsCollapsed"] [class*="__heroContent"] {
+    padding-left: 2px !important;
+  }
+}
+
+@media (min-width: 821px) and (max-width: 1180px) {
+  [class*="__navIsCollapsed"] [class*="__heroCard"] {
+    grid-template-columns: minmax(350px, 1fr) minmax(390px, .9fr) !important;
+    padding-inline: 34px !important;
+  }
+}
+
+/* Theme Lab and all compact configuration cards must grow with desktop type.
+   Fixed heights were written before the readable desktop scale was introduced. */
+[class*="__previewRoot"] [class*="__themeLabLayout"],
+[class*="__previewRoot"] [class*="__themeControls"],
+[class*="__previewRoot"] [class*="__presetGrid"],
+[class*="__previewRoot"] [class*="__tokenPanel"],
+[class*="__previewRoot"] [class*="__controlGrid"],
+[class*="__previewRoot"] [class*="__themeToggles"],
+[class*="__previewRoot"] [class*="__livePreview"],
+[class*="__previewRoot"] [class*="__previewBody"],
+[class*="__previewRoot"] [class*="__miniPreviewGrid"],
+[class*="__previewRoot"] [class*="__controlBoundary"] {
+  min-width: 0 !important;
+}
+
+[class*="__previewRoot"] [class*="__presetGrid"] {
+  align-items: stretch !important;
+}
+
+[class*="__previewRoot"] [class*="__presetCard"] {
+  min-height: 184px !important;
+  height: auto !important;
+  overflow: hidden !important;
+  padding: 15px !important;
+  gap: 8px !important;
+}
+
+[class*="__previewRoot"] [class*="__presetCard"] strong,
+[class*="__previewRoot"] [class*="__presetCard"] small {
+  width: 100%;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+[class*="__previewRoot"] [class*="__presetCard"] small {
+  display: block;
+  line-height: 1.48 !important;
+}
+
+[class*="__previewRoot"] [class*="__tokenPanel"] {
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__controlGrid"] {
+  align-items: stretch !important;
+}
+
+[class*="__previewRoot"] [class*="__controlGrid"] label {
+  min-height: 82px !important;
+  height: auto !important;
+  overflow: hidden !important;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, auto) !important;
+  padding: 13px !important;
+}
+
+[class*="__previewRoot"] [class*="__controlGrid"] label > span {
+  min-width: 0;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.35 !important;
+}
+
+[class*="__previewRoot"] [class*="__controlGrid"] input[type="range"] {
+  width: min(132px, 100%) !important;
+}
+
+[class*="__previewRoot"] [class*="__controlGrid"] select {
+  min-width: 112px !important;
+  max-width: 150px;
+}
+
+[class*="__previewRoot"] [class*="__themeToggles"] button {
+  min-height: 88px !important;
+  height: auto !important;
+  overflow: hidden !important;
+  grid-template-columns: 34px minmax(0, 1fr) 38px !important;
+  padding: 12px !important;
+}
+
+[class*="__previewRoot"] [class*="__themeToggles"] button span,
+[class*="__previewRoot"] [class*="__themeToggles"] button strong,
+[class*="__previewRoot"] [class*="__themeToggles"] button small {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+[class*="__previewRoot"] [class*="__livePreview"] {
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__previewBody"] {
+  height: auto !important;
+  min-height: 438px !important;
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__miniPreviewGrid"] {
+  align-items: stretch !important;
+}
+
+[class*="__previewRoot"] [class*="__miniPreviewGrid"] article {
+  min-width: 0 !important;
+  min-height: 108px !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__miniPreviewGrid"] strong,
+[class*="__previewRoot"] [class*="__miniPreviewGrid"] small,
+[class*="__previewRoot"] [class*="__miniList"] strong,
+[class*="__previewRoot"] [class*="__miniList"] small {
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the customisation boundary inside the live-preview panel as two self-contained cards. */
+[class*="__previewRoot"] [class*="__controlBoundary"] {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-rows: auto auto !important;
+  gap: 5px 12px !important;
+  padding: 14px !important;
+  overflow: hidden !important;
+}
+
+[class*="__previewRoot"] [class*="__controlBoundary"] strong,
+[class*="__previewRoot"] [class*="__controlBoundary"] p {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+}
+
+[class*="__previewRoot"] [class*="__controlBoundary"] strong:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+[class*="__previewRoot"] [class*="__controlBoundary"] p:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 2;
+}
+[class*="__previewRoot"] [class*="__controlBoundary"] strong:nth-of-type(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+[class*="__previewRoot"] [class*="__controlBoundary"] p:nth-of-type(2) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+[class*="__previewRoot"] [class*="__controlBoundary"] p {
+  margin: 3px 0 0 !important;
+  line-height: 1.48 !important;
+}
+
+/* Generic containment safety for compact Theme Lab cards. */
+[class*="__previewRoot"] [class*="__themeLabLayout"] article,
+[class*="__previewRoot"] [class*="__themeLabLayout"] button,
+[class*="__previewRoot"] [class*="__themeLabLayout"] label {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) and (min-width: 821px) {
+  [class*="__previewRoot"] [class*="__themeLabLayout"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  [class*="__previewRoot"] [class*="__livePreview"] {
+    position: relative !important;
+    top: auto !important;
+  }
+}
+
+@media (max-width: 820px) {
+  [class*="__previewRoot"] [class*="__presetCard"] {
+    min-height: 150px !important;
+  }
+
+  [class*="__previewRoot"] [class*="__controlBoundary"] {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto !important;
+  }
+
+  [class*="__previewRoot"] [class*="__controlBoundary"] strong,
+  [class*="__previewRoot"] [class*="__controlBoundary"] p {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+}
