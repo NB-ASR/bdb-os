@@ -1,7 +1,7 @@
 /*
-  BDB OS V2.1 · Operating Lens
+  BDB OS V2.1 · Business State
   Replaces the overlapping activity-ring treatment with a contained,
-  intrinsic-layout business state module. No travelling dots, no permanent
+  intrinsic-layout operational summary. No travelling dots, no permanent
   motion and no status cards positioned outside their layout boundary.
 */
 
@@ -108,9 +108,9 @@
 [class*="__previewRoot"] [class*="__heroContent"] h1 {
   max-width: 680px !important;
   margin: 12px 0 18px !important;
-  font-size: clamp(54px, 5.1vw, 82px) !important;
+  font-size: clamp(52px, 4.4vw, 72px) !important;
   line-height: .98 !important;
-  letter-spacing: -.065em !important;
+  letter-spacing: -.062em !important;
   text-wrap: balance;
   overflow-wrap: normal !important;
 }
@@ -121,16 +121,13 @@
 }
 
 /*
-  Operating Lens. Existing semantic state remains driven by aria-label and
+  Business State. Existing semantic state remains driven by aria-label and
   completed actions; only the visual system changes.
 */
 [class*="__previewRoot"] [class*="__businessPulse"] {
   --lens-one: var(--bdb-danger);
   --lens-two: var(--bdb-accent);
   --lens-three: var(--bdb-warning);
-  --lens-one-soft: color-mix(in srgb, var(--lens-one) 18%, var(--bdb-surface));
-  --lens-two-soft: color-mix(in srgb, var(--lens-two) 18%, var(--bdb-surface));
-  --lens-three-soft: color-mix(in srgb, var(--lens-three) 18%, var(--bdb-surface));
   isolation: isolate !important;
   box-sizing: border-box !important;
   position: relative !important;
@@ -163,7 +160,7 @@
 }
 
 [class*="__previewRoot"] [class*="__businessPulse"]::before {
-  content: "BDB OPERATING LENS" !important;
+  content: "BUSINESS STATE" !important;
   grid-column: 1 / 3 !important;
   grid-row: 1 !important;
   align-self: center !important;
@@ -372,7 +369,7 @@
 }
 
 [class*="__previewRoot"] [class*="__pulseCore"]::after {
-  content: "LOCAL-FIRST" !important;
+  content: "WORKSPACE READY" !important;
   position: static !important;
   inset: auto !important;
   width: auto !important;
@@ -434,7 +431,7 @@
   width: 100% !important;
   min-width: 0 !important;
   height: auto !important;
-  min-height: 70px !important;
+  min-height: 72px !important;
   margin: 0 !important;
   padding: 12px !important;
   overflow: hidden !important;
@@ -466,7 +463,7 @@
   min-width: 0 !important;
   color: color-mix(in srgb, var(--bdb-muted) 88%, var(--bdb-text)) !important;
   font-family: inherit !important;
-  font-size: 9px !important;
+  font-size: 10px !important;
   font-weight: 760 !important;
   line-height: 1.42 !important;
   letter-spacing: .015em !important;
@@ -540,8 +537,8 @@
   opacity: .68 !important;
 }
 
-/* Laptop widths stack the operational module before either column becomes cramped. */
-@media (max-width: 1180px) and (min-width: 821px) {
+/* Stack before the sidebar and hero minimums can compete at laptop widths. */
+@media (max-width: 1460px) and (min-width: 821px) {
   [class*="__previewRoot"] [class*="__heroCard"],
   [class*="__navIsCollapsed"] [class*="__heroCard"] {
     grid-template-columns: 1fr !important;
