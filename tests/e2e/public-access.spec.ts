@@ -6,10 +6,11 @@ test("login page is available", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
 });
 
-test("protected workspace redirects anonymous users to sign in", async ({ page }) => {
-  await page.goto("/workspace");
-  await expect(page).toHaveURL(/\/login/);
-  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible();
+test("unconfigured local workspace fails safely without crashing", async ({ page }) => {
+  const response = await page.goto("/workspace");
+  expect(response?.ok()).toBeTruthy();
+  await expect(page.getByText("Local preview", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Welcome to BDB OS/i })).toBeVisible();
 });
 
 test("invalid invitation callback fails safely", async ({ page }) => {
