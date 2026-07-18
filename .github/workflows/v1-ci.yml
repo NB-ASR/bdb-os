@@ -117,7 +117,7 @@ jobs:
           retention-days: 7
 
   authenticated-browser:
-    if: ${{ github.event_name == 'workflow_dispatch' && secrets.BDB_E2E_BASE_URL != '' && secrets.BDB_E2E_OWNER_EMAIL != '' && secrets.BDB_E2E_OWNER_PASSWORD != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 20
