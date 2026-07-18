@@ -14,7 +14,7 @@ begin
     return new;
   end if;
 
-  sent_at := coalesce(new.invitation_last_sent_at, now());
+  sent_at := coalesce(new.invitation_last_sent_at, new.created_at, now());
   maximum_expiry := sent_at + interval '1 day';
 
   new.invitation_last_sent_at := sent_at;
@@ -38,6 +38,19 @@ create trigger workspace_memberships_enforce_invitation_expiry
 before insert or update of status, invitation_last_sent_at, invitation_expires_at
 on public.workspace_memberships
 for each row execute function private.enforce_invitation_expiry();
+
+-- Existing pending records may still contain the previous seven-day value.
+-- Clamp them during migration so the database and Supabase email token promise
+-- the same maximum lifetime. Old invitations may become expired and should be
+-- resent after the migration is approved and applied.
+update public.workspace_memberships
+set
+  invitation_last_sent_at = coalesce(invitation_last_sent_at, created_at),
+  invitation_expires_at = least(
+    coalesce(invitation_expires_at, coalesce(invitation_last_sent_at, created_at) + interval '1 day'),
+    coalesce(invitation_last_sent_at, created_at) + interval '1 day'
+  )
+where status = 'invited';
 
 comment on function private.enforce_invitation_expiry() is
   'Keeps BDB membership invitation records within the supported one-day Supabase authentication-link lifetime.';
