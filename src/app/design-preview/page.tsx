@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ClientExperiencePreview from "./client-experience-preview";
 import "./v21-polish.css";
+import "./v21-premium-audit.css";
 
 export const metadata: Metadata = {
   title: "Client Experience V2.1 Preview · BDB OS",
