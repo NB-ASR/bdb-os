@@ -152,7 +152,7 @@
           <div class="panel table-panel">
             <div class="table-wrap">
               <table>
-                <thead><tr><th>Product</th><th>SKU</th><th>Category</th><th>In stock</th><th>Restock at</th><th>Status</th><th></th></tr></thead>
+                <thead><tr><th>Product</th><th>SKU</th><th>Purpose</th><th>Category</th><th>In stock</th><th>Restock at</th><th>Status</th><th></th></tr></thead>
                 <tbody id="inventoryTable"></tbody>
               </table>
             </div>
@@ -172,7 +172,7 @@
           <div class="panel table-panel">
             <div class="table-wrap">
               <table class="products-table">
-                <thead><tr><th>Product</th><th>SKU</th><th>Brand</th><th>Supplier</th><th>Category</th><th>Barcode</th><th>Cost</th><th>RRP</th><th>Restock at</th><th></th></tr></thead>
+                <thead><tr><th>Product</th><th>SKU</th><th>Purpose</th><th>Brand</th><th>Supplier</th><th>Category</th><th>Barcode</th><th>Cost</th><th>RRP</th><th>Restock at</th><th></th></tr></thead>
                 <tbody id="productsTable"></tbody>
               </table>
             </div>
@@ -227,7 +227,7 @@
           <div class="invoice-summary" id="invoiceSummary"></div>
           <div class="panel table-panel">
             <div class="panel-heading padded"><div><h2>Document history</h2><p>Imported supplier invoices and credit notes.</p></div></div>
-            <div class="table-wrap"><table><thead><tr><th>Document</th><th>Type</th><th>Supplier</th><th>Date</th><th>Units</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Document</th><th>Type</th><th>Purpose</th><th>Supplier</th><th>Date</th><th>Units</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
           </div>
         </section>
 
@@ -279,7 +279,7 @@
         <div class="processing-state" id="processingState" hidden><div class="document-scan"><div></div><span></span><i></i></div><h3>Reading your document…</h3><p>Extracting supplier details, document fields and every product line.</p></div>
         <div class="review-state" id="reviewState" hidden>
           <div class="review-notice"><span>✓</span><div><strong>Document details extracted</strong><p id="reviewFileName">Review the extracted details before updating stock. Edit only if something needs correcting.</p></div><em id="extractionConfidence">AI extraction</em></div>
-          <div class="form-grid"><label>Supplier<input id="reviewSupplier" placeholder="Supplier name" /></label><label>Document type<select id="reviewDocumentType"><option value="Invoice">Invoice - adds stock</option><option value="Credit Note">Credit note - removes stock</option></select></label><label>Document number<input id="reviewInvoiceNumber" /></label><label>Document date<input id="reviewDocumentDate" type="date" /></label></div>
+          <div class="form-grid"><label>Supplier<input id="reviewSupplier" placeholder="Supplier name" /></label><label>Document type<select id="reviewDocumentType"><option value="Invoice">Invoice</option><option value="Credit Note">Credit note</option></select></label><label>Item purpose<select id="reviewStockCategory"><option value="resale">Resale stock</option><option value="supply">Business supplies</option></select></label><label>Document number<input id="reviewInvoiceNumber" /></label><label>Document date<input id="reviewDocumentDate" type="date" /></label></div>
           <div class="review-table-wrap"><table class="review-table"><thead><tr><th>Product</th><th>Stock code</th><th>Qty</th><th>Unit cost</th><th>RRP</th><th>Barcode</th><th></th></tr></thead><tbody id="reviewItems"></tbody></table></div>
           <button class="text-button add-line" id="addReviewLine">＋ Add another line</button>
         </div>
@@ -293,13 +293,13 @@
           <span><small>Gross amount</small><strong id="reviewGrossAmount">€0.00</strong></span>
           <span><small>Total RRP</small><strong id="reviewTotalRrp">€0.00</strong></span>
         </div>
-        <div class="invoice-footer-actions"><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="importInvoice" hidden>Update stock →</button></div>
+        <div class="invoice-footer-actions"><button class="secondary-button" data-close-modal>Cancel</button><button class="secondary-button" id="uploadInvoice" hidden>Upload</button><button class="primary-button" id="importInvoice" hidden>Update stock →</button></div>
       </div>
     </template>
 
     <template id="recordSaleTemplate">
       <div class="modal-header"><div><p class="eyebrow">QUICK STOCK OUT</p><h2 id="modalTitle">Record a sale</h2></div><button class="icon-button" data-close-modal>×</button></div>
-      <div class="modal-body sale-flow">
+      <div class="modal-body sale-flow" id="saleBuildStep">
         <div class="sale-finder">
           <label><span>⌕</span><input id="saleProductSearch" autocomplete="off" placeholder="Search product, service, code or scan barcode" /></label>
           <button class="secondary-button camera-button" id="cameraScan">▣ <span>Use camera</span></button>
@@ -319,7 +319,14 @@
         <div class="sale-suggestions" id="saleSuggestions"></div>
         <div class="sale-basket" id="saleBasket"><div class="basket-empty"><span>↗</span><p>Search for a product or service to begin</p></div></div>
       </div>
-      <div class="modal-footer sale-footer"><div><small>Sale total</small><strong id="saleTotal">€0.00</strong></div><div><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="completeSale" disabled>Complete sale</button></div></div>
+      <div class="modal-body checkout-flow" id="saleCheckoutStep" hidden>
+        <div class="checkout-heading"><p class="eyebrow">FINAL CHECKOUT</p><h3>Review basket and discounts</h3><p>Apply a fixed monetary discount to an individual line or to the whole basket.</p></div>
+        <div class="checkout-lines" id="checkoutLines"></div>
+        <label class="basket-discount-field"><span>General voucher / basket discount</span><div><span>€</span><input id="basketDiscount" type="number" min="0" step="0.01" value="0.00" /></div></label>
+        <div class="checkout-summary" id="checkoutSummary"></div>
+      </div>
+      <div class="modal-footer sale-footer" id="saleBuildFooter"><div><small>Basket subtotal</small><strong id="saleTotal">€0.00</strong></div><div><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="reviewCheckout" disabled>Review checkout →</button></div></div>
+      <div class="modal-footer sale-footer" id="saleCheckoutFooter" hidden><button class="secondary-button" id="backToBasket">← Back to basket</button><div><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="completeSale">Complete sale</button></div></div>
     </template>
 
     <template id="addProductTemplate">
@@ -327,11 +334,12 @@
       <form id="productForm">
         <div class="modal-body form-grid product-form">
           <label class="wide">Product name<input name="name" required placeholder="e.g. Hydra Medic Serum 60ml" /></label>
-          <label>Stock code / SKU<input name="sku" required placeholder="e.g. RPHMS" /></label><label>Barcode<input name="barcode" placeholder="Optional" /></label>
+          <label>Stock code / SKU<input name="sku" required placeholder="e.g. RPHMS" /></label><label class="barcode-field">Barcode<div><input name="barcode" placeholder="Type or scan barcode" /><button class="secondary-button" id="productBarcodeScan" type="button">▣ Scan</button></div></label>
           <label>Brand<input name="brand" placeholder="Brand name" /></label><label>Supplier<input name="supplier" placeholder="Supplier name" /></label>
-          <label>Category<select name="category"><option>Skincare</option><option>Professional skincare</option><option>Sun care</option><option>Makeup</option><option>Body care</option><option>Retail accessories</option><option>Other</option></select></label>
+          <label>Category<select name="category"><option>Skincare</option><option>Professional skincare</option><option>Sun care</option><option>Makeup</option><option>Body care</option><option>Retail accessories</option><option>Other</option></select></label><label>Item purpose<select name="classification"><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
           <label>Opening stock<input name="stock" required min="0" type="number" value="0" /></label><label>Restock at<input name="reorderAt" required min="0" type="number" value="5" /></label>
           <label>Unit cost (€)<input name="unitCost" required min="0" step="0.01" type="number" value="0.00" /></label><label>RRP / sale price (€)<input name="salePrice" required min="0" step="0.01" type="number" value="0.00" /></label>
+          <div class="camera-stage wide" id="cameraStage" hidden><video id="scannerVideo" playsinline muted></video><div id="html5Scanner" hidden></div><div class="camera-target" id="cameraTarget"></div><div class="scanner-status" id="scannerStatus">Point the camera at the product barcode</div><button class="camera-close" id="stopCamera" type="button">×</button></div>
         </div>
         <div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="saveProductButton" type="submit">Add product</button></div>
       </form>
