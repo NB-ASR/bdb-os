@@ -11,11 +11,19 @@ The source code is stored in GitHub, while the working application is hosted by 
 Vanita Stock is a mobile-friendly beauty-product inventory and supplier-document manager tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
 
 1. Take a photo of or upload a supplier invoice or credit note.
-2. Review the extracted supplier, document type, stock codes, quantities and prices.
-3. Add invoice quantities to stock, or deduct returned quantities with a credit note.
+2. Review the extracted supplier, document type, item purpose, stock codes, quantities and prices.
+3. Add invoice quantities to stock, or upload the original to Documents without changing stock.
 4. Maintain separate product and salon/spa service catalogues.
-5. Record products and services together in the same sale, including the assigned service staff member.
+5. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 6. See low-stock products immediately and optionally receive browser notifications.
+
+## Release v16 — sales, barcode and document controls
+
+- Product barcodes can be typed or captured with the camera from **Products → Edit**; duplicate barcode assignments are blocked.
+- Completed sales with saved basket details can be opened and corrected. The original product movement is reversed before the revised basket is applied.
+- A final checkout screen supports fixed monetary discounts on individual product/service lines and on the whole basket.
+- Reviewed documents can be uploaded to Documents without adding or removing stock.
+- Invoice items can be classified as **Resale stock** or **Business supplies**. Supplies remain quantity-tracked in Inventory but are excluded from resale stock cost and potential RRP value and cannot be added to a customer sale.
 
 ## Run locally
 
