@@ -1,5 +1,5 @@
-const CACHE = "vanita-stock-v16";
-const ASSETS = ["./", "index.html", "styles.css", "app.js", "cloud.js", "icon.svg", "manifest.webmanifest"];
+const CACHE = "vanita-stock-v17";
+const ASSETS = ["./", "index.html", "styles.css", "app.js", "cloud.js", "discount-reporting.js", "icon.svg", "manifest.webmanifest"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))));
 self.addEventListener("fetch", event => {
