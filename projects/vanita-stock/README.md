@@ -2,6 +2,12 @@
 
 > **Project scope:** This folder contains the dedicated stock, document, product, service and sales application for **Vanita Beauty and Wellness Spa**. It is maintained separately from the BDB OS application and is stored in the `bdb-os` repository only for central version control.
 
+## Live application
+
+[**Open the Vanita Stock application →**](https://vanita-stock.vercel.app)
+
+The source code is stored in GitHub, while the working application is hosted by Vercel.
+
 Vanita Stock is a mobile-friendly beauty-product inventory and supplier-document manager tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
 
 1. Take a photo of or upload a supplier invoice or credit note.
