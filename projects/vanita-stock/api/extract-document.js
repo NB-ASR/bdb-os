@@ -10,6 +10,12 @@ const documentSchema = {
     document_date: { type: "string" },
     confidence: { type: "number", minimum: 0, maximum: 1 },
     notes: { type: "array", items: { type: "string" } },
+    subtotal_before_discount: { type: ["number", "null"] },
+    discount_amount: { type: ["number", "null"] },
+    net_after_discount: { type: ["number", "null"] },
+    vat_rate: { type: ["number", "null"] },
+    vat_amount: { type: ["number", "null"] },
+    gross_amount: { type: ["number", "null"] },
     items: {
       type: "array",
       items: {
@@ -27,7 +33,7 @@ const documentSchema = {
       }
     }
   },
-  required: ["document_type", "supplier", "document_number", "document_date", "confidence", "notes", "items"]
+  required: ["document_type", "supplier", "document_number", "document_date", "confidence", "notes", "subtotal_before_discount", "discount_amount", "net_after_discount", "vat_rate", "vat_amount", "gross_amount", "items"]
 };
 
 function send(response, status, body) {
@@ -84,7 +90,17 @@ Follow each row horizontally and keep values in their printed columns:
 - rrp: RRP, Retail or Recommended Retail Price for that same row.
 - barcode: the full barcode digits for that same row. Preserve leading zeroes and return it as a string.
 
-Where a table has columns such as "Qty | Free | Price | Net | VAT | RRP | Barcode", treat each as a separate column. Printed figures take precedence over handwriting. Ignore the Net, VAT, subtotal and gross-total figures for calculation purposes: the application calculates all totals only from the extracted product rows. Do not use or return any invoice-level monetary totals.
+Where a table has columns such as "Qty | Free | Price | Net | VAT | RRP | Barcode", treat each as a separate column. Printed figures take precedence over handwriting.
+
+Also read the printed invoice-level totals separately from the product rows:
+- subtotal_before_discount: the merchandise subtotal before any supplier discount. On documents labelled Net, Discount, Subtotal, VAT and Gross, use the first Net figure before Discount.
+- discount_amount: the supplier discount as a positive monetary amount. Do not return a percentage here.
+- net_after_discount: the taxable net/subtotal after discount and before VAT.
+- vat_rate: the printed VAT percentage when visible.
+- vat_amount: the printed VAT amount after discount.
+- gross_amount: the final amount payable including VAT after discount.
+
+Do not force the printed invoice totals to equal the sum of extracted rows. Keep the row-level unit costs exactly as printed because they represent the catalogue stock cost before supplier-level discount. The application stores both this undiscounted stock value and the discounted amount actually paid for reporting. If a printed total is absent, return null rather than estimating it.
 
 Never invent missing values: use empty strings or null. Quantities and monetary values must be numbers. Return dates as YYYY-MM-DD when visible, otherwise an empty string. Classify the document as Invoice, Credit Note, or Other. Confidence must reflect the reliability of the entire extraction. The result will be reviewed by a human before inventory changes.` },
             fileContent
