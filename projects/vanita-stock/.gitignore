@@ -1,0 +1,6 @@
+.vercel
+.env*
+.vanita-stock-server.json
+tmp/
+
+.vercel

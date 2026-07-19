@@ -1,0 +1,8 @@
+.agents
+.git
+.vanita-stock-server.json
+tmp
+supabase
+*.cmd
+*.md
+*.ps1
