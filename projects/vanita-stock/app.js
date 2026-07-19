@@ -236,7 +236,773 @@ function renderServices() {
   const services = state.services.filter(service => {
     const matchesQuery = !query || [service.name, service.code, service.category, service.description, ...(service.staff || [])].some(value => String(value || "").toLowerCase().includes(query));
     const matchesCategory = serviceCategoryFilter === "all" || service.category === serviceCategoryFilter;
-    const matchesStatus = serviceStatusFilter === "all" || (ser…13181 tokens truncated…nt, discountTotal:lineDiscountTotal + basketDiscount, total };
+    const matchesStatus = serviceStatusFilter === "all" || (serviceStatusFilter === "active" ? service.active !== false : service.active === false);
+    return matchesQuery && matchesCategory && matchesStatus;
+  });
+  $("#servicesResultCount").textContent = `${services.length} service${services.length === 1 ? "" : "s"}`;
+  table.innerHTML = services.map(service => `
+    <tr>
+      <td><div class="product-cell"><span class="product-thumb service-thumb">✦</span><span><strong>${escapeHtml(service.name)}</strong><small>${escapeHtml(service.description || "No description")}</small></span></div></td>
+      <td>${escapeHtml(service.code || "—")}</td>
+      <td>${escapeHtml(service.category || "Other")}</td>
+      <td>${Number(service.duration) || 0} min</td>
+      <td>${currency(Number(service.cost) || 0)}</td>
+      <td><strong>${currency(Number(service.price) || 0)}</strong></td>
+      <td>${Number(service.vatRate) || 0}%</td>
+      <td>${escapeHtml((service.staff || []).join(", ") || "Any staff")}</td>
+      <td><span class="status-badge ${service.active === false ? "out" : "good"}">${service.active === false ? "Inactive" : "Active"}</span></td>
+      <td><div class="row-actions"><button class="edit-product-button" data-edit-service="${service.id}">Edit</button><button class="archive-service-button" data-toggle-service="${service.id}">${service.active === false ? "Activate" : "Archive"}</button><button class="delete-product-button" data-delete-service="${service.id}">Delete</button></div></td>
+    </tr>`).join("");
+  $("#servicesEmpty").classList.toggle("show", services.length === 0);
+  table.parentElement.style.display = services.length ? "table" : "none";
+  renderServiceSummary();
+}
+
+function renderServiceSummary() {
+  const summary = $("#serviceSummary");
+  if (!summary) return;
+  const now = new Date();
+  const monthLines = state.sales
+    .filter(sale => {
+      const date = new Date(sale.date);
+      return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    })
+    .flatMap(sale => {
+      if (!Array.isArray(sale.lines)) return [];
+      const afterLineDiscounts = sale.lines.reduce((sum, line) => sum + saleLineAfterDiscount(line), 0);
+      const basketDiscount = Math.min(afterLineDiscounts, Math.max(0, Number(sale.basketDiscount) || 0));
+      return sale.lines.map(line => {
+        const net = saleLineAfterDiscount(line);
+        return { ...line, netRevenue:Math.max(0, net - (afterLineDiscounts ? basketDiscount * net / afterLineDiscounts : 0)) };
+      });
+    })
+    .filter(line => saleLineType(line) === "service");
+  const units = monthLines.reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+  const revenue = monthLines.reduce((sum, line) => sum + (Number(line.netRevenue) || 0), 0);
+  const popularity = monthLines.reduce((counts, line) => {
+    const key = line.serviceId || line.itemId || line.name || "Service";
+    if (!counts[key]) counts[key] = { name:line.name || "Service", qty:0 };
+    counts[key].qty += Number(line.qty) || 0;
+    return counts;
+  }, {});
+  const topService = Object.values(popularity).sort((a, b) => b.qty - a.qty)[0];
+  summary.innerHTML = [
+    ["✦", activeServices().length, "Active services"],
+    ["↗", units, "Services sold this month"],
+    ["€", currency(revenue), "Service revenue this month"],
+    ["★", topService ? `${topService.name} (${topService.qty})` : "No sales yet", "Most popular this month"]
+  ].map(([icon, value, label]) => `<div class="invoice-stat"><span>${icon}</span><div><strong>${escapeHtml(value)}</strong><small>${label}</small></div></div>`).join("");
+  const buildBreakdown = keyForLine => Object.values(monthLines.reduce((groups, line) => {
+    const key = keyForLine(line);
+    if (!groups[key]) groups[key] = { name:key, qty:0, revenue:0 };
+    groups[key].qty += Number(line.qty) || 0;
+    groups[key].revenue += Number(line.netRevenue) || 0;
+    return groups;
+  }, {})).sort((a, b) => b.revenue - a.revenue);
+  const renderBreakdown = (target, rows) => {
+    if (!target) return;
+    target.innerHTML = rows.length ? rows.map(row => `<div><span><strong>${escapeHtml(row.name)}</strong><small>${row.qty} service${row.qty === 1 ? "" : "s"}</small></span><b>${currency(row.revenue)}</b></div>`).join("") : `<p>No service sales recorded this month.</p>`;
+  };
+  renderBreakdown($("#serviceCategoryReport"), buildBreakdown(line => {
+    const service = state.services.find(item => item.id === (line.serviceId || line.itemId));
+    return service?.category || line.category || "Other";
+  }));
+  renderBreakdown($("#serviceStaffReport"), buildBreakdown(line => line.staff || "Unassigned"));
+}
+
+function renderInvoices() {
+  const invoices = state.invoices.filter(document => (document.type || "Invoice") === "Invoice");
+  const credits = state.invoices.filter(document => document.type === "Credit Note");
+  const netPurchases = invoices.reduce((sum, document) => sum + document.total, 0) - credits.reduce((sum, document) => sum + document.total, 0);
+  $("#invoiceSummary").innerHTML = [
+    ["▤", invoices.length, "Supplier invoices"], ["↩", credits.length, "Credit notes applied"], ["€", currency(netPurchases), "Net purchases"]
+  ].map(([icon, value, label]) => `<div class="invoice-stat"><span>${icon}</span><div><strong>${value}</strong><small>${label}</small></div></div>`).join("");
+  $("#invoiceTable").innerHTML = state.invoices.map(document => {
+    const type = document.type || "Invoice";
+    const signedTotal = type === "Credit Note" ? -document.total : document.total;
+    const fileActions = document.file?.path
+      ? `<button class="document-action-button" data-preview-document="${escapeHtml(document.id)}">Preview</button><button class="document-action-button" data-download-document="${escapeHtml(document.id)}">Download</button>`
+      : `<span class="file-unavailable">Original unavailable</span>`;
+    const purpose = document.stockCategory === "supply" ? "Supplies" : "Resale";
+    return `<tr><td><strong>${escapeHtml(document.id)}</strong></td><td><span class="document-type ${type === "Credit Note" ? "credit" : "invoice"}">${escapeHtml(type)}</span></td><td><span class="purpose-badge ${document.stockCategory === "supply" ? "supply" : "resale"}">${purpose}</span></td><td>${escapeHtml(document.supplier)}</td><td>${new Date(document.date).toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" })}</td><td>${document.items}</td><td>${currency(signedTotal)}</td><td><span class="status-badge ${document.stockApplied === false ? "neutral" : type === "Credit Note" ? "credit" : "good"}">${document.status}</span></td><td><div class="document-actions">${fileActions}<button class="delete-record-button" data-delete-document="${escapeHtml(document.id)}">Delete</button></div></td></tr>`;
+  }).join("");
+}
+
+function activityMarkup(activity) {
+  const types = { sale: ["↗", "#e8f3ee", "#2b7e62"], invoice: ["▤", "#edf0f8", "#657ab0"], credit: ["↩", "#f8eaf0", "#9d5c76"], alert: ["!", "#fff0e2", "#b47527"] };
+  const [icon, bg, color] = types[activity.type] || types.invoice;
+  return `<div class="activity-item"><span class="activity-icon" style="--bg:${bg};--color:${color}">${icon}</span><div><strong>${escapeHtml(activity.title)}</strong><p>${escapeHtml(activity.detail)}</p></div><span class="activity-time">${relativeTime(activity.date)}</span></div>`;
+}
+
+function renderActivities() { $("#activityList").innerHTML = state.activities.slice(0, 5).map(activityMarkup).join(""); }
+function renderSales() {
+  $("#salesList").innerHTML = state.sales.length ? state.sales.map(s => {
+    const counts = saleItemCounts(s);
+    const parts = [];
+    if (counts.product) parts.push(`${counts.product} product${counts.product === 1 ? "" : "s"}`);
+    if (counts.service) parts.push(`${counts.service} service${counts.service === 1 ? "" : "s"}`);
+    if (!parts.length) parts.push("No item breakdown");
+    const staff = [...new Set((s.lines || []).filter(line => saleLineType(line) === "service" && line.staff).map(line => line.staff))];
+    const discount = Math.max(0, Number(s.discountTotal) || 0);
+    const detail = `${parts.join(" · ")}${staff.length ? ` · Staff: ${staff.join(", ")}` : ""}${discount ? ` · Discount ${currency(discount)}` : ""}`;
+    return `<div class="activity-item">
+      <span class="activity-icon" style="--bg:#e8f3ee;--color:#2b7e62">↗</span>
+      <div><strong>Sale ${escapeHtml(s.id)} · ${currency(s.total)}</strong><p>${escapeHtml(detail)}</p></div>
+      <span class="activity-time">${relativeTime(s.date)}</span>
+      <div class="row-actions"><button class="document-action-button" data-edit-sale="${escapeHtml(s.id)}">Open / edit</button><button class="delete-record-button" data-delete-sale="${escapeHtml(s.id)}">Delete</button></div>
+    </div>`;
+  }).join("") : `<div class="empty-mini">No sales recorded yet.</div>`;
+}
+
+async function openStoredDocument(documentId, download = false) {
+  const record = state.invoices.find(item => item.id === documentId);
+  if (!record?.file?.path) return showToast("Original unavailable", "This older record was created before original-file storage was enabled.");
+  const previewWindow = download ? null : window.open("", "_blank");
+  try {
+    const url = await window.VanitaCloud.getDocumentUrl(record.file.path, download ? record.file.name : null);
+    if (download) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = record.file.name || "document";
+      document.body.append(link);
+      link.click();
+      link.remove();
+    } else if (previewWindow) {
+      previewWindow.location = url;
+    } else {
+      window.open(url, "_blank");
+    }
+  } catch (error) {
+    if (previewWindow) previewWindow.close();
+    showToast("File could not be opened", error.message || "Please try again.");
+  }
+}
+
+function deleteSale(saleId) {
+  const sale = state.sales.find(item => item.id === saleId);
+  if (!sale) return;
+  const hasBreakdown = Array.isArray(sale.lines) && sale.lines.length > 0;
+  const productLines = hasBreakdown ? sale.lines.filter(line => saleLineType(line) === "product") : [];
+  const message = hasBreakdown
+    ? `Delete sale ${sale.id}?\n\nThe sale record will be removed. Product quantities will be restored to Inventory; services do not affect stock.`
+    : `Delete sale ${sale.id}?\n\nThis older sale has no saved item breakdown, so its stock cannot be restored. Only the sale record will be removed.`;
+  if (!window.confirm(message)) return;
+  if (hasBreakdown) {
+    productLines.forEach(line => {
+      const product = state.products.find(item => item.id === (line.productId || line.itemId));
+      if (product) {
+        product.stock += Number(line.qty) || 0;
+        product.inInventory = true;
+      }
+    });
+  }
+  state.sales = state.sales.filter(item => item.id !== saleId);
+  state.activities.unshift({ type:"alert", title:`Sale ${sale.id} deleted`, detail:hasBreakdown ? `${productLines.reduce((sum, line) => sum + (Number(line.qty) || 0), 0)} product units restored; service lines removed` : "Legacy record removed without stock adjustment", date:new Date().toISOString() });
+  saveState(); renderAll();
+  showToast("Sale deleted", hasBreakdown ? "Product quantities were restored; service lines were removed without changing stock." : "The legacy sale record was removed.");
+}
+
+async function deleteDocumentRecord(documentId) {
+  const record = state.invoices.find(item => item.id === documentId);
+  if (!record) return;
+  const canReverse = record.stockApplied !== false && Array.isArray(record.lines) && record.lines.length > 0;
+  const message = canReverse
+    ? `Delete ${record.type || "document"} ${record.id}?\n\nThe document record and original file will be removed, and its stock movement will be reversed.`
+    : record.stockApplied === false
+      ? `Delete ${record.type || "document"} ${record.id}?\n\nThis document was uploaded without changing stock, so only its record and original file will be removed.`
+      : `Delete ${record.type || "document"} ${record.id}?\n\nThis older record has no saved product breakdown, so stock cannot be reversed. Only the document record will be removed.`;
+  if (!window.confirm(message)) return;
+  try {
+    if (record.file?.path) await window.VanitaCloud.deleteDocumentFile(record.file.path);
+  } catch (error) {
+    return showToast("Document not deleted", error.message || "The stored file could not be removed.");
+  }
+  if (canReverse) {
+    record.lines.forEach(line => {
+      const normalizedSku = String(line.sku || "").trim().toLowerCase();
+      const normalizedName = String(line.name || "").trim().toLowerCase();
+      const product = state.products.find(item =>
+        (normalizedSku && String(item.sku || "").trim().toLowerCase() === normalizedSku) ||
+        String(item.name || "").trim().toLowerCase() === normalizedName
+      );
+      if (!product) return;
+      if (Number(record.direction) === -1) product.stock += Number(line.qty) || 0;
+      else product.stock = Math.max(0, product.stock - (Number(line.qty) || 0));
+      product.inInventory = true;
+    });
+  }
+  state.invoices = state.invoices.filter(item => item.id !== documentId);
+  state.activities.unshift({ type:"alert", title:`${record.type || "Document"} ${record.id} deleted`, detail:canReverse ? "Stock movement reversed" : "Legacy record removed without stock adjustment", date:new Date().toISOString() });
+  saveState(); renderAll();
+  showToast("Document deleted", canReverse ? "Its stock movement was reversed." : record.stockApplied === false ? "No stock quantities were changed." : "The legacy document record was removed.");
+}
+
+function relativeTime(date) {
+  const diff = Date.now() - new Date(date).getTime();
+  if (diff < 60000) return "Just now";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return new Date(date).toLocaleDateString("en-GB", { day:"numeric", month:"short" });
+}
+
+function renderChart() {
+  const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const stockIn = [58,92,46,110,76,128,65], stockOut = [36,55,68,52,87,73,42];
+  $("#stockChart").innerHTML = days.map((day, i) => `<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:${stockIn[i]}px"></i><i class="bar out" style="height:${stockOut[i]}px"></i></div><span>${day}</span></div>`).join("");
+}
+
+function switchView(view) {
+  activeView = view;
+  $$(".view").forEach(el => el.classList.toggle("active", el.id === `${view}View`));
+  $$('[data-view]').forEach(el => el.classList.toggle("active", el.dataset.view === view));
+  $(".mobile-catalog")?.classList.toggle("active", view === "products" || view === "services");
+  $("#sidebar").classList.remove("open");
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+
+function openModal(templateId) {
+  const template = $(templateId);
+  $("#modal").innerHTML = "";
+  $("#modal").append(template.content.cloneNode(true));
+  $("#modalBackdrop").hidden = false;
+  document.body.style.overflow = "hidden";
+  $$('[data-close-modal]', $("#modal")).forEach(button => button.addEventListener("click", closeModal));
+}
+
+function closeModal() {
+  stopCamera();
+  $("#modalBackdrop").hidden = true;
+  document.body.style.overflow = "";
+  saleBasket = [];
+  saleBasketDiscount = 0;
+  editingSaleId = null;
+  scannerPurpose = "sale";
+  pendingDocumentFile = null;
+}
+
+function setupInvoiceModal() {
+  openModal("#scanInvoiceTemplate");
+  const fileInput = $("#invoiceFile"), zone = $("#uploadZone");
+  $("#chooseInvoice").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => fileInput.files[0] && processInvoice(fileInput.files[0]));
+  ["dragenter","dragover"].forEach(event => zone.addEventListener(event, e => { e.preventDefault(); zone.classList.add("dragover"); }));
+  ["dragleave","drop"].forEach(event => zone.addEventListener(event, e => { e.preventDefault(); zone.classList.remove("dragover"); }));
+  zone.addEventListener("drop", e => e.dataTransfer.files[0] && processInvoice(e.dataTransfer.files[0]));
+}
+
+async function processInvoice(file) {
+  if (file.size > 3 * 1024 * 1024) return showToast("File is too large", "Choose an image or PDF under 3 MB.");
+  if (!file.type.match(/^image\//) && file.type !== "application/pdf") return showToast("Unsupported document", "Choose a JPG, PNG or PDF invoice.");
+  $("#uploadZone").hidden = true;
+  $("#processingState").hidden = false;
+  try {
+    const token = await window.VanitaCloud?.getAccessToken();
+    if (!token) throw new Error("Your staff session has expired. Sign in again and retry.");
+    const fileData = await readFileAsDataUrl(file);
+    const response = await fetch("/api/extract-document", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ fileName:file.name, mimeType:file.type, fileData })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "The document could not be extracted.");
+    showInvoiceReview(file, result.document);
+  } catch (error) {
+    $("#processingState").hidden = true;
+    $("#uploadZone").hidden = false;
+    showToast("Extraction failed", error.message || "Try a clearer image or PDF.");
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("The selected file could not be read."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function showInvoiceReview(file, extracted = {}) {
+  pendingDocumentFile = file;
+  const fileName = file.name || "Uploaded document";
+  const baseName = fileName.replace(/\.[^.]+$/, "");
+  const suggestedId = baseName.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+  const looksLikeCredit = extracted.document_type === "Credit Note" || /credit|credit-note|credit_note|\bcn\b/i.test(baseName);
+  $("#processingState").hidden = true;
+  $("#reviewState").hidden = false;
+  $("#importInvoice").hidden = false;
+  $("#uploadInvoice").hidden = false;
+  const steps = $$(".stepper div"); steps[0].classList.remove("active"); steps[1].classList.add("active");
+  const confidence = Math.round(Math.max(0, Math.min(1, Number(extracted.confidence) || 0)) * 100);
+  $("#reviewFileName").textContent = `${fileName} was extracted automatically. Review the highlighted fields and edit only if needed.`;
+  $("#extractionConfidence").textContent = confidence ? `${confidence}% confidence` : "AI extraction";
+  $("#reviewSupplier").value = extracted.supplier || "";
+  $("#reviewDocumentType").value = looksLikeCredit ? "Credit Note" : "Invoice";
+  $("#reviewStockCategory").value = "resale";
+  $("#reviewInvoiceNumber").value = extracted.document_number || suggestedId || `DOC-${Date.now()}`;
+  $("#reviewDocumentDate").value = /^\d{4}-\d{2}-\d{2}$/.test(extracted.document_date || "") ? extracted.document_date : new Date().toISOString().slice(0, 10);
+  const extractedRows = Array.isArray(extracted.items) ? extracted.items.map(item => ({
+    name:item.name || item.description || "",
+    sku:item.sku || item.stock_code || "",
+    barcode:item.barcode || "",
+    qty:Number(item.quantity) || 1,
+    cost:Number(item.unit_cost) || 0,
+    rrp:Number(item.rrp) || 0
+  })).filter(item => item.name || item.sku) : [];
+  const rows = extractedRows.length ? extractedRows : [{ name:"", sku:"", barcode:"", qty:1, cost:0, rrp:0 }];
+  $("#reviewItems").innerHTML = rows.map(reviewLineMarkup).join("");
+  $("#reviewTotals").hidden = false;
+  $("#reviewVatRate").value = "18.00";
+  $("#addReviewLine").addEventListener("click", () => { $("#reviewItems").insertAdjacentHTML("beforeend", reviewLineMarkup({name:"",sku:"",barcode:"",qty:1,cost:0,rrp:0})); updateReviewTotals(); });
+  $("#reviewItems").addEventListener("input", updateReviewTotals);
+  $("#reviewItems").addEventListener("click", event => { if (event.target.closest(".remove-line")) { event.target.closest("tr").remove(); updateReviewTotals(); } });
+  $("#reviewVatRate").addEventListener("input", updateReviewTotals);
+  $("#reviewDocumentType").addEventListener("change", updateDocumentImportAction);
+  $("#importInvoice").addEventListener("click", () => saveReviewedDocument(true));
+  $("#uploadInvoice").addEventListener("click", () => saveReviewedDocument(false));
+  updateDocumentImportAction();
+  updateReviewTotals();
+  showToast("Document ready to review", `${fileName} was processed successfully.`);
+}
+
+function getReviewTotals() {
+  const rows = $$("#reviewItems tr").map(row => ({
+    name:$(".line-name", row)?.value.trim() || "",
+    quantity:Math.max(0, Number($(".line-qty", row)?.value) || 0),
+    unitCost:Math.max(0, Number($(".line-cost", row)?.value) || 0),
+    rrp:Math.max(0, Number($(".line-rrp", row)?.value) || 0)
+  })).filter(line => line.name && line.quantity > 0);
+  const totalQuantity = rows.reduce((sum, line) => sum + line.quantity, 0);
+  const netAmount = rows.reduce((sum, line) => sum + line.quantity * line.unitCost, 0);
+  const totalRrp = rows.reduce((sum, line) => sum + line.quantity * line.rrp, 0);
+  const vatRate = Math.max(0, Number($("#reviewVatRate")?.value) || 0);
+  const vat = netAmount * vatRate / 100;
+  return { totalQuantity, netAmount, totalRrp, vatRate, vat, grossAmount:netAmount + vat };
+}
+
+function updateReviewTotals() {
+  if (!$("#reviewTotals")) return;
+  const { totalQuantity, netAmount, totalRrp, vat, grossAmount } = getReviewTotals();
+  $("#reviewTotalQuantity").textContent = totalQuantity.toLocaleString();
+  $("#reviewNetAmount").textContent = currency(netAmount);
+  $("#reviewVatAmount").textContent = currency(vat);
+  $("#reviewGrossAmount").textContent = currency(grossAmount);
+  $("#reviewTotalRrp").textContent = currency(totalRrp);
+}
+
+function updateDocumentImportAction() {
+  const isCredit = $("#reviewDocumentType")?.value === "Credit Note";
+  $("#importInvoice").textContent = isCredit ? "Apply credit note →" : "Add to stock →";
+}
+
+function reviewLineMarkup(item) {
+  return `<tr><td><input class="line-name" value="${escapeHtml(item.name)}" placeholder="Product name"></td><td><input class="line-sku" value="${escapeHtml(item.sku)}" placeholder="SKU"></td><td><input class="line-qty" type="number" min="1" value="${item.qty}"></td><td><input class="line-cost" type="number" min="0" step=".01" value="${item.cost}"></td><td><input class="line-rrp" type="number" min="0" step=".01" value="${item.rrp || 0}"></td><td><input class="line-barcode" value="${escapeHtml(item.barcode || "")}" placeholder="Barcode"></td><td><button class="remove-line" aria-label="Remove line">×</button></td></tr>`;
+}
+
+function getReviewedDocumentData() {
+  const supplier = $("#reviewSupplier").value.trim() || "Unknown supplier";
+  const documentType = $("#reviewDocumentType").value;
+  const stockCategory = $("#reviewStockCategory").value === "supply" ? "supply" : "resale";
+  const documentId = $("#reviewInvoiceNumber").value.trim() || makeId(documentType === "Credit Note" ? "CN" : "INV");
+  const documentDate = $("#reviewDocumentDate").value || new Date().toISOString().slice(0, 10);
+  const direction = documentType === "Credit Note" ? -1 : 1;
+  const lines = $$("#reviewItems tr").map(row => ({ name:$(".line-name", row).value.trim(), sku:$(".line-sku", row).value.trim(), barcode:$(".line-barcode", row).value.trim(), qty:Number($(".line-qty", row).value), cost:Number($(".line-cost", row).value), rrp:Number($(".line-rrp", row).value) })).filter(line => line.name && line.qty > 0);
+  return { supplier, documentType, stockCategory, documentId, documentDate, direction, lines };
+}
+
+async function saveReviewedDocument(applyStock) {
+  const { supplier, documentType, stockCategory, documentId, documentDate, direction, lines } = getReviewedDocumentData();
+  if (state.invoices.some(document => document.id.toLowerCase() === documentId.toLowerCase())) return showToast("Document already imported", `${documentId} already exists. Check the document number before continuing.`);
+  if (!lines.length) return showToast("Nothing to import", "Add at least one valid document line.");
+  const importButton = $("#importInvoice");
+  const uploadButton = $("#uploadInvoice");
+  importButton.disabled = true;
+  uploadButton.disabled = true;
+  const activeButton = applyStock ? importButton : uploadButton;
+  activeButton.textContent = "Saving original…";
+  let file = null;
+  try {
+    file = await window.VanitaCloud.uploadDocument(pendingDocumentFile, documentId);
+  } catch (error) {
+    importButton.disabled = false;
+    uploadButton.disabled = false;
+    uploadButton.textContent = "Upload";
+    updateDocumentImportAction();
+    return showToast("Document not saved", error.message || "The original file could not be stored.");
+  }
+  let changedUnits = 0;
+  let unmatchedUnits = 0;
+  if (applyStock) lines.forEach((line, index) => {
+    const normalizedSku = line.sku.trim().toLowerCase();
+    const normalizedName = line.name.trim().toLowerCase();
+    let product = state.products.find(p =>
+      (normalizedSku && String(p.sku || "").trim().toLowerCase() === normalizedSku) ||
+      String(p.name || "").trim().toLowerCase() === normalizedName
+    );
+    if (product) {
+      product.classification = stockCategory;
+      if (direction === 1) {
+        product.inInventory = true;
+        product.stock += line.qty;
+        changedUnits += line.qty;
+      } else {
+        const returned = Math.min(product.stock, line.qty);
+        product.stock -= returned;
+        changedUnits += returned;
+        unmatchedUnits += line.qty - returned;
+      }
+      if (line.cost > 0 || !(Number(product.unitCost) > 0)) product.unitCost = line.cost;
+      if (line.rrp > 0) product.salePrice = line.rrp;
+      if (line.barcode) product.barcode = line.barcode;
+      product.supplier = supplier;
+    } else if (direction === 1) {
+      state.products.push({ id:`${makeId("p")}-${index}`, name:line.name, sku:line.sku || `SKU-${String(Date.now()).slice(-6)}-${index + 1}`, brand:"", barcode:line.barcode, category:"Other", classification:stockCategory, stock:line.qty, inInventory:true, reorderAt:2, target:Math.max(6,line.qty * 2), unitCost:line.cost, salePrice:stockCategory === "resale" ? (line.rrp > 0 ? line.rrp : Number((line.cost * 1.65).toFixed(2))) : line.rrp, supplier, icon:"✦", tint:"#edf1ef" });
+      changedUnits += line.qty;
+    } else {
+      unmatchedUnits += line.qty;
+    }
+  });
+  const { netAmount, vat, totalRrp, vatRate, grossAmount:total } = getReviewTotals();
+  const status = applyStock ? (documentType === "Credit Note" ? "Applied" : "Imported") : "Uploaded only";
+  state.invoices.unshift({ id:documentId, type:documentType, stockCategory, stockApplied:applyStock, supplier, date:`${documentDate}T12:00:00`, items:lines.reduce((sum, line) => sum + line.qty, 0), lines, direction:applyStock ? direction : 0, netAmount, vatRate, vat, totalRrp, total, file, status });
+  const activityVerb = applyStock ? (documentType === "Credit Note" ? "applied" : "imported") : "uploaded";
+  const activityDetail = applyStock ? `${supplier} · ${changedUnits} units ${direction === 1 ? "added" : "returned"}` : `${supplier} · saved without changing stock`;
+  state.activities.unshift({ type:documentType === "Credit Note" ? "credit" : "invoice", title:`${documentType} ${documentId} ${activityVerb}`, detail:activityDetail, date:new Date().toISOString() });
+  saveState(); renderAll(); closeModal();
+  if (!applyStock) {
+    showToast("Document uploaded", `${documentId} was added to Documents without changing stock.`);
+    switchView("invoices");
+    return;
+  }
+  const note = unmatchedUnits ? ` ${unmatchedUnits} unmatched units were not deducted.` : "";
+  showToast("Stock updated", `${changedUnits} units ${direction === 1 ? "added" : "returned"} from ${documentId}.${note}`);
+  switchView("invoices");
+}
+
+function setupProductModal(productId = null) {
+  openModal("#addProductTemplate");
+  scannerPurpose = "product";
+  $("#productForm").dataset.productId = productId || "";
+  const product = productId ? state.products.find(item => item.id === productId) : null;
+  if (product) {
+    $("#modalTitle").textContent = "Edit product";
+    $("#saveProductButton").textContent = "Save changes";
+    const form = $("#productForm");
+    ["name", "sku", "brand", "barcode", "category", "classification", "supplier", "stock", "reorderAt", "unitCost", "salePrice"].forEach(field => {
+      if (form.elements[field]) form.elements[field].value = product[field] ?? "";
+    });
+  }
+  $("#productBarcodeScan").addEventListener("click", startCameraScanner);
+  $("#stopCamera").addEventListener("click", stopCamera);
+  $("#productForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const form = Object.fromEntries(new FormData(event.target));
+    const values = { name:form.name.trim(), sku:form.sku.trim(), brand:form.brand.trim(), barcode:form.barcode.trim(), category:form.category, classification:form.classification === "supply" ? "supply" : "resale", supplier:form.supplier.trim(), stock:Number(form.stock), reorderAt:Number(form.reorderAt), target:Math.max(Number(form.stock), Number(form.reorderAt)*3), unitCost:Number(form.unitCost), salePrice:Number(form.salePrice) };
+    const duplicateBarcode = values.barcode && state.products.find(item => item.id !== productId && barcodesMatch(item.barcode, values.barcode));
+    if (duplicateBarcode) return showToast("Barcode already assigned", `${values.barcode} belongs to ${duplicateBarcode.name}.`);
+    if (product) {
+      Object.assign(product, values);
+      if (values.stock > 0) product.inInventory = true;
+      state.activities.unshift({ type:"invoice", title:`${values.name} updated`, detail:"Product catalogue details edited", date:new Date().toISOString() });
+    } else {
+      state.products.push({ id:makeId("p"), ...values, inInventory:true, icon:"📦", tint:"#edf1ef" });
+      state.activities.unshift({ type:"invoice", title:`${values.name} added`, detail:`Opening stock: ${values.stock} units`, date:new Date().toISOString() });
+    }
+    saveState(); renderAll(); closeModal(); showToast(product ? "Product updated" : "Product added", product ? `${values.name}'s details have been saved.` : `${values.name} is now in inventory.`);
+  });
+}
+
+function setupServiceModal(serviceId = null) {
+  openModal("#addServiceTemplate");
+  const service = serviceId ? state.services.find(item => item.id === serviceId) : null;
+  const form = $("#serviceForm");
+  if (service) {
+    $("#modalTitle").textContent = "Edit service";
+    $("#saveServiceButton").textContent = "Save changes";
+    ["name", "code", "category", "duration", "price", "cost", "vatRate", "description"].forEach(field => {
+      if (form.elements[field]) form.elements[field].value = service[field] ?? "";
+    });
+    form.elements.staff.value = (service.staff || []).join(", ");
+    form.elements.active.checked = service.active !== false;
+  }
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.target));
+    const code = values.code.trim();
+    const duplicate = state.services.find(item => item.id !== serviceId && String(item.code || "").trim().toLowerCase() === code.toLowerCase());
+    if (duplicate) return showToast("Service code already used", `${duplicate.name} already uses ${code}.`);
+    const details = {
+      name:values.name.trim(),
+      code,
+      category:values.category,
+      duration:Math.max(0, Number(values.duration) || 0),
+      price:Math.max(0, Number(values.price) || 0),
+      cost:Math.max(0, Number(values.cost) || 0),
+      vatRate:Math.max(0, Number(values.vatRate) || 0),
+      staff:String(values.staff || "").split(",").map(name => name.trim()).filter(Boolean),
+      description:String(values.description || "").trim(),
+      active:values.active === "on"
+    };
+    if (service) {
+      Object.assign(service, details);
+      state.activities.unshift({ type:"invoice", title:`${details.name} updated`, detail:"Service catalogue details edited", date:new Date().toISOString() });
+    } else {
+      state.services.push({ id:makeId("svc"), ...details });
+      state.activities.unshift({ type:"invoice", title:`${details.name} added`, detail:`${details.duration} minutes · ${currency(details.price)}`, date:new Date().toISOString() });
+    }
+    saveState();
+    renderAll();
+    closeModal();
+    showToast(service ? "Service updated" : "Service added", `${details.name} is ${details.active ? "available for sale" : "saved as inactive"}.`);
+  });
+}
+
+function toggleService(serviceId) {
+  const service = state.services.find(item => item.id === serviceId);
+  if (!service) return;
+  service.active = service.active === false;
+  saleBasket = saleBasket.filter(line => !(line.itemType === "service" && line.itemId === serviceId && service.active === false));
+  state.activities.unshift({ type:"invoice", title:`${service.name} ${service.active ? "activated" : "archived"}`, detail:service.active ? "Available for new sales" : "Hidden from new sales; history retained", date:new Date().toISOString() });
+  saveState();
+  renderAll();
+  showToast(service.active ? "Service activated" : "Service archived", service.active ? `${service.name} can now be added to sales.` : "Historic sales remain unchanged.");
+}
+
+function deleteService(serviceId) {
+  const service = state.services.find(item => item.id === serviceId);
+  if (!service || !window.confirm(`Permanently delete ${service.name}?\n\nIt will be removed from the Services catalogue. Historic sales will retain their saved service name and price.`)) return;
+  state.services = state.services.filter(item => item.id !== serviceId);
+  saleBasket = saleBasket.filter(line => !(line.itemType === "service" && line.itemId === serviceId));
+  state.activities.unshift({ type:"alert", title:`${service.name} deleted`, detail:"Removed from Services; historic sales retained", date:new Date().toISOString() });
+  saveState();
+  renderAll();
+  showToast("Service deleted", "Historic sales were not changed.");
+}
+
+function openCatalogMenu() {
+  openModal("#catalogMenuTemplate");
+  $("#modal").addEventListener("click", event => {
+    const choice = event.target.closest("[data-catalog-view]");
+    if (!choice) return;
+    closeModal();
+    switchView(choice.dataset.catalogView);
+  });
+}
+
+function removeFromInventory(productId) {
+  const product = state.products.find(item => item.id === productId);
+  if (!product || !window.confirm(`Remove ${product.name} from Inventory?\n\nIts stock quantity will be cleared, but the product and its details will remain in Products.`)) return;
+  product.stock = 0;
+  product.inInventory = false;
+  state.activities.unshift({ type:"alert", title:`${product.name} removed from inventory`, detail:"Product record retained in Products", date:new Date().toISOString() });
+  saveState();
+  renderAll();
+  showToast("Removed from Inventory", `${product.name} is still available in Products.`);
+}
+
+function deleteProduct(productId) {
+  const product = state.products.find(item => item.id === productId);
+  if (!product || !window.confirm(`Permanently delete ${product.name}?\n\nThis removes it from both Products and Inventory. This action cannot be undone.`)) return;
+  state.products = state.products.filter(item => item.id !== productId);
+  saleBasket = saleBasket.filter(item => !(item.itemType === "product" && item.itemId === productId));
+  state.activities.unshift({ type:"alert", title:`${product.name} deleted`, detail:"Removed from Products and Inventory", date:new Date().toISOString() });
+  saveState();
+  renderAll();
+  showToast("Product deleted", `${product.name} was removed from Products and Inventory.`);
+}
+
+function setupSaleModal(saleId = null) {
+  editingSaleId = saleId;
+  const existingSale = saleId ? state.sales.find(item => item.id === saleId) : null;
+  if (saleId && (!existingSale || !Array.isArray(existingSale.lines) || !existingSale.lines.length)) return showToast("Sale details unavailable", "This older sale has no saved basket and cannot be edited safely.");
+  saleBasket = existingSale ? existingSale.lines.map(line => ({
+    itemType:saleLineType(line),
+    itemId:line.itemId || line.productId || line.serviceId,
+    qty:Number(line.qty) || 0,
+    staff:line.staff || "",
+    unitPrice:Number(line.unitPrice) || 0,
+    lineDiscount:Math.max(0, Number(line.lineDiscount) || 0),
+    name:line.name || "",
+    duration:Number(line.duration) || 0,
+    vatRate:Number(line.vatRate) || 0,
+    category:line.category || "Other"
+  })) : [];
+  saleBasketDiscount = existingSale ? Math.max(0, Number(existingSale.basketDiscount) || 0) : 0;
+  saleItemFilter = "all";
+  scannerPurpose = "sale";
+  openModal("#recordSaleTemplate");
+  if (existingSale) {
+    $("#modalTitle").textContent = `Edit sale ${existingSale.id}`;
+    $("#completeSale").textContent = "Save sale changes";
+  }
+  const input = $("#saleProductSearch");
+  input.focus(); renderSaleSuggestions(""); renderSaleBasket();
+  input.addEventListener("input", () => renderSaleSuggestions(input.value));
+  input.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const typedValue = input.value.trim();
+      const product = findProductByBarcode(typedValue) || sellableProducts().find(p => p.stock > 0 && String(p.sku || "").toLowerCase() === typedValue.toLowerCase());
+      const service = activeServices().find(item => String(item.code || "").toLowerCase() === typedValue.toLowerCase());
+      const exactType = product ? "product" : service ? "service" : "";
+      const exactItem = product || service;
+      if (exactItem) { addBasketItem(exactType, exactItem.id); input.value=""; renderSaleSuggestions(""); }
+      else if (typedValue) showToast("Item not found", `No available product or service matches ${typedValue}.`);
+    }
+  });
+  $("#saleSuggestions").addEventListener("click", event => {
+    const item = event.target.closest("[data-sale-item-id]");
+    if (item) addBasketItem(item.dataset.saleItemType, item.dataset.saleItemId);
+  });
+  $("#saleBasket").addEventListener("click", event => {
+    const button = event.target.closest("[data-qty]");
+    if (button) changeBasketQty(button.dataset.itemType, button.dataset.itemId, Number(button.dataset.qty));
+  });
+  $("#saleBasket").addEventListener("change", event => {
+    const select = event.target.closest("[data-service-staff]");
+    if (select) setBasketStaff(select.dataset.serviceStaff, select.value);
+  });
+  $$("[data-sale-filter]", $("#modal")).forEach(button => button.addEventListener("click", () => {
+    saleItemFilter = button.dataset.saleFilter;
+    $$("[data-sale-filter]", $("#modal")).forEach(item => item.classList.toggle("active", item === button));
+    renderSaleSuggestions(input.value);
+  }));
+  $("#reviewCheckout").addEventListener("click", openSaleCheckout);
+  $("#backToBasket").addEventListener("click", showSaleBuildStep);
+  $("#checkoutLines").addEventListener("input", event => {
+    const input = event.target.closest("[data-line-discount]");
+    if (!input) return;
+    const line = saleBasket[Number(input.dataset.lineDiscount)];
+    if (line) line.lineDiscount = Math.max(0, Number(input.value) || 0);
+    renderCheckout();
+  });
+  $("#basketDiscount").addEventListener("input", event => { saleBasketDiscount = Math.max(0, Number(event.target.value) || 0); renderCheckout(); });
+  $("#completeSale").addEventListener("click", saveSale);
+  $("#cameraScan").addEventListener("click", startCameraScanner);
+  $("#stopCamera").addEventListener("click", stopCamera);
+}
+
+function renderSaleSuggestions(query) {
+  const q = query.trim().toLowerCase();
+  const products = saleItemFilter === "service" ? [] : sellableProducts()
+    .filter(product => product.stock > 0 && (!q || [product.name, product.sku, product.barcode].some(value => String(value || "").toLowerCase().includes(q))))
+    .slice(0, q ? 6 : 3)
+    .map(product => ({ itemType:"product", item:product }));
+  const services = saleItemFilter === "product" ? [] : activeServices()
+    .filter(service => !q || [service.name, service.code, service.category].some(value => String(value || "").toLowerCase().includes(q)))
+    .slice(0, q ? 6 : 3)
+    .map(service => ({ itemType:"service", item:service }));
+  const results = [...products, ...services].slice(0, q ? 8 : 6);
+  $("#saleSuggestions").innerHTML = results.length ? results.map(({ itemType, item }) => {
+    const isProduct = itemType === "product";
+    const detail = isProduct ? `${item.sku || "No SKU"} · ${item.stock} in stock` : `${item.code || "No code"} · ${item.duration || 0} min · ${currency(Number(item.price) || 0)}`;
+    return `<button class="sale-suggestion" data-sale-item-type="${itemType}" data-sale-item-id="${item.id}"><span class="product-thumb ${isProduct ? "" : "service-thumb"}" style="--thumb:${isProduct ? item.tint : "#f0edf8"}">${isProduct ? item.icon : "✦"}</span><span><strong>${escapeHtml(item.name)} <em class="item-type-badge ${itemType}">${isProduct ? "Product" : "Service"}</em></strong><small>${escapeHtml(detail)}</small></span><span>＋ Add</span></button>`;
+  }).join("") : `<div class="suggestion-empty">No available ${saleItemFilter === "all" ? "products or services" : `${saleItemFilter}s`} found.</div>`;
+}
+
+function addToBasket(productId) {
+  addBasketItem("product", productId);
+}
+
+function getSaleItem(itemType, itemId) {
+  return itemType === "service" ? state.services.find(item => item.id === itemId) : state.products.find(item => item.id === itemId);
+}
+
+function getBasketItem(line) {
+  return getSaleItem(line.itemType, line.itemId) || { id:line.itemId, name:line.name || "Unavailable catalogue item", salePrice:line.unitPrice, price:line.unitPrice, duration:line.duration, vatRate:line.vatRate, category:line.category, staff:[], stock:0, icon:"◇", tint:"#edf1ef" };
+}
+
+function originalSaleProductQty(productId) {
+  const sale = editingSaleId ? state.sales.find(item => item.id === editingSaleId) : null;
+  return (sale?.lines || []).filter(line => saleLineType(line) === "product" && (line.productId || line.itemId) === productId).reduce((sum, line) => sum + (Number(line.qty) || 0), 0);
+}
+
+function availableProductQty(productId) {
+  const product = state.products.find(item => item.id === productId);
+  return Math.max(0, Number(product?.stock) || 0) + originalSaleProductQty(productId);
+}
+
+function addBasketItem(itemType, itemId) {
+  const item = getSaleItem(itemType, itemId);
+  if (!item || (itemType === "product" && (!isResaleProduct(item) || availableProductQty(itemId) <= 0)) || (itemType === "service" && item.active === false)) return;
+  const line = saleBasket.find(entry => entry.itemType === itemType && entry.itemId === itemId);
+  if (line) {
+    if (itemType === "service" || line.qty < availableProductQty(itemId)) line.qty++;
+  } else {
+    saleBasket.push({ itemType, itemId, qty:1, staff:"", lineDiscount:0, unitPrice:Number(itemType === "product" ? item.salePrice : item.price) || 0, name:item.name || "", duration:Number(item.duration) || 0, vatRate:Number(item.vatRate) || 0, category:item.category || "Other" });
+  }
+  renderSaleBasket();
+}
+
+function changeBasketQty(itemType, itemId, delta) {
+  const line = saleBasket.find(entry => entry.itemType === itemType && entry.itemId === itemId);
+  const item = getSaleItem(itemType, itemId);
+  if (!line || !item) return;
+  const maximum = itemType === "product" ? availableProductQty(itemId) : 99;
+  line.qty = Math.min(maximum, line.qty + delta);
+  if (line.qty <= 0) saleBasket = saleBasket.filter(entry => entry !== line);
+  renderSaleBasket();
+}
+
+function setBasketStaff(serviceId, staff) {
+  const line = saleBasket.find(entry => entry.itemType === "service" && entry.itemId === serviceId);
+  if (line) line.staff = staff;
+}
+
+function renderSaleBasket() {
+  const basket = $("#saleBasket");
+  if (!basket) return;
+  basket.innerHTML = saleBasket.length ? saleBasket.map(line => {
+    const item = getBasketItem(line);
+    const isProduct = line.itemType === "product";
+    const unitPrice = Number(line.unitPrice) || Number(isProduct ? item.salePrice : item.price) || 0;
+    const detail = isProduct ? `${currency(unitPrice)} each · ${availableProductQty(item.id)} available` : `${currency(unitPrice)} · ${item.duration || line.duration || 0} minutes`;
+    const staffOptions = !isProduct && (item.staff || []).length
+      ? `<label class="basket-staff">Staff<select data-service-staff="${item.id}"><option value="">Not assigned</option>${item.staff.map(name => `<option value="${escapeHtml(name)}" ${line.staff === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>`
+      : !isProduct ? `<span class="basket-staff-empty">Staff not assigned</span>` : "";
+    return `<div class="basket-item ${line.itemType}"><div><strong>${escapeHtml(item.name)} <em class="item-type-badge ${line.itemType}">${isProduct ? "Product" : "Service"}</em></strong><small>${detail}</small>${staffOptions}</div><div class="qty-control"><button data-item-type="${line.itemType}" data-item-id="${item.id}" data-qty="-1">−</button><span>${line.qty}</span><button data-item-type="${line.itemType}" data-item-id="${item.id}" data-qty="1">＋</button></div><span class="basket-price">${currency(line.qty * unitPrice)}</span></div>`;
+  }).join("") : `<div class="basket-empty"><span>↗</span><p>Search for a product or service to begin</p></div>`;
+  const total = saleBasket.reduce((sum, line) => {
+    const item = getBasketItem(line);
+    return sum + line.qty * (Number(line.unitPrice) || Number(line.itemType === "product" ? item?.salePrice : item?.price) || 0);
+  }, 0);
+  $("#saleTotal").textContent = currency(total);
+  $("#reviewCheckout").disabled = !saleBasket.length;
+}
+
+function showSaleBuildStep() {
+  $("#saleBuildStep").hidden = false;
+  $("#saleBuildFooter").hidden = false;
+  $("#saleCheckoutStep").hidden = true;
+  $("#saleCheckoutFooter").hidden = true;
+}
+
+function openSaleCheckout() {
+  if (!saleBasket.length) return;
+  stopCamera();
+  $("#saleBuildStep").hidden = true;
+  $("#saleBuildFooter").hidden = true;
+  $("#saleCheckoutStep").hidden = false;
+  $("#saleCheckoutFooter").hidden = false;
+  $("#basketDiscount").value = saleBasketDiscount.toFixed(2);
+  renderCheckout();
+}
+
+function getCheckoutTotals() {
+  const lineTotals = saleBasket.map(line => {
+    const item = getBasketItem(line);
+    const unitPrice = Math.max(0, Number(line.unitPrice) || Number(line.itemType === "product" ? item.salePrice : item.price) || 0);
+    const gross = Math.max(0, (Number(line.qty) || 0) * unitPrice);
+    const discount = Math.min(gross, Math.max(0, Number(line.lineDiscount) || 0));
+    return { line, item, unitPrice, gross, discount, net:gross - discount };
+  });
+  const subtotal = lineTotals.reduce((sum, row) => sum + row.gross, 0);
+  const lineDiscountTotal = lineTotals.reduce((sum, row) => sum + row.discount, 0);
+  const afterLineDiscounts = subtotal - lineDiscountTotal;
+  const basketDiscount = Math.min(afterLineDiscounts, Math.max(0, Number(saleBasketDiscount) || 0));
+  const total = Math.max(0, afterLineDiscounts - basketDiscount);
+  return { lineTotals, subtotal, lineDiscountTotal, afterLineDiscounts, basketDiscount, discountTotal:lineDiscountTotal + basketDiscount, total };
 }
 
 function renderCheckout() {
