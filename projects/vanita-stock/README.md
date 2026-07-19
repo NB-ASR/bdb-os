@@ -17,6 +17,15 @@ Vanita Stock is a mobile-friendly beauty-product inventory and supplier-document
 5. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 6. See low-stock products immediately and optionally receive browser notifications.
 
+## Release v17 — supplier discounts and reporting foundation
+
+- Supplier-document extraction now reads the printed subtotal before discount, supplier discount, net after discount, VAT and final amount paid.
+- Inventory and Dashboard stock valuation continue to use the full printed product unit costs before supplier-level discount.
+- The document review screen shows an editable supplier discount, paid net cost and actual paid total.
+- Saved document records retain both valuation bases: catalogue stock cost and actual discounted supplier spend.
+- The Documents summary now reports supplier discounts captured and actual supplier spend as the first purchasing-reporting dataset.
+- Historical documents remain compatible and are treated as having no separately recorded supplier discount.
+
 ## Release v16 — sales, barcode and document controls
 
 - Product barcodes can be typed or captured with the camera from **Products → Edit**; duplicate barcode assignments are blocked.
