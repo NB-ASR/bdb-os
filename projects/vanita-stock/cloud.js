@@ -140,4 +140,9 @@
   }
 
   window.VanitaCloud = { connect, loadState, saveState, signOut, getAccessToken, uploadDocument, getDocumentUrl, deleteDocumentFile, get enabled() { return cloudEnabled; } };
+
+  const enhancements = document.createElement("script");
+  enhancements.src = "discount-reporting.js";
+  enhancements.defer = true;
+  document.head.append(enhancements);
 })();
