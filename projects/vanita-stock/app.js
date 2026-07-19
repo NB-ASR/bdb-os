@@ -236,138 +236,306 @@ function renderServices() {
   const services = state.services.filter(service => {
     const matchesQuery = !query || [service.name, service.code, service.category, service.description, ...(service.staff || [])].some(value => String(value || "").toLowerCase().includes(query));
     const matchesCategory = serviceCategoryFilter === "all" || service.category === serviceCategoryFilter;
-    const matchesStatus = serviceStatusFilter ==…33129 tokens truncated…ba(0,0,0,.55);color:white;cursor:pointer; }
-.camera-stage #html5Scanner { width:100%;height:100%;background:#13201c; }
-.camera-stage #html5Scanner video { width:100%!important;height:100%!important;object-fit:cover; }
-.scanner-status { position:absolute;z-index:4;left:50%;bottom:12px;max-width:calc(100% - 28px);transform:translateX(-50%);padding:7px 11px;border-radius:99px;background:rgba(10,27,22,.78);color:white;font-size:9px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.scanner-status[data-tone="success"] { background:rgba(31,126,94,.92); }
-.scanner-status[data-tone="error"] { background:rgba(165,69,61,.92); }
-.toast-region { position:fixed;right:20px;bottom:20px;z-index:200;display:grid;gap:10px; }.toast { width:min(340px,calc(100vw - 40px));display:grid;grid-template-columns:30px 1fr auto;gap:10px;align-items:center;padding:13px;border:1px solid #dfe8e3;border-radius:12px;background:white;box-shadow:var(--shadow);animation:toastIn .3s ease; }.toast>span { display:grid;width:30px;height:30px;place-items:center;border-radius:8px;background:var(--green-50);color:var(--green-600); }.toast strong { display:block;font-size:11px; }.toast p { margin:2px 0 0;color:var(--muted);font-size:9px; }.toast button { border:0;background:transparent;color:#9aa39f;cursor:pointer; } @keyframes toastIn{from{opacity:0;transform:translateY(8px)}}
-.mobile-nav { display:none; }
-
-.status-badge.credit { color:#96566f;background:#f8eaf0; }
-.service-summary { display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:16px; }
-.service-summary .invoice-stat strong { max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.service-insights { display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px; }
-.insight-list { padding:5px 20px 12px; }
-.insight-list>div { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #eff1ef; }
-.insight-list>div:last-child { border-bottom:0; }
-.insight-list strong,.insight-list small { display:block; }
-.insight-list strong { font-size:11px; }
-.insight-list small { margin-top:3px;color:var(--muted);font-size:9px; }
-.insight-list b { font:700 11px "Manrope"; }
-.insight-list>p { padding:20px 0;text-align:center;color:var(--muted);font-size:10px; }
-.toolbar-select { padding:8px 30px 8px 10px;border:1px solid var(--line);border-radius:9px;background:white;color:var(--ink);font-size:10px;outline:0; }
-.service-thumb { color:#7669a7;background:#f0edf8!important; }
-.edit-product-button { border:1px solid #d8e3de;border-radius:8px;padding:7px 11px;background:white;color:var(--green-600);font-size:10px;font-weight:700;cursor:pointer; }
-.edit-product-button:hover { background:var(--green-50);border-color:#b8d0c6; }
-.products-table td:first-child { min-width:220px; }
-.row-actions { display:flex;gap:6px; }
-.archive-service-button { border:1px solid #e8dec8;border-radius:8px;padding:7px 10px;background:white;color:#956d27;font-size:10px;font-weight:700;cursor:pointer; }
-.archive-service-button:hover { background:#fff8e9; }
-.remove-stock-button,.delete-product-button { border:1px solid #efd7d3;border-radius:8px;padding:7px 10px;background:white;color:#ad574f;font-size:10px;font-weight:700;cursor:pointer; }
-.remove-stock-button:hover,.delete-product-button:hover { background:var(--red-bg); }
-.document-actions,.row-actions { display:flex;align-items:center;gap:6px; }
-.document-action-button { border:1px solid #d8e3de;border-radius:8px;padding:7px 9px;background:white;color:var(--green-600);font-size:9px;font-weight:700;cursor:pointer; }
-.document-action-button:hover { background:var(--green-50); }
-.service-form { padding-top:24px;padding-bottom:25px; }
-.service-form .wide { grid-column:1/-1; }
-.form-grid textarea { width:100%;padding:10px 11px;border:1px solid #dfe5e1;border-radius:9px;outline:0;resize:vertical;color:var(--ink);font:11px "DM Sans",sans-serif; }
-.toggle-field { display:flex!important;grid-column:1/-1;align-items:center;grid-template-columns:auto 1fr!important;justify-self:start; }
-.toggle-field input { width:auto!important; }
-.sale-type-filters { display:flex;gap:6px;margin-top:10px; }
-.item-type-badge { display:inline-flex;margin-left:5px;padding:2px 5px;border-radius:99px;font-size:7px;font-style:normal;font-weight:700;vertical-align:1px; }
-.item-type-badge.product { color:#2b7e62;background:#e8f3ee; }
-.item-type-badge.service { color:#6e61a1;background:#f0edf8; }
-.suggestion-empty { padding:18px;text-align:center;color:var(--muted);font-size:10px; }
-.basket-staff { display:flex!important;align-items:center;gap:6px;margin-top:7px!important;color:var(--muted);font-size:8px!important;font-weight:600; }
-.basket-staff select { max-width:150px;padding:4px 20px 4px 6px;border:1px solid #dfe5e1;border-radius:6px;background:white;color:var(--ink);font-size:8px; }
-.basket-staff-empty { display:block;margin-top:6px;color:#9aa49f;font-size:8px; }
-.catalog-choices { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
-.catalog-choices button { display:grid;grid-template-columns:42px 1fr;grid-template-rows:auto auto;column-gap:12px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:13px;background:white;text-align:left;cursor:pointer; }
-.catalog-choices button:hover { border-color:#a8c6ba;background:#f9fcfa; }
-.catalog-choices button>span { grid-row:1/3;display:grid;width:42px;height:42px;place-items:center;border-radius:11px;background:var(--green-50);color:var(--green-600);font-size:20px; }
-.catalog-choices strong { font:700 13px "Manrope"; }
-.catalog-choices small { margin-top:3px;color:var(--muted);font-size:9px;line-height:1.4; }
-.delete-record-button { border:1px solid #efd7d3;border-radius:8px;padding:7px 9px;background:white;color:#ad574f;font-size:9px;font-weight:700;cursor:pointer; }
-.delete-record-button:hover { background:var(--red-bg); }
-.file-unavailable { color:#9aa49f;font-size:9px; }
-#salesList .activity-item { grid-template-columns:38px 1fr auto auto; }
-.invoice-review-footer { justify-content:space-between;align-items:center;gap:18px; }
-.review-totals { display:grid;grid-template-columns:repeat(5,auto);gap:18px;align-items:end; }
-.review-totals span,.review-totals label { display:grid;gap:3px; }
-.review-totals small { color:var(--muted);font-size:8px;white-space:nowrap; }
-.review-totals strong { font:700 12px "Manrope";white-space:nowrap; }
-.review-totals input { width:72px;padding:4px 6px;border:1px solid #dfe5e1;border-radius:6px;font:700 11px "Manrope"; }
-.invoice-footer-actions { display:flex;gap:9px;flex-shrink:0; }
-.document-type { display:inline-flex;padding:4px 8px;border-radius:99px;font-size:9px;font-weight:700; }
-.document-type.invoice { color:#6078ad;background:#edf0f8; }
-.document-type.credit { color:#96566f;background:#f8eaf0; }
-.purpose-badge { display:inline-flex;padding:4px 8px;border-radius:99px;font-size:9px;font-weight:750;white-space:nowrap; }
-.purpose-badge.resale { color:#276c56;background:#e7f3ee; }
-.purpose-badge.supply { color:#8a6826;background:#fff2de; }
-.status-badge.neutral { color:#65716c;background:#eef1ef; }
-.barcode-field>div { display:flex;gap:7px;align-items:center; }
-.barcode-field>div input { min-width:0;flex:1; }
-.barcode-field>div button { flex:0 0 auto;padding:10px 12px; }
-.checkout-heading { margin-bottom:18px; }
-.checkout-heading h3 { margin:4px 0 5px;font:800 20px "Manrope"; }
-.checkout-heading>p:last-child { margin:0;color:var(--muted);font-size:10px; }
-.checkout-lines { display:grid;border:1px solid var(--line);border-radius:13px;overflow:hidden; }
-.checkout-line { display:grid;grid-template-columns:minmax(0,1fr) 150px 85px;gap:14px;align-items:center;padding:13px 14px;border-bottom:1px solid var(--line); }
-.checkout-line:last-child { border-bottom:0; }
-.checkout-line strong,.checkout-line small { display:block; }
-.checkout-line strong { font-size:11px; }.checkout-line small { margin-top:3px;color:var(--muted);font-size:9px; }
-.checkout-line label>span,.basket-discount-field>span { display:block;margin-bottom:4px;color:var(--muted);font-size:8px;font-weight:700; }
-.checkout-line label>div,.basket-discount-field>div { display:flex;align-items:center;border:1px solid #dfe5e1;border-radius:8px;background:white;overflow:hidden; }
-.checkout-line label>div span,.basket-discount-field>div span { padding-left:9px;color:var(--muted);font-size:10px; }
-.checkout-line input,.basket-discount-field input { width:100%;padding:8px;border:0;outline:0;font-size:10px; }
-.checkout-line>b { text-align:right;font-size:11px; }
-.basket-discount-field { display:grid;grid-template-columns:1fr 150px;align-items:end;gap:14px;margin:16px 0;padding:14px;border-radius:12px;background:#f6f8f6; }
-.checkout-summary { display:grid;gap:8px;margin-left:auto;max-width:340px; }
-.checkout-summary>div { display:flex;justify-content:space-between;gap:30px;color:var(--muted);font-size:10px; }
-.checkout-summary strong { color:var(--ink); }
-.checkout-summary .checkout-total { margin-top:3px;padding-top:11px;border-top:1px solid var(--line);font-size:14px;font-weight:800;color:var(--ink); }
-
-.auth-screen { position:fixed;z-index:500;inset:0;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 20% 10%,rgba(90,169,139,.2),transparent 34%),linear-gradient(145deg,#0d2922,#17463a); }
-.auth-card { width:min(420px,100%);padding:34px;border-radius:24px;background:white;box-shadow:0 30px 80px rgba(0,0,0,.3); }
-.auth-brand { display:flex;align-items:center;gap:11px;margin-bottom:34px; }.auth-brand>span { display:grid;width:38px;height:38px;place-items:center;border-radius:11px;color:white;background:linear-gradient(145deg,#4fa989,#246f58);font-size:20px; }.auth-brand strong,.auth-brand small { display:block; }.auth-brand strong { font:800 17px "Manrope"; }.auth-brand small { margin-top:2px;color:var(--muted);font-size:10px; }
-.auth-card h1 { margin:4px 0 7px;font:800 28px "Manrope"; }.auth-card>p:not(.eyebrow) { margin:0 0 24px;color:var(--muted);font-size:12px; }.auth-card form { display:grid;gap:15px; }.auth-card label { display:grid;gap:7px;color:#4e5d58;font-size:10px;font-weight:700; }.auth-card input { width:100%;padding:12px;border:1px solid #dfe5e1;border-radius:10px;outline:0;font-size:12px; }.auth-error { margin:0;padding:10px;border-radius:8px;color:#9c4038;background:var(--red-bg);font-size:10px; }.auth-help { display:block;margin-top:18px;color:#8b9692;text-align:center;font-size:9px; }
-.cloud-status { padding:5px 8px;border-radius:99px;color:#78663e;background:#fff4dd;font-size:9px;font-weight:700;white-space:nowrap; }.cloud-status.online { color:var(--green-600);background:var(--green-50); }
-.sign-out-button { display:grid;width:29px;height:29px;place-items:center;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#bdd0c8;background:rgba(255,255,255,.05);cursor:pointer; }
-
-@media (max-width: 1050px) {
-  .metric-grid { grid-template-columns:repeat(2,1fr); }.dashboard-grid { grid-template-columns:1fr; }.stock-chart-panel { min-height:300px; }.sales-layout{grid-template-columns:1fr 280px}.view{padding-left:28px;padding-right:28px}.topbar{padding:0 28px}
-}
-@media (max-width: 780px) {
-  .cloud-status{display:none}
-  body { padding-bottom:69px; }.app-shell{display:block}.sidebar{transform:translateX(-100%);box-shadow:20px 0 50px rgba(0,0,0,.25);transition:.25s ease}.sidebar.open{transform:translateX(0)}.main-content{width:100%}.topbar{height:65px;padding:0 16px}.menu-button{display:grid}.top-search{width:auto;flex:1}.top-search kbd{display:none}.top-actions .alert-button{display:none}.top-actions .primary-button{display:none}.view{padding:24px 16px 35px}.page-heading{align-items:flex-start;flex-direction:column;margin-bottom:20px}.page-heading .heading-actions{width:100%}.page-heading .heading-actions button{flex:1}.metric-grid{grid-template-columns:1fr 1fr;gap:10px}.metric-card{padding:15px;min-height:120px}.metric-value{font-size:20px}.dashboard-grid{gap:12px}.restock-panel,.stock-chart-panel,.activity-panel{padding:16px}.toolbar{align-items:stretch;flex-wrap:wrap}.table-search{flex:1;min-width:100%}.filter-chips{overflow:auto}.result-count{display:none}.invoice-summary{grid-template-columns:1fr}.sales-layout{grid-template-columns:1fr}.scan-card{display:none}.mobile-nav{position:fixed;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);left:0;right:0;bottom:0;height:67px;padding:7px 8px calc(5px + env(safe-area-inset-bottom));border-top:1px solid #e2e6e3;background:rgba(255,255,255,.96);backdrop-filter:blur(12px)}.mobile-nav button{display:grid;place-items:center;gap:1px;border:0;background:transparent;color:#8a9691;font-size:8px}.mobile-nav button span{font-size:17px}.mobile-nav button.active{color:var(--green-600)}.mobile-nav .mobile-scan span{display:grid;width:43px;height:43px;place-items:center;margin-top:-24px;border:4px solid var(--cream);border-radius:50%;background:var(--green-600);color:white;box-shadow:0 5px 15px rgba(25,92,71,.25)}.modal-backdrop{padding:0;place-items:end center}.modal{width:100%;max-height:93vh;border-radius:20px 20px 0 0}.form-grid{grid-template-columns:1fr}.product-form .wide{grid-column:auto}.camera-button span{display:none}.modal-header,.modal-body{padding-left:18px;padding-right:18px}.modal-footer{padding-left:18px;padding-right:18px}.review-table th,.review-table td{padding:7px}.activity-time{display:none}
-}
-@media (max-width: 430px) {
-  .metric-grid{grid-template-columns:1fr}.metric-card{min-height:105px}.metric-value{margin-top:8px}.top-search input::placeholder{color:transparent}.page-heading h1{font-size:26px}.heading-actions{width:100%}.heading-actions button{flex:1}.stepper i{width:28px}.review-notice em{display:none}.sale-footer{align-items:flex-end}.sale-footer>div:last-child .secondary-button{display:none}
+    const matchesStatus = serviceStatusFilter === "all" || (ser…13181 tokens truncated…nt, discountTotal:lineDiscountTotal + basketDiscount, total };
 }
 
-@media (max-width: 780px) {
-  .mobile-nav { grid-template-columns:repeat(6,1fr); }
-  .invoice-review-footer { align-items:stretch;flex-direction:column; }
-  .review-totals { grid-template-columns:repeat(3,1fr);gap:10px; }
-  .invoice-footer-actions { justify-content:flex-end; }
-  .checkout-line { grid-template-columns:1fr 120px; }
-  .checkout-line>b { grid-column:2;text-align:right; }
+function renderCheckout() {
+  const target = $("#checkoutLines");
+  if (!target) return;
+  const totals = getCheckoutTotals();
+  totals.lineTotals.forEach(row => { row.line.lineDiscount = row.discount; });
+  saleBasketDiscount = totals.basketDiscount;
+  target.innerHTML = totals.lineTotals.map((row, index) => `<div class="checkout-line"><div><strong>${escapeHtml(row.item.name)}</strong><small>${row.line.qty} × ${currency(row.unitPrice)} · ${row.line.itemType === "product" ? "Product" : "Service"}</small></div><label><span>Line discount</span><div><span>€</span><input data-line-discount="${index}" type="number" min="0" max="${row.gross.toFixed(2)}" step="0.01" value="${row.discount.toFixed(2)}"></div></label><b>${currency(row.net)}</b></div>`).join("");
+  const basketInput = $("#basketDiscount");
+  if (basketInput && Number(basketInput.value) !== totals.basketDiscount) basketInput.value = totals.basketDiscount.toFixed(2);
+  $("#checkoutSummary").innerHTML = `<div><span>Subtotal</span><strong>${currency(totals.subtotal)}</strong></div><div><span>Line discounts</span><strong>− ${currency(totals.lineDiscountTotal)}</strong></div><div><span>Basket discount</span><strong>− ${currency(totals.basketDiscount)}</strong></div><div class="checkout-total"><span>Amount due</span><strong>${currency(totals.total)}</strong></div>`;
 }
 
-@media (max-width: 1050px) {
-  .service-summary { grid-template-columns:repeat(2,1fr); }
+function saveSale() {
+  if (!saleBasket.length) return;
+  const previousSale = editingSaleId ? state.sales.find(item => item.id === editingSaleId) : null;
+  const insufficient = saleBasket.find(line => line.itemType === "product" && (Number(line.qty) || 0) > availableProductQty(line.itemId));
+  if (insufficient) return showToast("Not enough stock", `${getBasketItem(insufficient).name} no longer has enough available stock.`);
+
+  const oldProductLines = (previousSale?.lines || []).filter(line => saleLineType(line) === "product");
+  oldProductLines.forEach(line => {
+    const product = state.products.find(item => item.id === (line.productId || line.itemId));
+    if (product) { product.stock += Number(line.qty) || 0; product.inInventory = true; }
+  });
+
+  const newlyLow = [];
+  let productUnits = 0, serviceUnits = 0;
+  const checkout = getCheckoutTotals();
+  const saleLines = checkout.lineTotals.map(row => {
+    const { line, item, unitPrice, discount } = row;
+    const isProduct = line.itemType === "product";
+    if (isProduct) {
+      const product = state.products.find(entry => entry.id === line.itemId);
+      if (product) {
+        const wasLow = product.stock <= product.reorderAt;
+        product.stock = Math.max(0, product.stock - line.qty);
+        productUnits += line.qty;
+        if (!wasLow && product.stock <= product.reorderAt) newlyLow.push(product);
+      }
+    } else serviceUnits += line.qty;
+    return {
+      itemType:line.itemType,
+      itemId:line.itemId,
+      ...(isProduct ? { productId:line.itemId } : { serviceId:line.itemId }),
+      name:item?.name || line.name || "",
+      qty:line.qty,
+      unitPrice,
+      lineDiscount:discount,
+      ...(isProduct ? {} : { staff:line.staff || "", duration:Number(item?.duration || line.duration) || 0, vatRate:Number(item?.vatRate || line.vatRate) || 0, category:item?.category || line.category || "Other" })
+    };
+  });
+
+  const provisional = { lines:saleLines, basketDiscount:checkout.basketDiscount };
+  const split = saleRevenueSplit(provisional);
+  const saleId = previousSale?.id || makeId("SAL");
+  const now = new Date().toISOString();
+  const detail = `${productUnits} product${productUnits === 1 ? "" : "s"} · ${serviceUnits} service${serviceUnits === 1 ? "" : "s"}${checkout.discountTotal ? ` · ${currency(checkout.discountTotal)} discount` : ""}`;
+  const saleRecord = { id:saleId, date:previousSale?.date || now, updatedAt:previousSale ? now : undefined, units:productUnits, productUnits, serviceUnits, subtotal:checkout.subtotal, lineDiscountTotal:checkout.lineDiscountTotal, basketDiscount:checkout.basketDiscount, discountTotal:checkout.discountTotal, productRevenue:split.product, serviceRevenue:split.service, total:checkout.total, lines:saleLines };
+  if (previousSale) Object.assign(previousSale, saleRecord);
+  else state.sales.unshift(saleRecord);
+  state.activities.unshift({ type:"sale", title:`Sale ${saleId} ${previousSale ? "updated" : "recorded"}`, detail, date:now });
+  newlyLow.forEach(product => state.activities.unshift({ type:"alert", title:`${product.name} needs restocking`, detail:`${product.stock} left · restock at ${product.reorderAt}`, date:now }));
+  saveState(); renderAll(); closeModal();
+  showToast(previousSale ? "Sale updated" : "Sale completed", `${detail} · ${currency(checkout.total)} total.`);
+  newlyLow.forEach(sendRestockNotification);
 }
-@media (max-width: 780px) {
-  .toolbar-select { flex:1; }
-  .service-form .wide { grid-column:auto; }
-  .catalog-choices { grid-template-columns:1fr 1fr; }
-  .service-insights { grid-template-columns:1fr; }
+
+function normalizeBarcode(value) {
+  const normalized = String(value || "").trim().replace(/[\s-]+/g, "").toUpperCase();
+  if (/^\d{12}$/.test(normalized)) return `0${normalized}`;
+  return normalized;
 }
-@media (max-width: 430px) {
-  .service-summary,.catalog-choices { grid-template-columns:1fr; }
-  .checkout-line { grid-template-columns:1fr;gap:9px; }
-  .checkout-line>b { grid-column:auto;text-align:left; }
-  .basket-discount-field { grid-template-columns:1fr; }
+
+function barcodesMatch(left, right) {
+  const a = normalizeBarcode(left), b = normalizeBarcode(right);
+  return Boolean(a && b && a === b);
 }
+
+function findProductByBarcode(rawValue) {
+  return sellableProducts().find(product => product.stock > 0 && barcodesMatch(product.barcode, rawValue));
+}
+
+function setScannerStatus(message, tone = "") {
+  const status = $("#scannerStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.dataset.tone = tone;
+}
+
+function handleScannedBarcode(rawValue) {
+  const barcode = String(rawValue || "").trim();
+  if (!barcode) return;
+  const now = Date.now();
+  if (barcode === lastScannedBarcode && now - lastScanAt < 1800) return;
+  lastScannedBarcode = barcode;
+  lastScanAt = now;
+  if (scannerPurpose === "product") {
+    const form = $("#productForm");
+    const currentId = form?.dataset.productId || "";
+    const duplicate = state.products.find(item => item.id !== currentId && barcodesMatch(item.barcode, barcode));
+    if (duplicate) {
+      setScannerStatus(`Already assigned to ${duplicate.name}`, "error");
+      showToast("Barcode already assigned", `${barcode} belongs to ${duplicate.name}.`);
+      navigator.vibrate?.([60, 40, 60]);
+      return;
+    }
+    if (form?.elements.barcode) form.elements.barcode.value = barcode;
+    setScannerStatus(`Barcode ${barcode} captured`, "success");
+    navigator.vibrate?.(80);
+    showToast("Barcode captured", "Review the barcode, then save the product.");
+    setTimeout(stopCamera, 350);
+    return;
+  }
+  const product = findProductByBarcode(barcode);
+  if (!product) {
+    setScannerStatus(`Barcode ${barcode} detected — no in-stock product found`, "error");
+    showToast("Barcode not found", `${barcode} is not assigned to an in-stock resale product.`);
+    navigator.vibrate?.([60, 40, 60]);
+    return;
+  }
+  addToBasket(product.id);
+  setScannerStatus(`${product.name} added`, "success");
+  navigator.vibrate?.(80);
+  showToast("Product scanned", `${product.name} was added to the sale.`);
+  setTimeout(stopCamera, 350);
+}
+
+function loadHtml5ScannerLibrary() {
+  if (window.Html5Qrcode) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector("script[data-barcode-fallback]");
+    if (existing) {
+      existing.addEventListener("load", resolve, { once:true });
+      existing.addEventListener("error", reject, { once:true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js";
+    script.crossOrigin = "anonymous";
+    script.dataset.barcodeFallback = "true";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("The barcode camera library could not be loaded."));
+    document.head.append(script);
+  });
+}
+
+async function startFallbackCameraScanner() {
+  await loadHtml5ScannerLibrary();
+  $("#scannerVideo").hidden = true;
+  $("#html5Scanner").hidden = false;
+  $("#cameraTarget").hidden = true;
+  setScannerStatus("Looking for a barcode…");
+  const formats = window.Html5QrcodeSupportedFormats;
+  html5ScannerInstance = new window.Html5Qrcode("html5Scanner", {
+    formatsToSupport:[formats.EAN_13, formats.EAN_8, formats.UPC_A, formats.UPC_E, formats.CODE_128, formats.CODE_39].filter(Boolean)
+  });
+  await html5ScannerInstance.start(
+    { facingMode:"environment" },
+    { fps:10, qrbox:{ width:260, height:120 }, aspectRatio:1.777778 },
+    handleScannedBarcode,
+    () => {}
+  );
+}
+
+async function startCameraScanner() {
+  if (!navigator.mediaDevices?.getUserMedia) return showToast("Camera scanning unavailable", "Type a barcode or use a handheld scanner instead.");
+  stopCamera();
+  $("#cameraStage").hidden = false;
+  $("#scannerVideo").hidden = false;
+  $("#html5Scanner").hidden = true;
+  $("#cameraTarget").hidden = false;
+  setScannerStatus("Starting camera…");
+  lastScannedBarcode = "";
+  lastScanAt = 0;
+  if (!("BarcodeDetector" in window)) {
+    try { await startFallbackCameraScanner(); }
+    catch (error) { stopCamera(); showToast("Camera scanning unavailable", error.message || "Type the barcode instead."); }
+    return;
+  }
+  try {
+    const supported = await BarcodeDetector.getSupportedFormats?.() || [];
+    const preferred = ["ean_13","ean_8","upc_a","upc_e","code_128","code_39"];
+    const formats = preferred.filter(format => !supported.length || supported.includes(format));
+    const detector = formats.length ? new BarcodeDetector({ formats }) : new BarcodeDetector();
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ ideal:"environment" }, width:{ ideal:1280 }, height:{ ideal:720 } },
+      audio:false
+    });
+    $("#scannerVideo").srcObject = scannerStream;
+    await $("#scannerVideo").play();
+    setScannerStatus("Point the camera at the product barcode");
+    scannerTimer = setInterval(async () => {
+      if (scannerDetecting) return;
+      scannerDetecting = true;
+      try {
+        const codes = await detector.detect($("#scannerVideo"));
+        if (codes[0]) handleScannedBarcode(codes[0].rawValue);
+      } catch (error) {
+        if (error?.name === "NotSupportedError") {
+          stopCamera();
+          $("#cameraStage").hidden = false;
+          try { await startFallbackCameraScanner(); }
+          catch { stopCamera(); showToast("Barcode reader unavailable", "Type the barcode or use a handheld scanner."); }
+        }
+      } finally {
+        scannerDetecting = false;
+      }
+    }, 400);
+  } catch (error) {
+    stopCamera();
+    if (error?.name === "NotAllowedError") showToast("Camera permission needed", "Allow camera access, then try again.");
+    else {
+      $("#cameraStage").hidden = false;
+      try { await startFallbackCameraScanner(); }
+      catch { stopCamera(); showToast("Camera scanning unavailable", "Type the barcode or use a handheld scanner instead."); }
+    }
+  }
+}
+
+function stopCamera() {
+  if (scannerTimer) clearInterval(scannerTimer);
+  scannerTimer = null;
+  scannerDetecting = false;
+  if (scannerStream) scannerStream.getTracks().forEach(track => track.stop());
+  scannerStream = null;
+  const fallback = html5ScannerInstance;
+  html5ScannerInstance = null;
+  if (fallback) Promise.resolve(fallback.stop()).catch(()=>{}).finally(()=>{ try { fallback.clear(); } catch {} });
+  const video = $("#scannerVideo");
+  if (video) { video.pause(); video.srcObject = null; video.hidden = false; }
+  const fallbackStage = $("#html5Scanner");
+  if (fallbackStage) { fallbackStage.hidden = true; fallbackStage.innerHTML = ""; }
+  const target = $("#cameraTarget");
+  if (target) target.hidden = false;
+  const stage = $("#cameraStage");
+  if (stage) stage.hidden = true;
+}
+
+async function enableNotifications() {
+  if (!("Notification" in window)) return showToast("Notifications unavailable", "Your browser does not support system notifications.");
+  const permission=await Notification.requestPermission();
+  showToast(permission==="granted"?"Restock alerts enabled":"Notifications not enabled",permission==="granted"?"We’ll alert you when a sale creates low stock.":"You can still see alerts inside Vanita Stock.");
+}
+function sendRestockNotification(product){if("Notification" in window&&Notification.permission==="granted")new Notification("Vanita Stock restock alert",{body:`${product.name} has ${product.stock} units left. Restock level: ${product.reorderAt}.`,icon:"icon.svg"});}
+
+function showToast(title, message) {
+  const toast=document.createElement("div");toast.className="toast";toast.innerHTML=`<span>✓</span><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(message)}</p></div><button aria-label="Dismiss">×</button>`;$("#toastRegion").append(toast);toast.querySelector("button").onclick=()=>toast.remove();setTimeout(()=>toast.remove(),4500);
+}
+
+function wireEvents() {
+  $$('[data-view]').forEach(button=>button.addEventListener("click",()=>switchView(button.dataset.view)));
+  $$('[data-view-jump]').forEach(button=>button.addEventListener("click",()=>switchView(button.dataset.viewJump)));
+  $$('[data-action]').forEach(button=>button.addEventListener("click",()=>{const action=button.dataset.action;if(action==="scan-invoice")setupInvoiceModal();if(action==="record-sale")setupSaleModal();if(action==="add-product")setupProductModal();if(action==="add-service")setupServiceModal();if(action==="open-catalog")openCatalogMenu();}));
+  $("#inventorySearch").addEventListener("input",renderInventory);
+  $("#inventoryTable").addEventListener("click",event=>{const button=event.target.closest("[data-remove-inventory]");if(button)removeFromInventory(button.dataset.removeInventory);});
+  $("#productsSearch").addEventListener("input",renderProducts);
+  $("#productsTable").addEventListener("click",event=>{const editButton=event.target.closest("[data-edit-product]");const deleteButton=event.target.closest("[data-delete-product]");if(editButton)setupProductModal(editButton.dataset.editProduct);if(deleteButton)deleteProduct(deleteButton.dataset.deleteProduct);});
+  $("#servicesSearch").addEventListener("input",renderServices);
+  $("#serviceCategoryFilter").addEventListener("change",event=>{serviceCategoryFilter=event.target.value;renderServices();});
+  $("#servicesTable").addEventListener("click",event=>{const editButton=event.target.closest("[data-edit-service]");const toggleButton=event.target.closest("[data-toggle-service]");const deleteButton=event.target.closest("[data-delete-service]");if(editButton)setupServiceModal(editButton.dataset.editService);if(toggleButton)toggleService(toggleButton.dataset.toggleService);if(deleteButton)deleteService(deleteButton.dataset.deleteService);});
+  $$("[data-service-status]").forEach(button=>button.addEventListener("click",()=>{serviceStatusFilter=button.dataset.serviceStatus;$$("[data-service-status]").forEach(item=>item.classList.toggle("active",item===button));renderServices();}));
+  $("#invoiceTable").addEventListener("click",event=>{const preview=event.target.closest("[data-preview-document]");const download=event.target.closest("[data-download-document]");const remove=event.target.closest("[data-delete-document]");if(preview)openStoredDocument(preview.dataset.previewDocument);if(download)openStoredDocument(download.dataset.downloadDocument,true);if(remove)deleteDocumentRecord(remove.dataset.deleteDocument);});
+  $("#salesList").addEventListener("click",event=>{const edit=event.target.closest("[data-edit-sale]");const remove=event.target.closest("[data-delete-sale]");if(edit)setupSaleModal(edit.dataset.editSale);if(remove)deleteSale(remove.dataset.deleteSale);});
+  $$('[data-stock-filter]').forEach(button=>button.addEventListener("click",()=>{stockFilter=button.dataset.stockFilter;$$('[data-stock-filter]').forEach(b=>b.classList.toggle("active",b===button));renderInventory();}));
+  $$('[data-filter-low]').forEach(button=>button.addEventListener("click",()=>{stockFilter="low";$$('[data-stock-filter]').forEach(b=>b.classList.toggle("active",b.dataset.stockFilter==="low"));switchView("inventory");renderInventory();}));
+  $("#menuButton").addEventListener("click",()=>$("#sidebar").classList.toggle("open"));
+  $("#modalBackdrop").addEventListener("click",event=>{if(event.target===$("#modalBackdrop"))closeModal();});
+  $("#enableAlerts").addEventListener("click",enableNotifications);
+  $("#openGuide").addEventListener("click",()=>showToast("Three quick steps","Import an invoice to add stock, apply credit notes to returns, then record each sale."));
+  $("#signOutButton").addEventListener("click",()=>window.VanitaCloud?.signOut());
+  $("#globalSearch").addEventListener("input",event=>{
+    const query=event.target.value.trim();
+    if(!query)return;
+    const lower=query.toLowerCase();
+    const productMatch=state.products.some(item=>[item.name,item.sku,item.barcode,item.brand].some(value=>String(value||"").toLowerCase().includes(lower)));
+    const serviceMatch=state.services.some(item=>[item.name,item.code,item.category].some(value=>String(value||"").toLowerCase().includes(lower)));
+    if(serviceMatch&&!productMatch){switchView("services");$("#servicesSearch").value=query;renderServices();}
+    else{switchView("products");$("#productsSearch").value=query;renderProducts();}
+  });
+  document.addEventListener("keydown",event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==="k"){event.preventDefault();$("#globalSearch").focus();}if(event.key==="Escape"&&!$("#modalBackdrop").hidden)closeModal();});
+}
+
+async function init() {
+  $("#todayLabel").textContent=new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}).toUpperCase();
+  wireEvents();
+  try {
+    const cloud = await window.VanitaCloud?.connect();
+    if (cloud?.enabled) {
+      const sharedState = await window.VanitaCloud.loadState();
+      if (sharedState?.products) state = normalizeState(sharedState);
+      else window.VanitaCloud.saveState(state);
+    }
+  } catch (error) {
+    console.error("Vanita cloud initialization failed", error);
+    $("#cloudStatus").textContent = "Cloud unavailable";
+  }
+  renderAll();
+  if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("service-worker.js").catch(()=>{}));
+}
+
+init();
