@@ -137,6 +137,31 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .document-type { display:inline-flex;padding:4px 8px;border-radius:99px;font-size:9px;font-weight:700; }
 .document-type.invoice { color:#6078ad;background:#edf0f8; }
 .document-type.credit { color:#96566f;background:#f8eaf0; }
+.purpose-badge { display:inline-flex;padding:4px 8px;border-radius:99px;font-size:9px;font-weight:750;white-space:nowrap; }
+.purpose-badge.resale { color:#276c56;background:#e7f3ee; }
+.purpose-badge.supply { color:#8a6826;background:#fff2de; }
+.status-badge.neutral { color:#65716c;background:#eef1ef; }
+.barcode-field>div { display:flex;gap:7px;align-items:center; }
+.barcode-field>div input { min-width:0;flex:1; }
+.barcode-field>div button { flex:0 0 auto;padding:10px 12px; }
+.checkout-heading { margin-bottom:18px; }
+.checkout-heading h3 { margin:4px 0 5px;font:800 20px "Manrope"; }
+.checkout-heading>p:last-child { margin:0;color:var(--muted);font-size:10px; }
+.checkout-lines { display:grid;border:1px solid var(--line);border-radius:13px;overflow:hidden; }
+.checkout-line { display:grid;grid-template-columns:minmax(0,1fr) 150px 85px;gap:14px;align-items:center;padding:13px 14px;border-bottom:1px solid var(--line); }
+.checkout-line:last-child { border-bottom:0; }
+.checkout-line strong,.checkout-line small { display:block; }
+.checkout-line strong { font-size:11px; }.checkout-line small { margin-top:3px;color:var(--muted);font-size:9px; }
+.checkout-line label>span,.basket-discount-field>span { display:block;margin-bottom:4px;color:var(--muted);font-size:8px;font-weight:700; }
+.checkout-line label>div,.basket-discount-field>div { display:flex;align-items:center;border:1px solid #dfe5e1;border-radius:8px;background:white;overflow:hidden; }
+.checkout-line label>div span,.basket-discount-field>div span { padding-left:9px;color:var(--muted);font-size:10px; }
+.checkout-line input,.basket-discount-field input { width:100%;padding:8px;border:0;outline:0;font-size:10px; }
+.checkout-line>b { text-align:right;font-size:11px; }
+.basket-discount-field { display:grid;grid-template-columns:1fr 150px;align-items:end;gap:14px;margin:16px 0;padding:14px;border-radius:12px;background:#f6f8f6; }
+.checkout-summary { display:grid;gap:8px;margin-left:auto;max-width:340px; }
+.checkout-summary>div { display:flex;justify-content:space-between;gap:30px;color:var(--muted);font-size:10px; }
+.checkout-summary strong { color:var(--ink); }
+.checkout-summary .checkout-total { margin-top:3px;padding-top:11px;border-top:1px solid var(--line);font-size:14px;font-weight:800;color:var(--ink); }
 
 .auth-screen { position:fixed;z-index:500;inset:0;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 20% 10%,rgba(90,169,139,.2),transparent 34%),linear-gradient(145deg,#0d2922,#17463a); }
 .auth-card { width:min(420px,100%);padding:34px;border-radius:24px;background:white;box-shadow:0 30px 80px rgba(0,0,0,.3); }
@@ -161,6 +186,8 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .invoice-review-footer { align-items:stretch;flex-direction:column; }
   .review-totals { grid-template-columns:repeat(3,1fr);gap:10px; }
   .invoice-footer-actions { justify-content:flex-end; }
+  .checkout-line { grid-template-columns:1fr 120px; }
+  .checkout-line>b { grid-column:2;text-align:right; }
 }
 
 @media (max-width: 1050px) {
@@ -174,4 +201,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 }
 @media (max-width: 430px) {
   .service-summary,.catalog-choices { grid-template-columns:1fr; }
+  .checkout-line { grid-template-columns:1fr;gap:9px; }
+  .checkout-line>b { grid-column:auto;text-align:left; }
+  .basket-discount-field { grid-template-columns:1fr; }
 }
