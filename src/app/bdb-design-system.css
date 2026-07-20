@@ -1,0 +1,1004 @@
+/*
+  BDB OS · Production Design System V1
+  Extracted from the approved Client Experience V2.1 direction.
+  This layer is intentionally semantic and route-agnostic: it refines the
+  existing production classes without importing preview-only components,
+  fictional state or Founder Review controls.
+*/
+
+:root {
+  --bg: #0d0e0d;
+  --surface: #181916;
+  --surface-2: #20211d;
+  --surface-3: #29291f;
+  --border: #37352e;
+  --border-strong: #4a463b;
+  --text: #f5f2e9;
+  --muted: #b4afa3;
+  --muted-2: #858176;
+  --gold: #d4a852;
+  --gold-light: #f3d788;
+  --gold-faint: rgba(212, 168, 82, .11);
+  --green: #79b987;
+  --red: #dc6d55;
+  --blue: #7ca8e8;
+  --radius: 20px;
+  --sidebar: 276px;
+  --on-accent: #17130b;
+  --shadow-soft: 0 18px 50px rgba(0, 0, 0, .18);
+  --shadow-raised: 0 28px 80px rgba(0, 0, 0, .28);
+  --motion-fast: 150ms;
+  --motion-control: 190ms;
+  --motion-panel: 320ms;
+  --motion-page: 460ms;
+  --ease-standard: cubic-bezier(.2, .8, .2, 1);
+  --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-size: calc(16.5px * var(--text-scale));
+  line-height: 1.56;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(circle at 78% -8%, rgba(212, 168, 82, .06), transparent 30%),
+    var(--bg);
+}
+
+::selection {
+  background: rgba(212, 168, 82, .34);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--gold-light) 74%, transparent);
+  outline-offset: 3px;
+}
+
+* {
+  scrollbar-color: color-mix(in srgb, var(--gold) 28%, var(--border)) transparent;
+  scrollbar-width: thin;
+}
+
+/* Typography */
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
+h1 {
+  font-weight: 760;
+  letter-spacing: -.052em;
+}
+
+h2 {
+  font-weight: 730;
+  letter-spacing: -.036em;
+}
+
+h3 {
+  font-weight: 720;
+  letter-spacing: -.022em;
+}
+
+.muted,
+.page-description,
+.discovery-lead,
+.message-body,
+.marketing-hero-copy > p:not(.marketing-kicker) {
+  color: var(--muted);
+}
+
+.eyebrow,
+.marketing-kicker,
+.plan-eyebrow,
+.nav-label {
+  color: var(--gold);
+  font-weight: 850;
+  letter-spacing: .15em;
+}
+
+/* Primary actions */
+.marketing-primary,
+.button-primary,
+.plan-popular,
+.toggle.on,
+.entitlement-grid button.enabled > span,
+.plan-feature-list button.enabled span {
+  color: var(--on-accent);
+  text-shadow: none;
+  background: linear-gradient(135deg, var(--gold-light), color-mix(in srgb, var(--gold) 90%, #8f6d28));
+  border-color: color-mix(in srgb, var(--gold) 72%, var(--bg));
+  box-shadow: 0 10px 25px rgba(212, 168, 82, .15), inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+
+.marketing-primary,
+.button-primary {
+  min-height: 46px;
+  border: 1px solid color-mix(in srgb, var(--gold) 72%, var(--bg));
+  border-radius: 13px;
+  padding-inline: 19px;
+  font-weight: 850;
+  transition: transform var(--motion-control) var(--ease-standard), box-shadow var(--motion-control) var(--ease-standard), filter var(--motion-control) var(--ease-standard);
+}
+
+.marketing-primary:hover,
+.button-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--gold-light), color-mix(in srgb, var(--gold) 86%, #8f6d28));
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(212, 168, 82, .19), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+.marketing-primary:active,
+.button-primary:active:not(:disabled) {
+  transform: translateY(0) scale(.985);
+}
+
+.button,
+.marketing-secondary,
+.marketing-nav-cta,
+.icon-button,
+.topbar-search,
+.sidebar-search,
+.filter-tabs button,
+.settings-tabs button,
+.link-button {
+  transition: color var(--motion-control) var(--ease-standard), background var(--motion-control) var(--ease-standard), border-color var(--motion-control) var(--ease-standard), transform var(--motion-control) var(--ease-standard), box-shadow var(--motion-control) var(--ease-standard);
+}
+
+.button-secondary,
+.marketing-secondary {
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  color: var(--text);
+}
+
+.button-secondary:hover:not(:disabled),
+.marketing-secondary:hover {
+  border-color: color-mix(in srgb, var(--gold) 42%, var(--border));
+  background: var(--surface-3);
+  transform: translateY(-1px);
+}
+
+/* Shared surfaces */
+.card,
+.discovery-card,
+.mfa-card,
+.marketing-value-grid article,
+.plan-card,
+.marketing-product-card,
+.dialog,
+.audit-table,
+.admin-client-layout,
+.admin-plan-grid article,
+.admin-stats > div {
+  border-color: var(--border);
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, .018), transparent 34%),
+    var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.card,
+.discovery-card,
+.mfa-card,
+.dialog {
+  border-radius: var(--radius);
+}
+
+.card-interactive,
+.customer-card,
+.module-card,
+.quick-row,
+.message-row,
+.search-result,
+.theme-presets button,
+.accessibility-options label,
+.entitlement-grid button,
+.plan-feature-list button {
+  transition: transform var(--motion-control) var(--ease-standard), border-color var(--motion-control) var(--ease-standard), background var(--motion-control) var(--ease-standard), box-shadow var(--motion-control) var(--ease-standard);
+}
+
+.card-interactive:hover,
+.customer-card:hover,
+.module-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--border));
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--gold) 2%);
+  box-shadow: 0 20px 55px rgba(0, 0, 0, .2);
+}
+
+/* Public website */
+.marketing-shell {
+  background:
+    radial-gradient(circle at 78% 4%, rgba(212, 168, 82, .11), transparent 27%),
+    linear-gradient(180deg, #0c0d0c, var(--bg));
+}
+
+.marketing-nav {
+  height: 88px;
+  border-bottom: 1px solid transparent;
+}
+
+.marketing-links {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.marketing-links a:not(.marketing-nav-cta) {
+  position: relative;
+}
+
+.marketing-links a:not(.marketing-nav-cta)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 100%;
+  bottom: -7px;
+  height: 1px;
+  background: var(--gold);
+  transition: right var(--motion-control) var(--ease-standard);
+}
+
+.marketing-links a:not(.marketing-nav-cta):hover::after {
+  right: 0;
+}
+
+.marketing-nav-cta {
+  min-height: 42px;
+  border-radius: 12px;
+  padding-inline: 16px;
+  background: rgba(212, 168, 82, .06);
+}
+
+.marketing-hero {
+  min-height: 720px;
+  gap: clamp(48px, 6vw, 96px);
+  padding-block: 88px 110px;
+}
+
+.marketing-hero h1 {
+  max-width: 760px;
+  font-size: clamp(58px, 6.6vw, 92px);
+  line-height: .96;
+  letter-spacing: -.068em;
+}
+
+.marketing-hero-copy > p:not(.marketing-kicker) {
+  max-width: 680px;
+  font-size: 19px;
+  line-height: 1.68;
+}
+
+.marketing-actions {
+  gap: 12px;
+  margin-top: 34px;
+}
+
+.marketing-trust {
+  margin-top: 28px;
+  color: color-mix(in srgb, var(--muted) 88%, var(--text));
+  font-size: 12.5px;
+}
+
+.marketing-product-card {
+  overflow: hidden;
+  padding: 30px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 88% 5%, rgba(212, 168, 82, .12), transparent 32%),
+    linear-gradient(145deg, #20211d, #131412 68%);
+  box-shadow: var(--shadow-raised);
+}
+
+.marketing-product-card::before {
+  inset: -12px;
+  border-color: rgba(212, 168, 82, .1);
+  border-radius: 36px;
+}
+
+.marketing-product-card h2 {
+  margin: 38px 0;
+  font-size: 36px;
+}
+
+.product-stat-row div,
+.product-modules span {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, .018);
+}
+
+.product-focus {
+  border-color: rgba(212, 168, 82, .26);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(212, 168, 82, .12), rgba(212, 168, 82, .045));
+}
+
+.marketing-section {
+  padding-block: 116px;
+}
+
+.marketing-section-heading {
+  max-width: 800px;
+}
+
+.marketing-value-grid,
+.plan-grid {
+  gap: 20px;
+}
+
+.marketing-value-grid article,
+.plan-card {
+  border-radius: 22px;
+}
+
+.marketing-value-grid article {
+  padding: 30px;
+}
+
+.marketing-value-grid article > span {
+  width: 48px;
+  height: 48px;
+  border: 1px solid rgba(212, 168, 82, .2);
+  border-radius: 14px;
+}
+
+.marketing-value-grid h3 {
+  font-size: 20px;
+}
+
+.marketing-value-grid p,
+.plan-card > p:not(.plan-eyebrow) {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.plan-card {
+  padding: 34px;
+}
+
+.plan-card.featured {
+  border-color: rgba(212, 168, 82, .55);
+  background: linear-gradient(155deg, rgba(212, 168, 82, .09), var(--surface) 44%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .24);
+}
+
+.marketing-cta {
+  border-radius: 28px;
+  padding: 62px;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(212, 168, 82, .12), transparent 30%),
+    linear-gradient(120deg, rgba(212, 168, 82, .08), var(--surface));
+  box-shadow: var(--shadow-soft);
+}
+
+/* Discovery, login and secure access */
+.discovery-shell,
+.mfa-shell {
+  background:
+    radial-gradient(circle at 50% 8%, rgba(212, 168, 82, .09), transparent 28%),
+    var(--bg);
+}
+
+.discovery-layout {
+  gap: clamp(44px, 7vw, 88px);
+}
+
+.discovery-layout h1,
+.mfa-card h1 {
+  letter-spacing: -.055em;
+}
+
+.discovery-card {
+  padding: 32px;
+  border-radius: 22px;
+}
+
+.mfa-card {
+  margin-top: 72px;
+  padding: 36px;
+  border-radius: 24px;
+}
+
+.mfa-icon {
+  width: 54px;
+  height: 54px;
+  border: 1px solid rgba(121, 185, 135, .18);
+  border-radius: 16px;
+}
+
+/* Forms and controls */
+.field {
+  gap: 8px;
+}
+
+.field label {
+  color: color-mix(in srgb, var(--muted) 88%, var(--text));
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.field input,
+.field select,
+.field textarea,
+.search-large input,
+.filter-input {
+  min-height: 46px;
+  border-color: var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 78%, var(--bg));
+  font-size: 14px;
+}
+
+.field textarea {
+  min-height: 110px;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.search-large input:focus,
+.filter-input:focus {
+  border-color: rgba(212, 168, 82, .62);
+  box-shadow: 0 0 0 4px rgba(212, 168, 82, .09);
+}
+
+.dialog-backdrop {
+  background: rgba(5, 5, 4, .76);
+  backdrop-filter: blur(10px);
+  animation-duration: var(--motion-control);
+}
+
+.dialog {
+  padding: 28px;
+  animation: bdb-panel-in var(--motion-panel) var(--ease-emphasized);
+}
+
+@keyframes bdb-panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(.992); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Workspace shell */
+.sidebar {
+  width: var(--sidebar);
+  padding: 24px 18px 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .014), transparent 28%),
+    #121310;
+  border-color: var(--border);
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  border-color: rgba(212, 168, 82, .52);
+  border-radius: 14px;
+  background: linear-gradient(145deg, #2c281d, #171712);
+  color: var(--gold-light);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .26), inset 0 1px rgba(255, 255, 255, .05);
+}
+
+.brand small,
+.bdb-wordmark small,
+.client-brand small {
+  color: var(--muted-2);
+}
+
+.sidebar-search {
+  height: 44px;
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.sidebar-nav {
+  gap: 5px;
+  margin-top: 23px;
+}
+
+.sidebar-nav a {
+  min-height: 46px;
+  gap: 12px;
+  padding-inline: 12px;
+  border-radius: 13px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.sidebar-nav a:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, .028);
+}
+
+.sidebar-nav a.active {
+  color: var(--gold-light);
+  background: linear-gradient(90deg, rgba(212, 168, 82, .16), rgba(212, 168, 82, .055));
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.sidebar-footer {
+  padding-top: 16px;
+}
+
+.app-content {
+  margin-left: var(--sidebar);
+}
+
+.topbar {
+  height: 70px;
+  padding-inline: 38px;
+  border-color: var(--border);
+  background: rgba(13, 14, 13, .88);
+  backdrop-filter: blur(18px);
+}
+
+.topbar-title,
+.topbar-actions {
+  gap: 12px;
+}
+
+.topbar-search {
+  height: 40px;
+  border-radius: 12px;
+}
+
+.connection-pill {
+  min-height: 34px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.main-content {
+  width: min(100%, 1500px);
+  padding: 44px 46px 76px;
+}
+
+.page-header {
+  margin-bottom: 34px;
+}
+
+.page-description {
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.card-pad,
+.settings-card,
+.chart-card,
+.account-card {
+  padding: 26px;
+}
+
+.stat-grid,
+.module-grid,
+.customer-grid,
+.automation-list,
+.three-column {
+  gap: 18px;
+}
+
+.stat-card {
+  min-height: 132px;
+  padding: 22px;
+}
+
+.stat-icon,
+.module-icon,
+.customer-avatar,
+.message-channel,
+.result-icon,
+.activity-icon,
+.bank-logo,
+.empty-icon {
+  border: 1px solid rgba(212, 168, 82, .18);
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.hero-panel {
+  min-height: 330px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr);
+  gap: 36px;
+  padding: clamp(34px, 4vw, 52px);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(212, 168, 82, .11), transparent 30%),
+    linear-gradient(120deg, var(--hero-start), var(--hero-end) 72%);
+}
+
+.hero-panel::after {
+  width: 420px;
+  height: 420px;
+  right: -170px;
+  top: -180px;
+  border-color: rgba(212, 168, 82, .12);
+  box-shadow: 0 0 0 58px rgba(212, 168, 82, .02), 0 0 0 116px rgba(212, 168, 82, .012);
+}
+
+.hero-copy h1 {
+  max-width: 720px;
+  font-size: clamp(42px, 4.8vw, 68px);
+  line-height: .98;
+}
+
+.hero-signal {
+  width: 240px;
+  padding: 22px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: var(--shadow-soft);
+}
+
+.focus-item,
+.quick-row,
+.activity-item,
+.team-list > div,
+.metric-row {
+  padding-block: 16px;
+}
+
+.focus-item p,
+.quick-row small,
+.activity-copy p,
+.settings-note p,
+.review-callout p,
+.ai-draft p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Tables, badges and data density */
+th {
+  padding: 13px 18px;
+  color: var(--muted-2);
+  background: rgba(255, 255, 255, .014);
+  font-size: 11px;
+}
+
+td {
+  padding: 17px 18px;
+  color: color-mix(in srgb, var(--text) 88%, var(--muted));
+  font-size: 14px;
+}
+
+tr:hover td {
+  background: rgba(255, 255, 255, .018);
+}
+
+.badge,
+.role-badge,
+.connection-pill {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 820;
+}
+
+.badge {
+  min-height: 27px;
+  padding-inline: 9px;
+  font-size: 11px;
+}
+
+.badge-gold,
+.role-badge.owner {
+  border-color: rgba(212, 168, 82, .22);
+}
+
+.badge-green,
+.connection-pill.online {
+  border-color: rgba(121, 185, 135, .2);
+}
+
+.badge-red {
+  border-color: rgba(220, 109, 85, .2);
+}
+
+/* Communications, banking and documents */
+.inbox-layout,
+.table-card,
+.admin-client-layout,
+.audit-table {
+  border-radius: var(--radius);
+}
+
+.message-row {
+  padding: 17px;
+}
+
+.message-row:hover,
+.message-row.selected {
+  background: color-mix(in srgb, var(--surface-2) 94%, var(--gold) 2%);
+}
+
+.message-view {
+  padding: 30px;
+}
+
+.ai-draft,
+.review-callout {
+  border-color: rgba(212, 168, 82, .25);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(212, 168, 82, .1), rgba(212, 168, 82, .035));
+}
+
+.upload-zone {
+  min-height: 190px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, .012);
+}
+
+.account-card {
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, #20211d, #171815);
+}
+
+/* Settings and customisation */
+.settings-tabs,
+.filter-tabs {
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.settings-tabs button,
+.filter-tabs button {
+  border-radius: 9px;
+}
+
+.settings-tabs button.active,
+.filter-tabs button.active,
+.theme-presets button.active {
+  color: var(--gold-light);
+  background: linear-gradient(135deg, rgba(212, 168, 82, .14), rgba(212, 168, 82, .055));
+}
+
+.theme-presets button,
+.accessibility-options label,
+.logo-preview,
+.billing-plan > div span {
+  border-radius: 13px;
+}
+
+.theme-presets button {
+  min-height: 86px;
+}
+
+.accessibility-options label {
+  min-height: 72px;
+}
+
+/* Founder Admin: same quality, distinct control-plane identity. */
+.admin-shell {
+  background: #0b0c0b;
+}
+
+.admin-sidebar {
+  border-color: #2f302b;
+  background: #111210;
+}
+
+.admin-main {
+  background:
+    radial-gradient(circle at 94% 0%, rgba(212, 168, 82, .055), transparent 22%),
+    #0d0e0d;
+}
+
+.admin-stats > div,
+.admin-plan-grid article,
+.admin-client-layout,
+.audit-table {
+  border-color: #303129;
+  background: #151614;
+}
+
+.admin-detail,
+.admin-detail-grid > div {
+  background: #151614;
+}
+
+/* Authentication email-like secure surfaces */
+.mfa-card > p:not(.marketing-kicker, .mfa-secret, .mfa-error) {
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* Light appearance */
+html[data-theme-mode="light"] {
+  --bg: #f4f2ec;
+  --surface: #fffefa;
+  --surface-2: #efede6;
+  --surface-3: #e7e3da;
+  --border: #d7d2c6;
+  --border-strong: #bfb7a6;
+  --text: #1e211f;
+  --muted: #666b6e;
+  --muted-2: #8a8c8a;
+  --gold: #987226;
+  --gold-light: #b58a32;
+  --gold-faint: rgba(152, 114, 38, .1);
+  --on-accent: #fff;
+  --hero-start: #fffefa;
+  --hero-end: #e9e5dc;
+  --hero-signal: rgba(255, 255, 255, .78);
+  color-scheme: light;
+}
+
+html[data-theme-mode="light"] body,
+html[data-theme-mode="light"] .marketing-shell,
+html[data-theme-mode="light"] .discovery-shell,
+html[data-theme-mode="light"] .mfa-shell {
+  background:
+    radial-gradient(circle at 78% 0%, rgba(152, 114, 38, .08), transparent 28%),
+    var(--bg);
+}
+
+html[data-theme-mode="light"] .sidebar {
+  background: #eeece5;
+}
+
+html[data-theme-mode="light"] .topbar {
+  background: rgba(244, 242, 236, .9);
+}
+
+html[data-theme-mode="light"] .marketing-primary,
+html[data-theme-mode="light"] .button-primary {
+  color: #fff;
+  background: linear-gradient(135deg, #a37b2a, #785718);
+  border-color: #785718;
+}
+
+html[data-theme-mode="light"] .field input,
+html[data-theme-mode="light"] .field select,
+html[data-theme-mode="light"] .field textarea,
+html[data-theme-mode="light"] .search-large,
+html[data-theme-mode="light"] .search-large input,
+html[data-theme-mode="light"] .filter-input {
+  background: #fffefa;
+}
+
+html[data-theme-mode="light"] .card,
+html[data-theme-mode="light"] .discovery-card,
+html[data-theme-mode="light"] .mfa-card,
+html[data-theme-mode="light"] .marketing-value-grid article,
+html[data-theme-mode="light"] .plan-card {
+  box-shadow: 0 16px 42px rgba(35, 31, 23, .09);
+}
+
+/* Responsive behaviour */
+@media (max-width: 1120px) {
+  .marketing-hero {
+    gap: 56px;
+  }
+
+  .hero-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-signal {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 850px) {
+  :root {
+    --sidebar: 0px;
+  }
+
+  body {
+    font-size: calc(16px * var(--text-scale));
+  }
+
+  .marketing-nav,
+  .marketing-hero,
+  .marketing-section,
+  .marketing-cta,
+  .marketing-footer,
+  .discovery-shell {
+    width: min(100% - 32px, 1180px);
+  }
+
+  .marketing-hero {
+    min-height: 0;
+    gap: 58px;
+    padding-block: 68px 90px;
+  }
+
+  .marketing-hero h1 {
+    font-size: clamp(48px, 13vw, 68px);
+  }
+
+  .marketing-cta {
+    padding: 38px;
+  }
+
+  .sidebar {
+    width: min(88vw, 300px);
+    transition: transform var(--motion-panel) var(--ease-emphasized);
+  }
+
+  .topbar {
+    height: 62px;
+    padding-inline: 16px;
+  }
+
+  .main-content {
+    padding: 30px 18px 56px;
+  }
+
+  .hero-panel {
+    min-height: 0;
+    padding: 30px 24px;
+    border-radius: 24px;
+  }
+
+  .page-header {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 580px) {
+  .marketing-nav,
+  .marketing-hero,
+  .marketing-section,
+  .marketing-cta,
+  .marketing-footer,
+  .discovery-shell {
+    width: min(100% - 26px, 1180px);
+  }
+
+  .marketing-hero h1 {
+    font-size: clamp(44px, 14vw, 58px);
+  }
+
+  .marketing-product-card,
+  .discovery-card,
+  .mfa-card,
+  .plan-card,
+  .marketing-value-grid article {
+    padding: 22px;
+  }
+
+  .marketing-cta {
+    padding: 30px 24px;
+  }
+
+  .main-content {
+    padding-inline: 14px;
+  }
+
+  .hero-copy h1 {
+    font-size: clamp(38px, 12vw, 52px);
+  }
+
+  .card-pad,
+  .settings-card,
+  .chart-card,
+  .account-card,
+  .message-view {
+    padding: 20px;
+  }
+
+  .stat-grid,
+  .module-grid,
+  .customer-grid,
+  .three-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

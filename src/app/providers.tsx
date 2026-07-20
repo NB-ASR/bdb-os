@@ -12,6 +12,7 @@ export function Providers({ children }: { children: ReactNode }) {
     pathname === "/" ||
     pathname.startsWith("/discovery") ||
     pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
     pathname.startsWith("/mfa") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/activate") ||
