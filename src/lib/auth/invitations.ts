@@ -1,5 +1,5 @@
-export const MAX_INVITATION_TTL_SECONDS = 86_400;
-export const DEFAULT_INVITATION_TTL_SECONDS = 86_400;
+export const MAX_INVITATION_TTL_SECONDS = 3_600;
+export const DEFAULT_INVITATION_TTL_SECONDS = 3_600;
 const MIN_INVITATION_TTL_SECONDS = 300;
 
 export function invitationTtlSeconds(value = process.env.BDB_INVITATION_TTL_SECONDS) {
