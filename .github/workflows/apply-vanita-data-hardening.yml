@@ -1,0 +1,77 @@
+name: Apply Vanita data hardening
+
+on:
+  push:
+    branches:
+      - qa/launch-readiness-hardening-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vanita-data-hardening
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/launch-readiness-hardening-v1
+          fetch-depth: 0
+
+      - name: Apply reviewed Vanita patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          app = "projects/vanita-stock/app.js"
+          replace(app,
+          '''};\n\nlet state = loadState();\n''',
+          '''};\n\nconst emptyState = { products: [], services: [], invoices: [], sales: [], activities: [] };\n\nlet state = loadState();\n''')
+          replace(app,
+          '''const makeId = (prefix) => `${prefix}-${String(Date.now()).slice(-5)}`;\n''',
+          '''const makeId = (prefix) => {\n  const token = globalThis.crypto?.randomUUID\n    ? globalThis.crypto.randomUUID().split("-")[0].toUpperCase()\n    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();\n  return `${prefix}-${token}`;\n};\n''')
+          replace(app,
+          '''    { icon: "□", value: totalUnits.toLocaleString(), label: `${stockedProducts.length} products in inventory`, delta: "+6.2%", tone: "#347c65", tint: "#e7f3ee" },\n''',
+          '''    { icon: "□", value: totalUnits.toLocaleString(), label: `${stockedProducts.length} products in inventory`, delta: "Live count", tone: "#347c65", tint: "#e7f3ee" },\n''')
+          replace(app,
+          '''function renderChart() {\n  const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];\n  const stockIn = [58,92,46,110,76,128,65], stockOut = [36,55,68,52,87,73,42];\n  $("#stockChart").innerHTML = days.map((day, i) => `<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:${stockIn[i]}px"></i><i class="bar out" style="height:${stockOut[i]}px"></i></div><span>${day}</span></div>`).join("");\n}\n''',
+          '''function renderChart() {\n  const days = Array.from({ length: 7 }, (_, index) => {\n    const date = new Date();\n    date.setHours(0, 0, 0, 0);\n    date.setDate(date.getDate() - (6 - index));\n    return date;\n  });\n  const key = value => new Date(value).toLocaleDateString("en-CA");\n  const movements = days.map(day => {\n    const dayKey = key(day);\n    const stockIn = state.invoices\n      .filter(document => document.stockApplied !== false && Number(document.direction) === 1 && key(document.date) === dayKey)\n      .reduce((sum, document) => sum + (document.lines || []).reduce((lineSum, line) => lineSum + (Number(line.qty) || 0), 0), 0);\n    const supplierReturns = state.invoices\n      .filter(document => document.stockApplied !== false && Number(document.direction) === -1 && key(document.date) === dayKey)\n      .reduce((sum, document) => sum + (document.lines || []).reduce((lineSum, line) => lineSum + (Number(line.qty) || 0), 0), 0);\n    const sold = state.sales\n      .filter(sale => key(sale.date) === dayKey)\n      .reduce((sum, sale) => sum + saleItemCounts(sale).product, 0);\n    return { day, stockIn, stockOut: sold + supplierReturns };\n  });\n  const maximum = Math.max(1, ...movements.flatMap(item => [item.stockIn, item.stockOut]));\n  $("#stockChart").innerHTML = movements.map(item => {\n    const inHeight = item.stockIn ? Math.max(4, Math.round(item.stockIn / maximum * 160)) : 0;\n    const outHeight = item.stockOut ? Math.max(4, Math.round(item.stockOut / maximum * 160)) : 0;\n    const label = item.day.toLocaleDateString("en-GB", { weekday:"short" });\n    return `<div class="chart-day"><div class="bar-pair"><i class="bar in" title="${item.stockIn} units in" style="height:${inHeight}px"></i><i class="bar out" title="${item.stockOut} units out" style="height:${outHeight}px"></i></div><span>${label}</span></div>`;\n  }).join("");\n}\n''')
+          replace(app,
+          '''  wireEvents();\n  try {\n''',
+          '''  wireEvents();\n  window.addEventListener("vanita-cloud-conflict", () => {\n    window.alert("Another staff member saved newer Vanita Stock changes. This page will reload the latest shared records; your conflicting unsynced edit will not overwrite them.");\n    window.location.reload();\n  }, { once:true });\n  try {\n''')
+          replace(app,
+          '''      const sharedState = await window.VanitaCloud.loadState();\n      if (sharedState?.products) state = normalizeState(sharedState);\n      else window.VanitaCloud.saveState(state);\n''',
+          '''      const sharedState = await window.VanitaCloud.loadState();\n      state = normalizeState(sharedState && typeof sharedState === "object" ? sharedState : structuredClone(emptyState));\n      localStorage.setItem(STORE_KEY, JSON.stringify(state));\n''')
+
+          config = "next.config.ts"
+          replace(config,
+          '''    `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"} https://js.stripe.com`,\n''',
+          '''    `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"} https://js.stripe.com https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js`,\n''')
+
+          css = Path("projects/vanita-stock/styles.css")
+          text = css.read_text()
+          marker = "/* Cloud reliability states */"
+          if marker not in text:
+              text += '''\n\n/* Cloud reliability states */\n.cloud-status[data-tone="saving"] { color: var(--gold-light); background: var(--gold-faint); }\n.cloud-status[data-tone="offline"] { color: #edbd72; background: var(--amber-bg); border-color: rgba(224, 166, 77, .24); }\n.cloud-status[data-tone="error"] { color: #ef9585; background: var(--red-bg); border-color: rgba(220, 109, 85, .28); }\n'''
+              css.write_text(text)
+          PY
+
+          git config user.name "BDB OS Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/apply-vanita-data-hardening.yml
+          git add projects/vanita-stock/app.js projects/vanita-stock/styles.css next.config.ts
+          git commit -m "Prevent Vanita seed and concurrent save data loss"
+          git push origin HEAD:qa/launch-readiness-hardening-v1
