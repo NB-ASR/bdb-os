@@ -23,8 +23,8 @@ replaceRequired(
   `const makeId = (prefix) => {
   const token = globalThis.crypto?.randomUUID
     ? globalThis.crypto.randomUUID().split("-")[0].toUpperCase()
-    : \`${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}\`.toUpperCase();
-  return \`${prefix}-${token}\`;
+    : \`\${Date.now().toString(36)}\${Math.random().toString(36).slice(2, 8)}\`.toUpperCase();
+  return \`\${prefix}-\${token}\`;
 };`,
   "globalThis.crypto?.randomUUID",
 );
@@ -39,7 +39,7 @@ replaceRequired(
 const oldChart = `function renderChart() {
   const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   const stockIn = [58,92,46,110,76,128,65], stockOut = [36,55,68,52,87,73,42];
-  $("#stockChart").innerHTML = days.map((day, i) => \`<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:${stockIn[i]}px"></i><i class="bar out" style="height:${stockOut[i]}px"></i></div><span>${day}</span></div>\`).join("");
+  $("#stockChart").innerHTML = days.map((day, i) => \`<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:\${stockIn[i]}px"></i><i class="bar out" style="height:\${stockOut[i]}px"></i></div><span>\${day}</span></div>\`).join("");
 }`;
 
 const newChart = `function renderChart() {
@@ -68,7 +68,7 @@ const newChart = `function renderChart() {
     const inHeight = item.stockIn ? Math.max(4, Math.round(item.stockIn / maximum * 160)) : 0;
     const outHeight = item.stockOut ? Math.max(4, Math.round(item.stockOut / maximum * 160)) : 0;
     const label = item.day.toLocaleDateString("en-GB", { weekday: "short" });
-    return \`<div class="chart-day"><div class="bar-pair"><i class="bar in" title="${item.stockIn} units in" style="height:${inHeight}px"></i><i class="bar out" title="${item.stockOut} units out" style="height:${outHeight}px"></i></div><span>${label}</span></div>\`;
+    return \`<div class="chart-day"><div class="bar-pair"><i class="bar in" title="\${item.stockIn} units in" style="height:\${inHeight}px"></i><i class="bar out" title="\${item.stockOut} units out" style="height:\${outHeight}px"></i></div><span>\${label}</span></div>\`;
   }).join("");
 }`;
 replaceRequired("stock chart", oldChart, newChart, "const movements = days.map");
