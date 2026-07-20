@@ -1,4 +1,4 @@
-const CACHE_NAME = "bdb-os-static-v4";
+const CACHE_NAME = "bdb-os-static-v5";
 const PRECACHE_ASSETS = ["/bdb-mark.svg"];
 
 function isCacheableStaticAsset(requestUrl) {
@@ -6,6 +6,16 @@ function isCacheableStaticAsset(requestUrl) {
   if (url.origin !== self.location.origin) return false;
   if (url.pathname.startsWith("/_next/static/")) return true;
   return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
+}
+
+function safeNotificationUrl(value) {
+  try {
+    const url = new URL(typeof value === "string" ? value : "/workspace", self.location.origin);
+    if (url.origin !== self.location.origin) return "/workspace";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/workspace";
+  }
 }
 
 self.addEventListener("install", (event) => {
@@ -40,14 +50,19 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? {};
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch {
+    data = { body: event.data?.text() ?? "You have a new update." };
+  }
   event.waitUntil(
     self.registration.showNotification(data.title ?? "BDB OS", {
       body: data.body ?? "You have a new update.",
       icon: "/bdb-mark.svg",
       badge: "/bdb-mark.svg",
       tag: data.tag,
-      data: { url: data.url ?? "/workspace" },
+      data: { url: safeNotificationUrl(data.url) },
     }),
   );
 });
@@ -56,7 +71,7 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const url = event.notification.data?.url ?? "/workspace";
+      const url = safeNotificationUrl(event.notification.data?.url);
       const existing = clients.find((client) => "focus" in client);
       if (existing) {
         existing.navigate(url);
