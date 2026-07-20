@@ -8,9 +8,10 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:db:static",
+    "test": "npm run test:unit && npm run test:db:static && npm run test:migrations",
     "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
     "test:db:static": "node scripts/check-db-security-contract.mjs",
+    "test:migrations": "node scripts/check-migration-history.mjs",
     "test:e2e": "playwright test",
     "smoke": "node scripts/smoke-production.mjs"
   },
