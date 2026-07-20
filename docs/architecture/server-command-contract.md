@@ -9,11 +9,11 @@ This phase adds the shared primitives only. It does not migrate Accounts, Bankin
 ## Command lifecycle
 
 1. The client sends a state-changing request with a workspace ID and an optional `Idempotency-Key`.
-2. The server verifies the authenticated user.
-3. The server independently confirms an active membership in an active or trial workspace.
+2. The server verifies the authenticated user through the cookie-backed Supabase client.
+3. The membership lookup runs through authenticated RLS so a suspended profile, inactive workspace or unrelated company context is rejected. A linked workspace is allowed only through the existing approved Business Group rules.
 4. The department command validates its own business rules and feature permission.
 5. The database mutation completes.
-6. The same trusted operation appends a permanent `activity_items` record.
+6. The same trusted operation appends a permanent `activity_items` record through the server-only client.
 7. The server returns a structured result or structured error.
 8. The UI changes to `Saved` only after success.
 
@@ -22,7 +22,7 @@ This phase adds the shared primitives only. It does not migrate Accounts, Bankin
 - `src/lib/server/command.ts`
   - JSON validation
   - authentication
-  - workspace membership checks
+  - active-profile and RLS-backed workspace-context checks
   - command correlation IDs
   - idempotency-key capture
   - consistent no-store responses and errors
@@ -45,6 +45,7 @@ Each department command must still define:
 ## Rules
 
 - Never trust a workspace ID merely because the client sent it.
+- Never use a service-role membership query as the user-authorisation decision.
 - Never mark the interface as saved before the server confirms success.
 - Never perform a multi-record financial decision through independent browser requests.
 - Never let browser clients insert, edit or delete permanent business history.
