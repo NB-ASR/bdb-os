@@ -1,12 +1,9 @@
 name: Apply Vanita data hardening
 
 on:
-  push:
-    branches:
-      - qa/launch-readiness-hardening-v1
   pull_request:
     branches:
-      - main
+      - qa/launch-readiness-hardening-v1
 
 permissions:
   contents: write
@@ -32,7 +29,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          import re
 
           app_path = Path("projects/vanita-stock/app.js")
           app = app_path.read_text()
@@ -44,14 +40,14 @@ jobs:
               : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
             return `${prefix}-${token}`;
           };'''
+          new_id = "\n".join(line[10:] if line.startswith("          ") else line for line in new_id.splitlines())
           if old_id in app:
               app = app.replace(old_id, new_id, 1)
           elif "globalThis.crypto?.randomUUID" not in app:
               raise SystemExit("makeId patch target was not found")
 
-          old_metric = 'delta: "+6.2%"'
-          if old_metric in app:
-              app = app.replace(old_metric, 'delta: "Live count"', 1)
+          if 'delta: "+6.2%"' in app:
+              app = app.replace('delta: "+6.2%"', 'delta: "Live count"', 1)
           elif 'delta: "Live count"' not in app:
               raise SystemExit("inventory metric patch target was not found")
 
@@ -60,6 +56,7 @@ jobs:
             const stockIn = [58,92,46,110,76,128,65], stockOut = [36,55,68,52,87,73,42];
             $("#stockChart").innerHTML = days.map((day, i) => `<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:${stockIn[i]}px"></i><i class="bar out" style="height:${stockOut[i]}px"></i></div><span>${day}</span></div>`).join("");
           }'''
+          old_chart = "\n".join(line[10:] if line.startswith("          ") else line for line in old_chart.splitlines())
           new_chart = '''function renderChart() {
             const days = Array.from({ length: 7 }, (_, index) => {
               const date = new Date();
@@ -89,27 +86,25 @@ jobs:
               return `<div class="chart-day"><div class="bar-pair"><i class="bar in" title="${item.stockIn} units in" style="height:${inHeight}px"></i><i class="bar out" title="${item.stockOut} units out" style="height:${outHeight}px"></i></div><span>${label}</span></div>`;
             }).join("");
           }'''
+          new_chart = "\n".join(line[10:] if line.startswith("          ") else line for line in new_chart.splitlines())
           if old_chart in app:
               app = app.replace(old_chart, new_chart, 1)
           elif "const movements = days.map" not in app:
               raise SystemExit("stock chart patch target was not found")
 
-          conflict_marker = 'window.addEventListener("vanita-cloud-conflict"'
-          if conflict_marker not in app:
-              target = '''  wireEvents();
-            try {'''
+          if 'window.addEventListener("vanita-cloud-conflict"' not in app:
+              target = "  wireEvents();\n  try {"
               replacement = '''  wireEvents();
             window.addEventListener("vanita-cloud-conflict", () => {
               window.alert("Another staff member saved newer Vanita Stock changes. This page will reload the latest shared records; your conflicting unsynced edit will not overwrite them.");
               window.location.reload();
             }, { once:true });
             try {'''
+              replacement = "\n".join(line[10:] if line.startswith("          ") else line for line in replacement.splitlines())
               if target not in app:
                   raise SystemExit("conflict listener patch target was not found")
               app = app.replace(target, replacement, 1)
 
-          # The YAML block indentation is removed from generated JavaScript.
-          app = re.sub(r"(?m)^          (?=(?:const token|  const token|  \?|  :|  return|};|  const days|    const|    date|    return|  });|  const key|  const movements|      const|      \.filter|      \.reduce|      return|  const maximum|  \$|    }).*)", "", app)
           app_path.write_text(app)
 
           css_path = Path("projects/vanita-stock/styles.css")
