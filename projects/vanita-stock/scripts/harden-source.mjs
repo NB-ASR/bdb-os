@@ -2,9 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import process from "node:process";
 
 const appPath = new URL("../app.js", import.meta.url);
+const indexPath = new URL("../index.html", import.meta.url);
 const checkOnly = process.argv.includes("--check");
 let source = await readFile(appPath, "utf8");
+let indexSource = await readFile(indexPath, "utf8");
 let changed = false;
+let indexChanged = false;
 
 function replaceRequired(label, oldValue, newValue, hardenedMarker) {
   if (source.includes(oldValue)) {
@@ -102,14 +105,22 @@ if (source.includes("activeView")) {
   throw new Error("Unexpected activeView reference remains after removing unused assignments.");
 }
 
+if (indexSource.includes('<span class="trend-pill">↑ 12.4%</span>')) {
+  indexSource = indexSource.replace('<span class="trend-pill">↑ 12.4%</span>', '<span class="trend-pill">Recorded activity</span>');
+  indexChanged = true;
+} else if (!indexSource.includes('<span class="trend-pill">Recorded activity</span>')) {
+  throw new Error("Vanita trend label target was not found and the safe label is absent.");
+}
+
 if (checkOnly) {
-  if (changed) {
-    throw new Error("Vanita app.js is not hardened. Run `npm run harden` and commit the result.");
+  if (changed || indexChanged) {
+    throw new Error("Vanita sources are not hardened. Run `npm run harden` and commit the result.");
   }
   console.log("Vanita source hardening is present.");
-} else if (changed) {
-  await writeFile(appPath, source);
-  console.log("Vanita app.js hardened successfully.");
+} else if (changed || indexChanged) {
+  if (changed) await writeFile(appPath, source);
+  if (indexChanged) await writeFile(indexPath, indexSource);
+  console.log("Vanita sources hardened successfully.");
 } else {
-  console.log("Vanita app.js was already hardened.");
+  console.log("Vanita sources were already hardened.");
 }
