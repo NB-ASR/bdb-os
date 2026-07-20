@@ -483,30 +483,29 @@ function TeamPanel({ mode, canManage }: { mode: string; canManage: boolean }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviting, setInviting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     if (mode !== "cloud") {
       setMembers([
-        {
-          user_id: "demo-owner",
-          role: "owner",
-          status: "active",
-          email: "owner@business.com",
-          profiles: { full_name: "Workspace Owner" },
-        },
-        {
-          user_id: "demo-manager",
-          role: "manager",
-          status: "active",
-          email: "manager@business.com",
-          profiles: { full_name: "Operations Manager" },
-        },
+        { user_id: "demo-owner", role: "owner", status: "active", email: "owner@business.com", profiles: { full_name: "Workspace Owner" } },
+        { user_id: "demo-manager", role: "manager", status: "active", email: "manager@business.com", profiles: { full_name: "Operations Manager" } },
       ]);
       setLoading(false);
       return;
     }
-    const response = await fetch("/api/workspace/team");
-    if (response.ok) setMembers((await response.json()).members);
-    setLoading(false);
+    try {
+      const response = await fetch("/api/workspace/team", { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "The team could not be loaded.");
+      setMembers(Array.isArray(result.members) ? result.members : []);
+    } catch (loadError) {
+      setMembers([]);
+      setError(loadError instanceof Error ? loadError.message : "The team could not be loaded.");
+    } finally {
+      setLoading(false);
+    }
   }, [mode]);
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -519,78 +518,48 @@ function TeamPanel({ mode, canManage }: { mode: string; canManage: boolean }) {
       return;
     }
     setInviting(true);
-    const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/workspace/team", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        role: form.get("role"),
-      }),
-    });
-    setInviting(false);
-    if (response.ok) {
-      event.currentTarget.reset();
+    setError(null);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    try {
+      const response = await fetch("/api/workspace/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.get("email"), role: form.get("role") }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error ?? "The invitation could not be sent.");
+      formElement.reset();
       await load();
-    } else alert((await response.json()).error);
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : "The invitation could not be sent.");
+    } finally {
+      setInviting(false);
+    }
   }
   return (
     <div className="settings-layout">
       <Card className="settings-card">
-        <SectionHeading
-          title="People & permissions"
-          description="Roles are enforced by database policies, not just interface visibility."
-        />
-        {loading ? (
-          <Loader2 className="spin" />
-        ) : (
+        <SectionHeading title="People & permissions" description="Roles are enforced by database policies, not just interface visibility." />
+        {error ? <div className="review-callout" role="alert"><ShieldCheck size={18} /><div><strong>Team data unavailable</strong><p>{error}</p><Button type="button" variant="quiet" onClick={() => void load()}>Try again</Button></div></div> : null}
+        {loading ? <Loader2 className="spin" /> : !error && members.length > 0 ? (
           <div className="team-list">
             {members.map((member) => (
               <div key={member.user_id}>
-                <span className="profile-avatar">
-                  {(member.profiles?.full_name || member.email)
-                    .slice(0, 2)
-                    .toUpperCase()}
-                </span>
-                <span>
-                  <strong>{member.profiles?.full_name || member.email}</strong>
-                  <small>
-                    {member.email} · {member.status}
-                  </small>
-                </span>
-                <span className={`role-badge ${member.role}`}>
-                  {member.role === "staff" ? "Employee" : member.role}
-                </span>
+                <span className="profile-avatar">{(member.profiles?.full_name || member.email).slice(0, 2).toUpperCase()}</span>
+                <span><strong>{member.profiles?.full_name || member.email}</strong><small>{member.email} · {member.status}</small></span>
+                <span className={`role-badge ${member.role}`}>{member.role === "staff" ? "Employee" : member.role}</span>
               </div>
             ))}
           </div>
-        )}
+        ) : !error ? <p className="muted">No active team members were returned for this workspace.</p> : null}
       </Card>
       <Card className="settings-card">
-        <SectionHeading
-          title="Invite team member"
-          description="Owners and Managers can add people to this workspace."
-        />
+        <SectionHeading title="Invite team member" description="Owners and Managers can add people to this workspace." />
         <form onSubmit={invite}>
-          <div className="field">
-            <label>Work email</label>
-            <input name="email" type="email" required disabled={!canManage} />
-          </div>
-          <div className="field" style={{ marginTop: 14 }}>
-            <label>Role</label>
-            <select name="role" disabled={!canManage}>
-              <option value="staff">Employee · daily work</option>
-              <option value="manager">Manager · people and settings</option>
-              <option value="owner">Owner · full business control</option>
-            </select>
-          </div>
-          <Button
-            type="submit"
-            disabled={!canManage || inviting}
-            style={{ marginTop: 18 }}
-          >
-            <Plus size={16} /> {inviting ? "Sending…" : "Send invitation"}
-          </Button>
+          <div className="field"><label>Work email</label><input name="email" type="email" required disabled={!canManage || inviting} /></div>
+          <div className="field" style={{ marginTop: 14 }}><label>Role</label><select name="role" disabled={!canManage || inviting}><option value="staff">Employee · daily work</option><option value="manager">Manager · people and settings</option><option value="owner">Owner · full business control</option></select></div>
+          <Button type="submit" disabled={!canManage || inviting} style={{ marginTop: 18 }}><Plus size={16} /> {inviting ? "Sending…" : "Send invitation"}</Button>
         </form>
       </Card>
     </div>
@@ -599,69 +568,46 @@ function TeamPanel({ mode, canManage }: { mode: string; canManage: boolean }) {
 
 function BillingPanel({ mode }: { mode: string }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   async function portal() {
     if (mode !== "cloud") {
-      alert(
-        "The Stripe portal becomes available after a client subscription is connected.",
-      );
+      setError("The billing portal becomes available after a client subscription is connected.");
       return;
     }
     setLoading(true);
-    const response = await fetch("/api/workspace/billing-portal", {
-      method: "POST",
-    });
-    const result = await response.json();
-    setLoading(false);
-    if (response.ok) window.location.href = result.url;
-    else alert(result.error ?? "Billing portal unavailable");
+    setError(null);
+    try {
+      const response = await fetch("/api/workspace/billing-portal", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || typeof result.url !== "string") throw new Error(result.error ?? "The billing portal is unavailable.");
+      window.location.assign(result.url);
+    } catch (portalError) {
+      setError(portalError instanceof Error ? portalError.message : "The billing portal is unavailable.");
+    } finally {
+      setLoading(false);
+    }
   }
   return (
     <div className="settings-layout">
       <Card className="settings-card">
-        <SectionHeading
-          title="Plan & contract"
-          description="Your BDB OS service is tailored to the workspace."
-        />
+        <SectionHeading title="Plan & contract" description="Commercial terms are managed against the actual workspace agreement." />
         <div className="billing-plan">
-          <p className="eyebrow">Current starting plan</p>
-          <h2>Growth</h2>
-          <p>
-            Custom modules and client overrides are applied on top of this plan.
-          </p>
+          <p className="eyebrow">Workspace agreement</p>
+          <h2>{mode === "cloud" ? "Managed by BDB OS" : "Preview workspace"}</h2>
+          <p>{mode === "cloud" ? "Open the secure billing portal for verified payment and invoice information. Module or contract changes require an agreed quote before they take effect." : "No subscription or contract is connected to this browser preview."}</p>
           <div>
-            <span>
-              <strong>Billing</strong>
-              <small>Monthly</small>
-            </span>
-            <span>
-              <strong>Minimum commitment</strong>
-              <small>6 months</small>
-            </span>
-            <span>
-              <strong>Status</strong>
-              <small>
-                {mode === "cloud" ? "Managed in Stripe" : "Preview"}
-              </small>
-            </span>
+            <span><strong>Plan</strong><small>{mode === "cloud" ? "See workspace agreement" : "Not connected"}</small></span>
+            <span><strong>Billing cycle</strong><small>{mode === "cloud" ? "See secure portal" : "Not connected"}</small></span>
+            <span><strong>Status</strong><small>{mode === "cloud" ? "Workspace managed" : "Preview only"}</small></span>
           </div>
         </div>
       </Card>
       <Card className="settings-note">
         <CreditCard size={22} />
         <h2 style={{ marginTop: 10 }}>Billing support</h2>
-        <p>
-          Payment methods and invoices are handled through the secure Stripe
-          customer portal. Plan changes are quoted before they affect your
-          contract.
-        </p>
-        <Button
-          variant="secondary"
-          style={{ marginTop: 18 }}
-          onClick={() => void portal()}
-          disabled={loading}
-        >
-          {loading ? "Opening…" : "Open billing portal"}
-        </Button>
+        <p>Payment methods and issued billing documents are handled through the secure Stripe customer portal. This screen does not invent contract terms when the workspace API has not returned them.</p>
+        {error ? <p role="alert" style={{ color: "var(--red)", marginTop: 12 }}>{error}</p> : null}
+        <Button variant="secondary" style={{ marginTop: 18 }} onClick={() => void portal()} disabled={loading}>{loading ? "Opening…" : "Open billing portal"}</Button>
       </Card>
     </div>
   );
