@@ -65,7 +65,19 @@ jobs:
         run: npm test
 
       - name: ESLint
-        run: npm run lint
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee eslint-diagnostics.log
+
+      - name: Upload ESLint diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-diagnostics
+          path: eslint-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Production build
         run: npm run build
