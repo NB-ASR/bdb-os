@@ -36,7 +36,6 @@ const seedData = {
 };
 
 let state = loadState();
-let activeView = "dashboard";
 let stockFilter = "all";
 let serviceStatusFilter = "all";
 let serviceCategoryFilter = "all";
@@ -481,7 +480,6 @@ function renderChart() {
 }
 
 function switchView(view) {
-  activeView = view;
   $$(".view").forEach(el => el.classList.toggle("active", el.id === `${view}View`));
   $$('[data-view]').forEach(el => el.classList.toggle("active", el.dataset.view === view));
   $(".mobile-catalog")?.classList.toggle("active", view === "products" || view === "services");
