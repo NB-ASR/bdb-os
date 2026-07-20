@@ -1,6 +1,9 @@
 name: Apply Vanita data hardening
 
 on:
+  push:
+    branches:
+      - qa/launch-readiness-hardening-v1
   pull_request:
     branches:
       - qa/launch-readiness-hardening-v1
