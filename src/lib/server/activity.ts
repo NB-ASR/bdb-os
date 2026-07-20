@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { WorkspaceCommandContext } from "@/lib/server/command";
 
-type ActivityTone = "gold" | "green" | "blue" | "neutral" | "red";
+type ActivityTone = "gold" | "green" | "blue" | "neutral";
 
 export type BusinessActivityInput = {
   action: string;
