@@ -20,6 +20,18 @@
       : JSON.parse(JSON.stringify(value));
   }
 
+  function normaliseSharedState(value) {
+    const data = value && typeof value === "object" ? value : {};
+    return {
+      ...data,
+      products: Array.isArray(data.products) ? data.products : [],
+      services: Array.isArray(data.services) ? data.services : [],
+      invoices: Array.isArray(data.invoices) ? data.invoices : [],
+      sales: Array.isArray(data.sales) ? data.sales : [],
+      activities: Array.isArray(data.activities) ? data.activities : []
+    };
+  }
+
   async function loadSupabaseLibrary() {
     if (window.supabase?.createClient) return;
     await new Promise((resolve, reject) => {
@@ -109,7 +121,7 @@
     revision = Number(data.revision) || 0;
     conflictDetected = false;
     status("Changes saved", "online");
-    return data.data && typeof data.data === "object" ? data.data : {};
+    return normaliseSharedState(data.data);
   }
 
   function isConflict(error) {
