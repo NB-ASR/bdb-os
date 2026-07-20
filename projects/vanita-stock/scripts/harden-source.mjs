@@ -83,6 +83,14 @@ const conflictListener = `  wireEvents();
   try {`;
 replaceRequired("cloud conflict listener", initTarget, conflictListener, 'window.addEventListener("vanita-cloud-conflict"');
 
+const unsafeCloudStartup = `      const sharedState = await window.VanitaCloud.loadState();
+      if (sharedState?.products) state = normalizeState(sharedState);
+      else window.VanitaCloud.saveState(state);`;
+const safeCloudStartup = `      const sharedState = await window.VanitaCloud.loadState();
+      state = normalizeState(sharedState);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));`;
+replaceRequired("cloud startup", unsafeCloudStartup, safeCloudStartup, "state = normalizeState(sharedState);");
+
 if (checkOnly) {
   if (changed) {
     throw new Error("Vanita app.js is not hardened. Run `npm run harden` and commit the result.");
