@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
@@ -48,8 +47,7 @@ export async function requireWorkspaceCommand(
   }
 
   const supabase = await createClient();
-  const admin = createAdminClient();
-  if (!supabase || !admin) {
+  if (!supabase) {
     throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
   }
 
@@ -58,7 +56,10 @@ export async function requireWorkspaceCommand(
     throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
   }
 
-  const { data, error } = await admin
+  // Use the authenticated client rather than the service role. The existing RLS
+  // policy enforces active-profile, active-workspace and approved Business Group
+  // context. A client-supplied workspace ID must never bypass that boundary.
+  const { data, error } = await supabase
     .from("workspace_memberships")
     .select("role,access_profile,status,workspaces!inner(status)")
     .eq("workspace_id", workspaceId)
