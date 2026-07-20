@@ -6,11 +6,19 @@ test("login page is available", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
 });
 
-test("unconfigured local workspace fails safely without crashing", async ({ page }) => {
+test("protected workspace never exposes data without verified configuration and access", async ({ page }) => {
   const response = await page.goto("/workspace");
+  expect(response).not.toBeNull();
+
+  if (response?.status() === 503) {
+    await expect(page.getByText("BDB OS is temporarily unavailable. No workspace data has been loaded.", { exact: true })).toBeVisible();
+    return;
+  }
+
   expect(response?.ok()).toBeTruthy();
-  await expect(page.getByText("Local preview", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Welcome to BDB OS/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/login(?:\?|$)/);
+  await expect(page.getByRole("heading", { name: "Welcome back." })).toBeVisible();
+  await expect(page.getByText("Local preview", { exact: true })).toHaveCount(0);
 });
 
 test("invalid invitation callback fails safely", async ({ page }) => {
