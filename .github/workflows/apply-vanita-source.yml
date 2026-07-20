@@ -1,0 +1,37 @@
+name: Apply Vanita source hardening
+
+on:
+  push:
+    branches:
+      - qa/launch-readiness-hardening-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-vanita-source
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/launch-readiness-hardening-v1
+          fetch-depth: 0
+      - name: Apply and validate source hardening
+        run: |
+          node projects/vanita-stock/scripts/harden-source.mjs
+          node --check projects/vanita-stock/app.js
+          node --check projects/vanita-stock/cloud.js
+      - name: Commit hardened source
+        run: |
+          git config user.name "BDB OS Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/apply-vanita-source.yml
+          git add projects/vanita-stock/app.js
+          git commit -m "Apply deterministic Vanita source hardening"
+          git push origin HEAD:qa/launch-readiness-hardening-v1
