@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "check": "node --check app.js && node --check cloud.js && node --check service-worker.js"
+    "harden": "node scripts/harden-source.mjs",
+    "check": "node scripts/harden-source.mjs --check && node --check app.js && node --check cloud.js && node --check service-worker.js"
   }
 }
