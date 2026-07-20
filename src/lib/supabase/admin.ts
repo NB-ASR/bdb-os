@@ -148,7 +148,9 @@ export async function activatePendingMemberships(userId: string) {
 
   const activated = (data ?? []).map((membership) => membership.workspace_id);
   if (activated.length) {
-    if (!selectedActiveWorkspaceId && !profileResult.data?.active_workspace_id) {
+    // Replace a missing or stale selection. A stale suspended/cancelled workspace
+    // must not keep the newly activated user outside their available business.
+    if (!selectedActiveWorkspaceId) {
       const { error: profileError } = await admin
         .from("profiles")
         .update({ active_workspace_id: activated[0] })
