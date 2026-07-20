@@ -91,6 +91,17 @@ const safeCloudStartup = `      const sharedState = await window.VanitaCloud.loa
       localStorage.setItem(STORE_KEY, JSON.stringify(state));`;
 replaceRequired("cloud startup", unsafeCloudStartup, safeCloudStartup, "state = normalizeState(sharedState);");
 
+const withoutUnusedViewState = source
+  .replace(/^let activeView = "dashboard";\r?\n/m, "")
+  .replace(/^\s*activeView\s*=\s*[^;]+;\s*\r?\n/gm, "");
+if (withoutUnusedViewState !== source) {
+  source = withoutUnusedViewState;
+  changed = true;
+}
+if (source.includes("activeView")) {
+  throw new Error("Unexpected activeView reference remains after removing unused assignments.");
+}
+
 if (checkOnly) {
   if (changed) {
     throw new Error("Vanita app.js is not hardened. Run `npm run harden` and commit the result.");
