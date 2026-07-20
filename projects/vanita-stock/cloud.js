@@ -1,7 +1,24 @@
 (function () {
   let client = null;
   let cloudEnabled = false;
-  let syncing = false;
+  let revision = 0;
+  let pendingState = null;
+  let flushPromise = null;
+  let conflictDetected = false;
+
+  function status(message, tone = "") {
+    const element = document.querySelector("#cloudStatus");
+    if (!element) return;
+    element.textContent = message;
+    element.classList.toggle("online", tone === "online");
+    element.dataset.tone = tone;
+  }
+
+  function snapshot(value) {
+    return typeof structuredClone === "function"
+      ? structuredClone(value)
+      : JSON.parse(JSON.stringify(value));
+  }
 
   async function loadSupabaseLibrary() {
     if (window.supabase?.createClient) return;
@@ -48,7 +65,7 @@
         button.disabled = false;
         button.textContent = "Sign in securely";
         if (signInError) {
-          error.textContent = signInError.message;
+          error.textContent = "The email or password was not accepted.";
           error.hidden = false;
           return;
         }
@@ -61,43 +78,82 @@
 
   async function connect() {
     const config = await fetchConfiguration();
-    if (!config) return { enabled: false };
+    if (!config) {
+      status("Local demo", "local");
+      return { enabled: false };
+    }
     await loadSupabaseLibrary();
 
     client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
 
-    let { data: { session } } = await client.auth.getSession();
+    let { data: { session }, error } = await client.auth.getSession();
+    if (error) throw new Error("The saved session could not be verified.");
     if (!session) session = await waitForSignIn();
     cloudEnabled = true;
     document.querySelector("#signOutButton").hidden = false;
-    document.querySelector("#cloudStatus").textContent = "Cloud synced";
-    document.querySelector("#cloudStatus").classList.add("online");
+    status("Cloud connected", "online");
     return { enabled: true, session };
   }
 
   async function loadState() {
     if (!cloudEnabled) return null;
-    const { data, error } = await client.from("app_state").select("data").eq("id", "vanita").maybeSingle();
-    if (error) throw error;
-    return data?.data || null;
+    const { data, error } = await client.from("app_state").select("data,revision").eq("id", "vanita").maybeSingle();
+    if (error) {
+      throw new Error(error.message.includes("revision")
+        ? "The Vanita cloud schema must be upgraded before shared editing can continue."
+        : error.message);
+    }
+    if (!data) throw new Error("The Vanita shared workspace record is missing.");
+    revision = Number(data.revision) || 0;
+    conflictDetected = false;
+    status("Changes saved", "online");
+    return data.data && typeof data.data === "object" ? data.data : {};
   }
 
-  async function saveState(state) {
-    if (!cloudEnabled || syncing) return;
-    syncing = true;
-    document.querySelector("#cloudStatus").textContent = "Syncing…";
-    try {
-      const { error } = await client.from("app_state").upsert({ id: "vanita", data: state, updated_at: new Date().toISOString() });
-      if (error) throw error;
-      document.querySelector("#cloudStatus").textContent = "Cloud synced";
-    } catch (error) {
-      document.querySelector("#cloudStatus").textContent = "Sync failed";
-      console.error("Vanita cloud sync failed", error);
-    } finally {
-      syncing = false;
-    }
+  function isConflict(error) {
+    return error?.code === "40001" || String(error?.message || "").includes("STATE_CONFLICT");
+  }
+
+  async function flushPendingState() {
+    if (!cloudEnabled || conflictDetected || flushPromise) return flushPromise;
+    flushPromise = (async () => {
+      while (pendingState && cloudEnabled && !conflictDetected) {
+        if (!navigator.onLine) {
+          status("Offline · local changes kept", "offline");
+          break;
+        }
+        const nextState = pendingState;
+        pendingState = null;
+        status("Saving…", "saving");
+        const { data, error } = await client.rpc("save_vanita_state", {
+          p_data: nextState,
+          p_expected_revision: revision
+        });
+        if (error) {
+          pendingState = nextState;
+          if (isConflict(error)) {
+            conflictDetected = true;
+            status("Conflict · reload required", "error");
+            window.dispatchEvent(new CustomEvent("vanita-cloud-conflict"));
+          } else {
+            status("Save failed · local copy kept", "error");
+          }
+          break;
+        }
+        const result = Array.isArray(data) ? data[0] : data;
+        revision = Number(result?.revision) || revision + 1;
+        status(pendingState ? "Saving newer changes…" : "Changes saved", "online");
+      }
+    })().finally(() => { flushPromise = null; });
+    return flushPromise;
+  }
+
+  function saveState(state) {
+    if (!cloudEnabled) return Promise.resolve(false);
+    pendingState = snapshot(state);
+    return flushPendingState().then(() => !pendingState && !conflictDetected);
   }
 
   async function signOut() {
@@ -107,7 +163,8 @@
 
   async function getAccessToken() {
     if (!client) return null;
-    const { data: { session } } = await client.auth.getSession();
+    const { data: { session }, error } = await client.auth.getSession();
+    if (error) return null;
     return session?.access_token || null;
   }
 
@@ -139,7 +196,21 @@
     if (error) throw new Error(`The stored file could not be deleted: ${error.message}`);
   }
 
-  window.VanitaCloud = { connect, loadState, saveState, signOut, getAccessToken, uploadDocument, getDocumentUrl, deleteDocumentFile, get enabled() { return cloudEnabled; } };
+  window.addEventListener("online", () => { if (pendingState && !conflictDetected) void flushPendingState(); });
+  window.addEventListener("offline", () => { if (cloudEnabled) status("Offline · local changes kept", "offline"); });
+
+  window.VanitaCloud = {
+    connect,
+    loadState,
+    saveState,
+    signOut,
+    getAccessToken,
+    uploadDocument,
+    getDocumentUrl,
+    deleteDocumentFile,
+    get enabled() { return cloudEnabled; },
+    get hasConflict() { return conflictDetected; }
+  };
 
   const enhancements = document.createElement("script");
   enhancements.src = "discount-reporting.js";
