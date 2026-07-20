@@ -1,0 +1,80 @@
+name: Apply launch status hardening
+
+on:
+  push:
+    branches:
+      - qa/launch-readiness-hardening-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: launch-status-hardening
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qa/launch-readiness-hardening-v1
+          fetch-depth: 0
+
+      - name: Apply reviewed save-state patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:80]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          settings = "src/app/settings/page.tsx"
+          replace(settings,
+          '''  updateSettings: (settings: BusinessSettings) => void;\n''',
+          '''  updateSettings: (settings: BusinessSettings) => Promise<boolean>;\n''')
+          replace(settings,
+          '''  function submit(event: FormEvent) {\n    event.preventDefault();\n    updateSettings(form);\n    setSaved(true);\n    window.setTimeout(() => setSaved(false), 1800);\n  }\n''',
+          '''  async function submit(event: FormEvent) {\n    event.preventDefault();\n    const confirmed = await updateSettings(form);\n    if (!confirmed) return;\n    setSaved(true);\n    window.setTimeout(() => setSaved(false), 1800);\n  }\n''')
+          replace(settings,
+          '''  updateTheme: (theme: WorkspaceTheme) => void;\n  uploadLogo: (file: File) => Promise<void>;\n''',
+          '''  updateTheme: (theme: WorkspaceTheme) => Promise<boolean>;\n  uploadLogo: (file: File) => Promise<boolean>;\n''')
+          replace(settings,
+          '''  function save() {\n    updateTheme(theme);\n    setSaved(true);\n    window.setTimeout(() => setSaved(false), 1800);\n  }\n''',
+          '''  async function save() {\n    const confirmed = await updateTheme(theme);\n    if (!confirmed) return;\n    setSaved(true);\n    window.setTimeout(() => setSaved(false), 1800);\n  }\n''')
+
+          shell = "src/components/app-shell.tsx"
+          replace(shell,
+          '''  const { state, mode, role } = useBdb();\n''',
+          '''  const { state, mode, role, syncStatus, lastError, clearError } = useBdb();\n''')
+          replace(shell,
+          '''  const canManageTeam = ["owner", "admin", "manager"].includes(role);\n''',
+          '''  const canManageTeam = ["owner", "admin", "manager"].includes(role);\n  const connectionLabel = !online\n    ? "Offline · view only"\n    : mode === "demo"\n      ? "Local preview"\n      : syncStatus === "saving"\n        ? "Saving…"\n        : syncStatus === "error"\n          ? "Save failed"\n          : syncStatus === "offline"\n            ? "Offline · view only"\n            : syncStatus === "saved"\n              ? "Changes saved"\n              : "Connected";\n  const connectionTone = !online || syncStatus === "offline"\n    ? "offline"\n    : syncStatus === "error"\n      ? "error"\n      : syncStatus === "saving"\n        ? "saving"\n        : "online";\n''')
+          replace(shell,
+          '''            <span className={`connection-pill ${online && mode === "cloud" ? "online" : "offline"}`}>\n              {online ? <Wifi size={15} /> : <WifiOff size={15} />}\n              {!online ? "Offline" : mode === "cloud" ? "Cloud synced" : "Local preview"}\n            </span>\n''',
+          '''            <span className={`connection-pill ${connectionTone}`}>\n              {!online || syncStatus === "offline" ? <WifiOff size={15} /> : <Wifi size={15} />}\n              {connectionLabel}\n            </span>\n''')
+          replace(shell,
+          '''        </header>\n        <main className="main-content">{children}</main>\n''',
+          '''        </header>\n        {lastError ? (\n          <div className="sync-error-banner" role="alert">\n            <WifiOff size={18} />\n            <span>{lastError}</span>\n            <button type="button" onClick={clearError} aria-label="Dismiss save error"><X size={17} /></button>\n          </div>\n        ) : null}\n        <main className="main-content">{children}</main>\n''')
+
+          css = Path("src/app/bdb-design-system.css")
+          text = css.read_text()
+          marker = "/* Launch reliability states */"
+          if marker not in text:
+              text += '''\n\n/* Launch reliability states */\n.connection-pill.saving {\n  border-color: color-mix(in srgb, var(--gold) 42%, transparent);\n  color: var(--gold-light, var(--gold));\n}\n.connection-pill.error {\n  border-color: rgba(220, 109, 85, .34);\n  background: rgba(220, 109, 85, .10);\n  color: #ef9585;\n}\n.sync-error-banner {\n  min-height: 48px;\n  display: grid;\n  grid-template-columns: auto minmax(0, 1fr) auto;\n  align-items: center;\n  gap: 11px;\n  margin: 14px 28px 0;\n  padding: 11px 13px;\n  border: 1px solid rgba(220, 109, 85, .28);\n  border-radius: 12px;\n  background: rgba(220, 109, 85, .09);\n  color: #f1b0a4;\n  font-size: 13px;\n}\n.sync-error-banner button {\n  width: 32px;\n  height: 32px;\n  display: grid;\n  place-items: center;\n  border: 1px solid rgba(220, 109, 85, .24);\n  border-radius: 9px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n}\n@media (max-width: 820px) {\n  .sync-error-banner { margin-inline: 16px; }\n}\n'''
+              css.write_text(text)
+          PY
+
+          git config user.name "BDB OS Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/apply-launch-status-hardening.yml
+          git add src/app/settings/page.tsx src/components/app-shell.tsx src/app/bdb-design-system.css
+          git commit -m "Show confirmed save and failure states"
+          git push origin HEAD:qa/launch-readiness-hardening-v1
