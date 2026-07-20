@@ -31,15 +31,17 @@ When the official application domain is launched, replace the Vercel production 
 
 ## Link lifetime
 
-In **Authentication → Providers → Email**, set Email OTP Expiration to exactly:
+In **Authentication → Providers → Email**, keep Email OTP Expiration aligned with BDB OS at exactly:
 
 ```text
-86400 seconds
+3600 seconds
 ```
 
-The BDB membership record is also capped at one day by `20260718193500_invitation_expiry_guard.sql`. Do not display or promise a seven-day invitation. A resent invitation starts a new one-day window and the previous secure link must be treated as invalid.
+Supabase uses the Email OTP Expiration value for invitation links, magic links and recovery links. BDB OS currently follows the hosted default of one hour. The application and `20260718193500_invitation_expiry_guard.sql` both cap membership invitations at the same one-hour lifetime.
 
-The activation screen preflights the pending membership before changing the user's password. This prevents an already expired or missing invitation from changing Auth credentials before the database accepts the business membership.
+Do not display or promise a seven-day invitation. A resent invitation starts a new one-hour window and the previous secure link must be treated as invalid.
+
+The activation screen preflights the pending membership before changing the user's password. Missing, unexpired-without-a-timestamp, unavailable-workspace and expired invitations must fail closed.
 
 ## Leaked-password protection
 
@@ -88,9 +90,9 @@ Never forward customer authentication links through a founder mailbox. The secur
 
 1. Create a mock business from Founder Admin.
 2. Confirm the email is BDB branded and addressed directly to the owner.
-3. Open only the newest invitation.
+3. Open only the newest invitation within one hour.
 4. Confirm the browser opens the production BDB OS domain, not localhost.
-5. Confirm an expired invitation is rejected before a password change.
+5. Confirm a missing or expired invitation is rejected before a password change.
 6. Create a password and activate the membership.
 7. Enter the correct workspace.
 8. Log out and sign back in with email and password.
