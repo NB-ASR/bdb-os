@@ -47,7 +47,19 @@ jobs:
         run: npm ci
 
       - name: TypeScript
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee typescript-diagnostics.log
+
+      - name: Upload TypeScript diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-diagnostics
+          path: typescript-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Unit and database contract tests
         run: npm test
