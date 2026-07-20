@@ -111,14 +111,15 @@ function BusinessForm({
   mode,
 }: {
   initial: BusinessSettings;
-  updateSettings: (settings: BusinessSettings) => void;
+  updateSettings: (settings: BusinessSettings) => Promise<boolean>;
   mode: string;
 }) {
   const [form, setForm] = useState(initial);
   const [saved, setSaved] = useState(false);
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    updateSettings(form);
+    const confirmed = await updateSettings(form);
+    if (!confirmed) return;
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
   }
@@ -249,15 +250,16 @@ function AppearanceForm({
   canManage,
 }: {
   initial: WorkspaceTheme;
-  updateTheme: (theme: WorkspaceTheme) => void;
-  uploadLogo: (file: File) => Promise<void>;
+  updateTheme: (theme: WorkspaceTheme) => Promise<boolean>;
+  uploadLogo: (file: File) => Promise<boolean>;
   canManage: boolean;
 }) {
   const [theme, setTheme] = useState(initial);
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
-  function save() {
-    updateTheme(theme);
+  async function save() {
+    const confirmed = await updateTheme(theme);
+    if (!confirmed) return;
     setSaved(true);
     window.setTimeout(() => setSaved(false), 1800);
   }

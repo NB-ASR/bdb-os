@@ -113,11 +113,31 @@ function BusinessSwitcher({ fallbackName }: { fallbackName: string }) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { state, mode, role } = useBdb();
+  const { state, mode, role, syncStatus, lastError, clearError } = useBdb();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [online, setOnline] = useState(true);
   const canManageTeam = ["owner", "admin", "manager"].includes(role);
+  const connectionLabel = !online
+    ? "Offline · view only"
+    : mode === "demo"
+      ? "Local preview"
+      : syncStatus === "saving"
+        ? "Saving…"
+        : syncStatus === "error"
+          ? "Save failed"
+          : syncStatus === "offline"
+            ? "Offline · view only"
+            : syncStatus === "saved"
+              ? "Changes saved"
+              : "Connected";
+  const connectionTone = !online || syncStatus === "offline"
+    ? "offline"
+    : syncStatus === "error"
+      ? "error"
+      : syncStatus === "saving"
+        ? "saving"
+        : "online";
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -193,12 +213,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="topbar-actions">
             <MobileActions />
             <button className="topbar-search" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Search workspace</span></button>
-            <span className={`connection-pill ${online && mode === "cloud" ? "online" : "offline"}`}>
-              {online ? <Wifi size={15} /> : <WifiOff size={15} />}
-              {!online ? "Offline" : mode === "cloud" ? "Cloud synced" : "Local preview"}
+            <span className={`connection-pill ${connectionTone}`}>
+              {!online || syncStatus === "offline" ? <WifiOff size={15} /> : <Wifi size={15} />}
+              {connectionLabel}
             </span>
           </div>
         </header>
+        {lastError ? (
+          <div className="sync-error-banner" role="alert">
+            <WifiOff size={18} />
+            <span>{lastError}</span>
+            <button type="button" onClick={clearError} aria-label="Dismiss save error"><X size={17} /></button>
+          </div>
+        ) : null}
         <main className="main-content">{children}</main>
       </div>
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />

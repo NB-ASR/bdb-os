@@ -1002,3 +1002,43 @@ html[data-theme-mode="light"] .plan-card {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* Launch reliability states */
+.connection-pill.saving {
+  border-color: color-mix(in srgb, var(--gold) 42%, transparent);
+  color: var(--gold-light, var(--gold));
+}
+.connection-pill.error {
+  border-color: rgba(220, 109, 85, .34);
+  background: rgba(220, 109, 85, .10);
+  color: #ef9585;
+}
+.sync-error-banner {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin: 14px 28px 0;
+  padding: 11px 13px;
+  border: 1px solid rgba(220, 109, 85, .28);
+  border-radius: 12px;
+  background: rgba(220, 109, 85, .09);
+  color: #f1b0a4;
+  font-size: 13px;
+}
+.sync-error-banner button {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(220, 109, 85, .24);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+@media (max-width: 820px) {
+  .sync-error-banner { margin-inline: 16px; }
+}
