@@ -18,6 +18,7 @@ const protectedRoutes = [
   "/activate",
   "/change-password",
 ];
+
 const featureRoutes: Record<string, string> = {
   "/workspace": "overview",
   "/accounts": "accounts",
@@ -33,6 +34,17 @@ const featureRoutes: Record<string, string> = {
   "/team": "team_members",
 };
 
+function serviceUnavailable() {
+  return new NextResponse("BDB OS is temporarily unavailable. No workspace data has been loaded.", {
+    status: 503,
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Type": "text/plain; charset=utf-8",
+      "Retry-After": "60",
+    },
+  });
+}
+
 export async function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.split(":")[0].toLowerCase() ?? "";
   const effectivePath = hostname === "admin.bdb-os.com" && request.nextUrl.pathname === "/"
@@ -45,9 +57,15 @@ export async function proxy(request: NextRequest) {
   const nextResponse = () => effectivePath === request.nextUrl.pathname
     ? NextResponse.next({ request })
     : NextResponse.rewrite(responseUrl);
+  const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
+  const apiRoute = effectivePath.startsWith("/api/");
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!url || !key) return nextResponse();
+  if (!url || !key) {
+    if (apiRoute) return nextResponse();
+    return requiresAuth ? serviceUnavailable() : nextResponse();
+  }
 
   let response = nextResponse();
   const supabase = createServerClient(url, key, {
@@ -61,15 +79,20 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims as { sub?: string; aal?: string } | undefined;
+  const claimsResult = await supabase.auth.getClaims();
+  const claims = claimsResult.data?.claims as { sub?: string; aal?: string } | undefined;
 
-  // API handlers own their authentication and return machine-readable responses.
-  // Page redirects here would turn API JSON into HTML and break login, password
-  // changes, workspace switching, and every other authenticated mutation.
-  if (effectivePath.startsWith("/api/")) return response;
+  // API handlers own authentication and return machine-readable responses.
+  if (apiRoute) return response;
 
-  const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
+  if (claimsResult.error && requiresAuth) {
+    const login = request.nextUrl.clone();
+    login.pathname = "/login";
+    login.searchParams.set("next", effectivePath);
+    login.searchParams.set("reason", "session-verification-failed");
+    return NextResponse.redirect(login);
+  }
+
   if (requiresAuth && !claims?.sub) {
     const login = request.nextUrl.clone();
     login.pathname = "/login";
@@ -78,26 +101,28 @@ export async function proxy(request: NextRequest) {
   }
   if (!claims?.sub) return response;
 
-  const { data: profile } = await supabase
+  const profileResult = await supabase
     .from("profiles")
-    .select("must_change_password,active_workspace_id")
+    .select("must_change_password,active_workspace_id,is_active")
     .eq("id", claims.sub)
     .maybeSingle();
+  if (profileResult.error) return serviceUnavailable();
+  const profile = profileResult.data;
+  if (profile && profile.is_active === false) return NextResponse.redirect(new URL("/workspace-suspended", request.url));
   if (profile?.must_change_password && effectivePath !== "/change-password") {
     return NextResponse.redirect(new URL("/change-password", request.url));
   }
 
   if (effectivePath.startsWith("/admin")) {
-    if (claims.aal !== "aal2") {
-      return NextResponse.redirect(new URL("/mfa", request.url));
-    }
-    const { data: platformAdmin } = await supabase
+    if (claims.aal !== "aal2") return NextResponse.redirect(new URL("/mfa", request.url));
+    const adminResult = await supabase
       .from("platform_admins")
       .select("user_id")
       .eq("user_id", claims.sub)
       .eq("active", true)
       .maybeSingle();
-    if (!platformAdmin) return NextResponse.redirect(new URL("/workspace", request.url));
+    if (adminResult.error) return serviceUnavailable();
+    if (!adminResult.data) return NextResponse.redirect(new URL("/workspace", request.url));
     return response;
   }
 
@@ -107,8 +132,6 @@ export async function proxy(request: NextRequest) {
   if (!route) return response;
 
   const requestedFeature = featureRoutes[route];
-  // The database-backed profile is authoritative. A stale cookie must never move
-  // a request into an unrelated workspace.
   const preferredWorkspace = profile?.active_workspace_id ?? request.cookies.get("bdb-workspace")?.value ?? undefined;
   let membershipQuery = supabase
     .from("workspace_memberships")
@@ -116,8 +139,9 @@ export async function proxy(request: NextRequest) {
     .eq("user_id", claims.sub)
     .eq("status", "active");
   if (preferredWorkspace) membershipQuery = membershipQuery.eq("workspace_id", preferredWorkspace);
-  const { data: memberships } = await membershipQuery.limit(1);
-  const membership = memberships?.[0] as {
+  const membershipResult = await membershipQuery.limit(1);
+  if (membershipResult.error) return serviceUnavailable();
+  const membership = membershipResult.data?.[0] as {
     workspace_id: string;
     role: string;
     access_profile: string;
@@ -129,10 +153,10 @@ export async function proxy(request: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const [{ data: planFeature }, { data: override }] = await Promise.all([
+  const [planFeatureResult, overrideResult] = await Promise.all([
     membership.workspaces.plan_id
       ? supabase.from("plan_features").select("enabled").eq("plan_id", membership.workspaces.plan_id).eq("feature_key", requestedFeature).maybeSingle()
-      : Promise.resolve({ data: null }),
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from("workspace_feature_overrides")
       .select("enabled")
@@ -142,8 +166,10 @@ export async function proxy(request: NextRequest) {
       .or(`ends_at.is.null,ends_at.gt.${now}`)
       .maybeSingle(),
   ]);
+  if (planFeatureResult.error || overrideResult.error) return serviceUnavailable();
+
   const ownerTeamAccess = requestedFeature === "team_members" && membership.access_profile === "owner";
-  if (!ownerTeamAccess && !(override?.enabled ?? planFeature?.enabled ?? false)) {
+  if (!ownerTeamAccess && !(overrideResult.data?.enabled ?? planFeatureResult.data?.enabled ?? false)) {
     const unavailable = new URL("/feature-unavailable", request.url);
     unavailable.searchParams.set("feature", requestedFeature);
     return NextResponse.redirect(unavailable);
