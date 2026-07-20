@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient, type User } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { adminErrorResponse, requirePlatformAdmin } from "@/lib/admin-auth";
+import { activationRedirectUrl, invitationExpiresAt } from "@/lib/auth/invitations";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
 
@@ -186,8 +187,7 @@ export async function POST(request: Request) {
 
       const existing = await findUserByEmail(admin, ownerEmail);
       invitedUser = existing;
-      const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
-      const redirectTo = `${origin}/auth/callback?next=/activate`;
+      const redirectTo = activationRedirectUrl(request.url);
       if (!invitedUser) {
         const invite = await admin.auth.admin.inviteUserByEmail(ownerEmail, {
           data: { full_name: ownerName, workspace_id: workspaceId, access_profile: "owner" },
@@ -201,9 +201,9 @@ export async function POST(request: Request) {
       }
 
       const now = new Date();
-      const expiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const expiry = invitationExpiresAt(now);
       const setupResults = await Promise.all([
-        admin.from("profiles").upsert({ id: invitedUser.id, full_name: ownerName, is_active: true }, { onConflict: "id" }),
+        admin.from("profiles").upsert({ id: invitedUser.id, full_name: ownerName }, { onConflict: "id" }),
         admin.from("workspace_memberships").upsert({
           workspace_id: workspaceId,
           user_id: invitedUser.id,
@@ -264,6 +264,7 @@ export async function POST(request: Request) {
           owner_email: ownerEmail,
           plan_id: planId,
           selected_features: selectedFeatures,
+          invitation_expires_at: expiry,
         },
       });
       return Response.json({ ok: true, workspaceId, invitationExpiresAt: expiry });
@@ -344,12 +345,12 @@ export async function PATCH(request: Request) {
       const users = await listUsers(admin);
       const email = users.find((user) => user.id === membership.user_id)?.email;
       if (!email) return Response.json({ error: "The invited owner's email could not be found." }, { status: 404 });
-      const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
-      await sendExistingUserInvite(email, `${origin}/auth/callback?next=/activate`);
+      await sendExistingUserInvite(email, activationRedirectUrl(request.url));
       const now = new Date();
+      const expiry = invitationExpiresAt(now);
       const { error } = await admin.from("workspace_memberships").update({
         invitation_last_sent_at: now.toISOString(),
-        invitation_expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        invitation_expires_at: expiry,
       }).eq("workspace_id", body.workspaceId).eq("user_id", membership.user_id);
       if (error) throw error;
     } else if (body.action === "support-access" && body.workspaceId && body.reason?.trim()) {

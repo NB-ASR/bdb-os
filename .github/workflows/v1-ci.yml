@@ -3,28 +3,38 @@ name: BDB OS V1 Validation
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: bdb-v1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - name: Check out pull request branch
+      - name: Check out tested commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           show-progress: false
 
-      - name: Verify dependency lockfile
+      - name: Verify repository contracts
         shell: bash
         run: |
           test -f package.json
           test -f package-lock.json
+          test -d supabase/migrations
+          test -d supabase/tests
           node -e "JSON.parse(require('fs').readFileSync('package-lock.json','utf8')); console.log('Dependency lockfile is valid JSON')"
+          duplicates="$(find supabase/migrations -maxdepth 1 -type f -printf '%f\n' | sort | uniq -d)"
+          test -z "$duplicates" || { echo "Duplicate migration filenames: $duplicates"; exit 1; }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -37,10 +47,156 @@ jobs:
         run: npm ci
 
       - name: TypeScript
-        run: npx tsc --noEmit
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee typescript-diagnostics.log
+
+      - name: Upload TypeScript diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-diagnostics
+          path: typescript-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Unit and database contract tests
+        run: npm test
 
       - name: ESLint
         run: npm run lint
 
       - name: Production build
         run: npm run build
+
+  database-migrations:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          show-progress: false
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.84.2
+          github-token: ${{ github.token }}
+
+      - name: Start disposable local database and replay migrations
+        shell: bash
+        run: |
+          set -o pipefail
+          supabase db start 2>&1 | tee database-migration-diagnostics.log
+
+      - name: Upload database migration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-migration-diagnostics
+          path: database-migration-diagnostics.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Run pgTAP database security tests
+        run: supabase test db
+
+      - name: Destroy disposable local database
+        if: always()
+        run: supabase stop --no-backup
+
+  public-browser:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          show-progress: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install browser test runner without changing the lockfile
+        run: npm install --no-save --package-lock=false @playwright/test@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build application
+        run: npm run build
+
+      - name: Start application
+        shell: bash
+        run: |
+          npm start > /tmp/bdb-os.log 2>&1 &
+          echo $! > /tmp/bdb-os.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/login > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/bdb-os.log
+          exit 1
+
+      - name: Public browser journeys
+        env:
+          BDB_E2E_BASE_URL: http://127.0.0.1:3000
+        run: npx playwright test tests/e2e/public-access.spec.ts --project=chromium
+
+      - name: Upload browser report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-browser-report
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  authenticated-browser:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: [validate, database-migrations]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          show-progress: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Install browser test runner without changing the lockfile
+        run: npm install --no-save --package-lock=false @playwright/test@1.55.0
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Authenticated owner journeys
+        env:
+          BDB_E2E_BASE_URL: ${{ secrets.BDB_E2E_BASE_URL }}
+          BDB_E2E_OWNER_EMAIL: ${{ secrets.BDB_E2E_OWNER_EMAIL }}
+          BDB_E2E_OWNER_PASSWORD: ${{ secrets.BDB_E2E_OWNER_PASSWORD }}
+          BDB_E2E_WORKSPACE_NAME: ${{ secrets.BDB_E2E_WORKSPACE_NAME }}
+        run: npx playwright test tests/e2e/authenticated-core.spec.ts --project=chromium
