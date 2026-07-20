@@ -1326,8 +1326,8 @@ async function init() {
     const cloud = await window.VanitaCloud?.connect();
     if (cloud?.enabled) {
       const sharedState = await window.VanitaCloud.loadState();
-      if (sharedState?.products) state = normalizeState(sharedState);
-      else window.VanitaCloud.saveState(state);
+      state = normalizeState(sharedState);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
     }
   } catch (error) {
     console.error("Vanita cloud initialization failed", error);
