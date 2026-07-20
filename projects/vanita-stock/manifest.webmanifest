@@ -1,0 +1,10 @@
+{
+  "name": "Vanita Stock Manager",
+  "short_name": "Vanita Stock",
+  "description": "Beauty-product inventory, supplier invoices, credit notes and restock management for Vanita Beauty and Wellness Spa.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f8f7f2",
+  "theme_color": "#132b25",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

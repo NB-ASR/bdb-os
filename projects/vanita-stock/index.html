@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#132b25" />
+    <meta name="description" content="Vanita Beauty and Wellness Spa stock and document manager" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>Vanita Stock — Beauty inventory made simple</title>
+  </head>
+  <body>
+    <section class="auth-screen" id="authScreen" hidden>
+      <div class="auth-card">
+        <div class="auth-brand"><span>✦</span><div><strong>Vanita Stock</strong><small>Beauty &amp; Wellness Spa</small></div></div>
+        <p class="eyebrow">STAFF ACCESS</p>
+        <h1>Welcome back</h1>
+        <p>Sign in to open Vanita's shared inventory.</p>
+        <form id="loginForm">
+          <label>Email address<input id="loginEmail" type="email" autocomplete="email" required placeholder="name@vanitabeauty.com" /></label>
+          <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Your password" /></label>
+          <p class="auth-error" id="authError" hidden></p>
+          <button class="primary-button full" type="submit">Sign in securely</button>
+        </form>
+        <small class="auth-help">Staff accounts are created by the business administrator.</small>
+      </div>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#" aria-label="Vanita Stock home">
+          <span class="brand-mark beauty-mark">✦</span>
+          <span>Vanita<span>Stock</span></span>
+        </a>
+
+        <nav class="main-nav" aria-label="Primary navigation">
+          <button class="nav-item active" data-view="dashboard">
+            <span class="nav-icon">⌂</span><span>Overview</span>
+          </button>
+          <button class="nav-item" data-view="inventory">
+            <span class="nav-icon">□</span><span>Inventory</span><span class="nav-count" id="inventoryCount">0</span>
+          </button>
+          <button class="nav-item" data-view="products">
+            <span class="nav-icon">◇</span><span>Products</span>
+          </button>
+          <button class="nav-item" data-view="services">
+            <span class="nav-icon">✦</span><span>Services</span>
+          </button>
+          <button class="nav-item" data-view="invoices">
+            <span class="nav-icon">▤</span><span>Documents</span>
+          </button>
+          <button class="nav-item" data-view="sales">
+            <span class="nav-icon">↗</span><span>Sales</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="help-card">
+            <span class="help-icon">?</span>
+            <strong>Need a hand?</strong>
+            <p>Use the quick guide to get your stock moving.</p>
+            <button class="text-button" id="openGuide">Open quick guide →</button>
+          </div>
+          <div class="business-switcher">
+            <span class="avatar">VB</span>
+            <span><strong>Vanita Beauty</strong><small>Birkirkara spa</small></span>
+            <button class="sign-out-button" id="signOutButton" title="Sign out" hidden>↪</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <button class="icon-button menu-button" id="menuButton" aria-label="Open menu">☰</button>
+          <div class="top-search">
+            <span>⌕</span>
+            <input id="globalSearch" type="search" placeholder="Search products, services or stock codes…" />
+            <kbd>⌘ K</kbd>
+          </div>
+          <div class="top-actions">
+            <span class="cloud-status" id="cloudStatus">Local demo</span>
+            <button class="alert-button" id="enableAlerts" title="Enable restock notifications">
+              <span>♢</span><span class="notification-dot" id="notificationDot"></span>
+            </button>
+            <button class="primary-button compact" data-action="scan-invoice"><span class="button-icon">▣</span> Scan document</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboardView">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="todayLabel"></p>
+              <h1>Good morning, Rachelle <span>👋</span></h1>
+              <p>Here’s what’s happening with Vanita’s retail stock today.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="secondary-button" data-view-jump="inventory">View inventory</button>
+              <button class="primary-button" data-action="record-sale">＋ Record a sale</button>
+            </div>
+          </div>
+
+          <div class="metric-grid" id="metricGrid"></div>
+
+          <div class="dashboard-grid">
+            <article class="panel restock-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Needs your attention</h2>
+                  <p>Products at or below their restock level.</p>
+                </div>
+                <button class="text-button" data-filter-low="true">View all <span>→</span></button>
+              </div>
+              <div class="restock-list" id="restockList"></div>
+            </article>
+
+            <article class="panel stock-chart-panel">
+              <div class="panel-heading">
+                <div>
+                  <h2>Stock movement</h2>
+                  <p>Units in and out this week.</p>
+                </div>
+                <span class="trend-pill">↑ 12.4%</span>
+              </div>
+              <div class="chart-legend"><span><i class="in"></i> Stock in</span><span><i class="out"></i> Stock out</span></div>
+              <div class="bar-chart" id="stockChart" aria-label="Stock movement chart"></div>
+            </article>
+          </div>
+
+          <article class="panel activity-panel">
+            <div class="panel-heading">
+              <div><h2>Recent activity</h2><p>Your latest sales, supplier invoices and credit notes.</p></div>
+              <button class="icon-button">•••</button>
+            </div>
+            <div class="activity-list" id="activityList"></div>
+          </article>
+        </section>
+
+        <section class="view" id="inventoryView">
+          <div class="page-heading">
+            <div><p class="eyebrow">STOCK ON HAND</p><h1>Inventory</h1><p>See which products are currently in stock, their quantities and what needs restocking.</p></div>
+            <div class="heading-actions"><button class="secondary-button" data-action="scan-invoice">▣ Import document</button><button class="primary-button" data-view-jump="products">View products</button></div>
+          </div>
+          <div class="toolbar panel">
+            <label class="table-search"><span>⌕</span><input id="inventorySearch" placeholder="Search product or SKU" /></label>
+            <div class="filter-chips"><button class="chip active" data-stock-filter="all">All stock</button><button class="chip" data-stock-filter="low">Low stock</button><button class="chip" data-stock-filter="out">Out of stock</button></div>
+            <span class="result-count" id="resultCount"></span>
+          </div>
+          <div class="panel table-panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Product</th><th>SKU</th><th>Purpose</th><th>Category</th><th>In stock</th><th>Restock at</th><th>Status</th><th></th></tr></thead>
+                <tbody id="inventoryTable"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="inventoryEmpty"><span>⌕</span><h3>No products found</h3><p>Try changing your search or stock filter.</p></div>
+          </div>
+        </section>
+
+        <section class="view" id="productsView">
+          <div class="page-heading">
+            <div><p class="eyebrow">PRODUCT CATALOGUE</p><h1>Products</h1><p>View and maintain every product detail, including supplier, cost and recommended retail price.</p></div>
+            <button class="primary-button" data-action="add-product">＋ Add product</button>
+          </div>
+          <div class="toolbar panel">
+            <label class="table-search"><span>⌕</span><input id="productsSearch" placeholder="Search name, SKU, brand or supplier" /></label>
+            <span class="result-count" id="productsResultCount"></span>
+          </div>
+          <div class="panel table-panel">
+            <div class="table-wrap">
+              <table class="products-table">
+                <thead><tr><th>Product</th><th>SKU</th><th>Purpose</th><th>Brand</th><th>Supplier</th><th>Category</th><th>Barcode</th><th>Cost</th><th>RRP</th><th>Restock at</th><th></th></tr></thead>
+                <tbody id="productsTable"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="productsEmpty"><span>⌕</span><h3>No products found</h3><p>Try changing your search.</p></div>
+          </div>
+        </section>
+
+        <section class="view" id="servicesView">
+          <div class="page-heading">
+            <div><p class="eyebrow">SERVICE CATALOGUE</p><h1>Services</h1><p>Maintain treatments, durations, prices, staff assignments and availability.</p></div>
+            <button class="primary-button" data-action="add-service">＋ Add service</button>
+          </div>
+          <div class="service-summary" id="serviceSummary"></div>
+          <div class="toolbar panel">
+            <label class="table-search"><span>⌕</span><input id="servicesSearch" placeholder="Search name, code or category" /></label>
+            <select class="toolbar-select" id="serviceCategoryFilter" aria-label="Filter by category">
+              <option value="all">All categories</option>
+            </select>
+            <div class="filter-chips">
+              <button class="chip active" data-service-status="all">All</button>
+              <button class="chip" data-service-status="active">Active</button>
+              <button class="chip" data-service-status="inactive">Inactive</button>
+            </div>
+            <span class="result-count" id="servicesResultCount"></span>
+          </div>
+          <div class="panel table-panel">
+            <div class="table-wrap">
+              <table class="services-table">
+                <thead><tr><th>Service</th><th>Code</th><th>Category</th><th>Duration</th><th>Cost</th><th>Price</th><th>VAT</th><th>Staff</th><th>Status</th><th></th></tr></thead>
+                <tbody id="servicesTable"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="servicesEmpty"><span>✦</span><h3>No services found</h3><p>Add a service or change your search and filters.</p></div>
+          </div>
+          <div class="service-insights">
+            <article class="panel">
+              <div class="panel-heading padded"><div><h2>Revenue by category</h2><p>Service sales recorded this month.</p></div></div>
+              <div class="insight-list" id="serviceCategoryReport"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading padded"><div><h2>Revenue by staff member</h2><p>Based on the staff selected in each service sale.</p></div></div>
+              <div class="insight-list" id="serviceStaffReport"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="invoicesView">
+          <div class="page-heading">
+            <div><p class="eyebrow">SUPPLIER DOCUMENTS</p><h1>Invoices &amp; credit notes</h1><p>Invoices add stock; credit notes return it to the supplier.</p></div>
+            <button class="primary-button" data-action="scan-invoice">▣ Scan new document</button>
+          </div>
+          <div class="invoice-summary" id="invoiceSummary"></div>
+          <div class="panel table-panel">
+            <div class="panel-heading padded"><div><h2>Document history</h2><p>Imported supplier invoices and credit notes.</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Document</th><th>Type</th><th>Purpose</th><th>Supplier</th><th>Date</th><th>Units</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
+          </div>
+        </section>
+
+        <section class="view" id="salesView">
+          <div class="page-heading">
+            <div><p class="eyebrow">SALES REGISTER</p><h1>Sales</h1><p>Record products and salon or spa services together in one sale.</p></div>
+            <button class="primary-button" data-action="record-sale">＋ Record a sale</button>
+          </div>
+          <div class="sales-layout">
+            <article class="panel">
+              <div class="panel-heading padded"><div><h2>Recent sales</h2><p>Product lines adjust stock; service lines record revenue and staff.</p></div></div>
+              <div class="activity-list padded-list" id="salesList"></div>
+            </article>
+            <aside class="panel scan-card">
+              <div class="scan-illustration"><span></span><span></span><span></span><span></span><i></i></div>
+              <h2>Scan as you sell</h2>
+              <p>Use a USB/Bluetooth scanner or your phone camera to find a product instantly.</p>
+              <button class="primary-button full" data-action="record-sale">Open sales scanner</button>
+              <small>Tip: most handheld scanners work like a keyboard — just scan into the barcode field.</small>
+            </aside>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="mobile-nav">
+      <button class="active" data-view="dashboard"><span>⌂</span>Home</button>
+      <button data-view="inventory"><span>□</span>Stock</button>
+      <button class="mobile-catalog" data-action="open-catalog"><span>◇</span>Catalogue</button>
+      <button class="mobile-scan" data-action="scan-invoice"><span>▣</span></button>
+      <button data-view="invoices"><span>▤</span>Documents</button>
+      <button data-view="sales"><span>↗</span>Sales</button>
+    </div>
+
+    <div class="modal-backdrop" id="modalBackdrop" hidden>
+      <section class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></section>
+    </div>
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+    <template id="scanInvoiceTemplate">
+      <div class="modal-header"><div><p class="eyebrow">SMART DOCUMENT IMPORT</p><h2 id="modalTitle">Scan invoice or credit note</h2></div><button class="icon-button" data-close-modal>×</button></div>
+      <div class="stepper"><div class="active"><span>1</span>Upload</div><i></i><div><span>2</span>Review</div><i></i><div><span>3</span>Done</div></div>
+      <div class="modal-body invoice-flow">
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="invoiceFile" accept="image/*,.pdf" capture="environment" hidden />
+          <div class="upload-icon">▣</div><h3>Take a photo or choose a file</h3><p>Use a clear image of the full supplier document. We’ll extract its supplier, number, date, totals and product lines automatically.</p>
+          <button class="primary-button" id="chooseInvoice">Choose document</button><small>JPG, PNG or PDF · up to 3 MB</small>
+        </div>
+        <div class="processing-state" id="processingState" hidden><div class="document-scan"><div></div><span></span><i></i></div><h3>Reading your document…</h3><p>Extracting supplier details, document fields and every product line.</p></div>
+        <div class="review-state" id="reviewState" hidden>
+          <div class="review-notice"><span>✓</span><div><strong>Document details extracted</strong><p id="reviewFileName">Review the extracted details before updating stock. Edit only if something needs correcting.</p></div><em id="extractionConfidence">AI extraction</em></div>
+          <div class="form-grid"><label>Supplier<input id="reviewSupplier" placeholder="Supplier name" /></label><label>Document type<select id="reviewDocumentType"><option value="Invoice">Invoice</option><option value="Credit Note">Credit note</option></select></label><label>Item purpose<select id="reviewStockCategory"><option value="resale">Resale stock</option><option value="supply">Business supplies</option></select></label><label>Document number<input id="reviewInvoiceNumber" /></label><label>Document date<input id="reviewDocumentDate" type="date" /></label></div>
+          <div class="review-table-wrap"><table class="review-table"><thead><tr><th>Product</th><th>Stock code</th><th>Qty</th><th>Unit cost</th><th>RRP</th><th>Barcode</th><th></th></tr></thead><tbody id="reviewItems"></tbody></table></div>
+          <button class="text-button add-line" id="addReviewLine">＋ Add another line</button>
+        </div>
+      </div>
+      <div class="modal-footer invoice-review-footer" id="invoiceModalFooter">
+        <div class="review-totals" id="reviewTotals" hidden>
+          <span><small>Total quantity</small><strong id="reviewTotalQuantity">0</strong></span>
+          <span><small>Net amount</small><strong id="reviewNetAmount">€0.00</strong></span>
+          <label><small>VAT rate</small><input id="reviewVatRate" type="number" min="0" step="0.01" value="18.00" /></label>
+          <span><small>VAT</small><strong id="reviewVatAmount">€0.00</strong></span>
+          <span><small>Gross amount</small><strong id="reviewGrossAmount">€0.00</strong></span>
+          <span><small>Total RRP</small><strong id="reviewTotalRrp">€0.00</strong></span>
+        </div>
+        <div class="invoice-footer-actions"><button class="secondary-button" data-close-modal>Cancel</button><button class="secondary-button" id="uploadInvoice" hidden>Upload</button><button class="primary-button" id="importInvoice" hidden>Update stock →</button></div>
+      </div>
+    </template>
+
+    <template id="recordSaleTemplate">
+      <div class="modal-header"><div><p class="eyebrow">QUICK STOCK OUT</p><h2 id="modalTitle">Record a sale</h2></div><button class="icon-button" data-close-modal>×</button></div>
+      <div class="modal-body sale-flow" id="saleBuildStep">
+        <div class="sale-finder">
+          <label><span>⌕</span><input id="saleProductSearch" autocomplete="off" placeholder="Search product, service, code or scan barcode" /></label>
+          <button class="secondary-button camera-button" id="cameraScan">▣ <span>Use camera</span></button>
+        </div>
+        <div class="sale-type-filters" aria-label="Filter sale items">
+          <button class="chip active" data-sale-filter="all">All</button>
+          <button class="chip" data-sale-filter="product">Products</button>
+          <button class="chip" data-sale-filter="service">Services</button>
+        </div>
+        <div class="camera-stage" id="cameraStage" hidden>
+          <video id="scannerVideo" playsinline muted></video>
+          <div id="html5Scanner" hidden></div>
+          <div class="camera-target" id="cameraTarget"></div>
+          <div class="scanner-status" id="scannerStatus">Point the camera at the product barcode</div>
+          <button class="camera-close" id="stopCamera">×</button>
+        </div>
+        <div class="sale-suggestions" id="saleSuggestions"></div>
+        <div class="sale-basket" id="saleBasket"><div class="basket-empty"><span>↗</span><p>Search for a product or service to begin</p></div></div>
+      </div>
+      <div class="modal-body checkout-flow" id="saleCheckoutStep" hidden>
+        <div class="checkout-heading"><p class="eyebrow">FINAL CHECKOUT</p><h3>Review basket and discounts</h3><p>Apply a fixed monetary discount to an individual line or to the whole basket.</p></div>
+        <div class="checkout-lines" id="checkoutLines"></div>
+        <label class="basket-discount-field"><span>General voucher / basket discount</span><div><span>€</span><input id="basketDiscount" type="number" min="0" step="0.01" value="0.00" /></div></label>
+        <div class="checkout-summary" id="checkoutSummary"></div>
+      </div>
+      <div class="modal-footer sale-footer" id="saleBuildFooter"><div><small>Basket subtotal</small><strong id="saleTotal">€0.00</strong></div><div><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="reviewCheckout" disabled>Review checkout →</button></div></div>
+      <div class="modal-footer sale-footer" id="saleCheckoutFooter" hidden><button class="secondary-button" id="backToBasket">← Back to basket</button><div><button class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="completeSale">Complete sale</button></div></div>
+    </template>
+
+    <template id="addProductTemplate">
+      <div class="modal-header"><div><p class="eyebrow">NEW ITEM</p><h2 id="modalTitle">Add product</h2></div><button class="icon-button" data-close-modal>×</button></div>
+      <form id="productForm">
+        <div class="modal-body form-grid product-form">
+          <label class="wide">Product name<input name="name" required placeholder="e.g. Hydra Medic Serum 60ml" /></label>
+          <label>Stock code / SKU<input name="sku" required placeholder="e.g. RPHMS" /></label><label class="barcode-field">Barcode<div><input name="barcode" placeholder="Type or scan barcode" /><button class="secondary-button" id="productBarcodeScan" type="button">▣ Scan</button></div></label>
+          <label>Brand<input name="brand" placeholder="Brand name" /></label><label>Supplier<input name="supplier" placeholder="Supplier name" /></label>
+          <label>Category<select name="category"><option>Skincare</option><option>Professional skincare</option><option>Sun care</option><option>Makeup</option><option>Body care</option><option>Retail accessories</option><option>Other</option></select></label><label>Item purpose<select name="classification"><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
+          <label>Opening stock<input name="stock" required min="0" type="number" value="0" /></label><label>Restock at<input name="reorderAt" required min="0" type="number" value="5" /></label>
+          <label>Unit cost (€)<input name="unitCost" required min="0" step="0.01" type="number" value="0.00" /></label><label>RRP / sale price (€)<input name="salePrice" required min="0" step="0.01" type="number" value="0.00" /></label>
+          <div class="camera-stage wide" id="cameraStage" hidden><video id="scannerVideo" playsinline muted></video><div id="html5Scanner" hidden></div><div class="camera-target" id="cameraTarget"></div><div class="scanner-status" id="scannerStatus">Point the camera at the product barcode</div><button class="camera-close" id="stopCamera" type="button">×</button></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="saveProductButton" type="submit">Add product</button></div>
+      </form>
+    </template>
+
+    <template id="addServiceTemplate">
+      <div class="modal-header"><div><p class="eyebrow">SERVICE DETAILS</p><h2 id="modalTitle">Add service</h2></div><button class="icon-button" data-close-modal>×</button></div>
+      <form id="serviceForm">
+        <div class="modal-body form-grid service-form">
+          <label class="wide">Service name<input name="name" required placeholder="e.g. Deep cleansing facial" /></label>
+          <label>Service code<input name="code" required placeholder="e.g. FAC-DC60" /></label>
+          <label>Category<select name="category"><option>Hair</option><option>Nails</option><option>Facials</option><option>Massage</option><option>Body treatments</option><option>Waxing</option><option>Makeup</option><option>Spa packages</option><option>Consultations</option><option>Other</option></select></label>
+          <label>Duration (minutes)<input name="duration" required min="0" step="5" type="number" value="60" /></label>
+          <label>Selling price (€)<input name="price" required min="0" step="0.01" type="number" value="0.00" /></label>
+          <label>Estimated cost (€)<input name="cost" min="0" step="0.01" type="number" value="0.00" /></label>
+          <label>VAT rate (%)<input name="vatRate" required min="0" max="100" step="0.01" type="number" value="18" /></label>
+          <label class="wide">Qualified staff<input name="staff" placeholder="Separate names with commas, e.g. Rachelle, Maya" /></label>
+          <label class="wide">Description<textarea name="description" rows="3" placeholder="Optional treatment description"></textarea></label>
+          <label class="toggle-field"><input name="active" type="checkbox" checked /> Available for sale</label>
+        </div>
+        <div class="modal-footer"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" id="saveServiceButton" type="submit">Add service</button></div>
+      </form>
+    </template>
+
+    <template id="catalogMenuTemplate">
+      <div class="modal-header"><div><p class="eyebrow">CATALOGUE</p><h2 id="modalTitle">Choose a catalogue</h2></div><button class="icon-button" data-close-modal>×</button></div>
+      <div class="modal-body catalog-choices">
+        <button data-catalog-view="products"><span>◇</span><strong>Products</strong><small>Edit retail product details and pricing.</small></button>
+        <button data-catalog-view="services"><span>✦</span><strong>Services</strong><small>Edit treatments, durations, prices and staff.</small></button>
+      </div>
+    </template>
+
+    <script src="cloud.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

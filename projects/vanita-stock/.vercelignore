@@ -1,0 +1,20 @@
+.git
+.agents
+.codex
+.pnpm-store
+.vercel
+.vanita-stock-server.json
+tmp
+outputs
+brand
+supabase
+AGENTS.md
+BDB-OS-Production-Readiness-Blueprint.md
+Vanita-Stock-Project.zip
+ONLINE_SETUP.md
+README.md
+SOP-Client-Stock-Invoice-System.md
+Start-StockFlow.ps1
+Stop-Vanita-Stock.ps1
+Open Vanita Stock.cmd
+Close Vanita Stock.cmd
