@@ -82,7 +82,6 @@ export async function proxy(request: NextRequest) {
   const claimsResult = await supabase.auth.getClaims();
   const claims = claimsResult.data?.claims as { sub?: string; aal?: string } | undefined;
 
-  // API handlers own authentication and return machine-readable responses.
   if (apiRoute) return response;
 
   if (claimsResult.error && requiresAuth) {
@@ -141,7 +140,7 @@ export async function proxy(request: NextRequest) {
   if (preferredWorkspace) membershipQuery = membershipQuery.eq("workspace_id", preferredWorkspace);
   const membershipResult = await membershipQuery.limit(1);
   if (membershipResult.error) return serviceUnavailable();
-  const membership = membershipResult.data?.[0] as {
+  const membership = membershipResult.data?.[0] as unknown as {
     workspace_id: string;
     role: string;
     access_profile: string;
