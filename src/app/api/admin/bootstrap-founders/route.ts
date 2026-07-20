@@ -149,7 +149,7 @@ export async function POST(request: Request) {
   }
   if (
     existingWorkspace &&
-    (!(["trial", "active"] as string[]).includes(existingWorkspace.status) || existingWorkspace.plan_id !== proPlan.id)
+    (!( ["trial", "active"] as string[]).includes(existingWorkspace.status) || existingWorkspace.plan_id !== proPlan.id)
   ) {
     return json({ error: "The existing Founder workspace requires manual review." }, { status: 409 });
   }
@@ -161,26 +161,27 @@ export async function POST(request: Request) {
   const createdAdminIds: string[] = [];
   const createdMembershipUserIds: string[] = [];
   const results: BootstrapResult[] = [];
+  const cleanupAdmin = admin;
 
   async function cleanupCreatedResources() {
     if (workspaceId && createdMembershipUserIds.length) {
-      await admin
+      await cleanupAdmin
         .from("workspace_memberships")
         .delete()
         .eq("workspace_id", workspaceId)
         .in("user_id", createdMembershipUserIds);
     }
     if (createdAdminIds.length) {
-      await admin.from("platform_admins").delete().in("user_id", createdAdminIds);
+      await cleanupAdmin.from("platform_admins").delete().in("user_id", createdAdminIds);
     }
     if (createdProfileIds.length) {
-      await admin.from("profiles").delete().in("id", createdProfileIds);
+      await cleanupAdmin.from("profiles").delete().in("id", createdProfileIds);
     }
     for (const userId of createdAuthUserIds) {
-      await admin.auth.admin.deleteUser(userId);
+      await cleanupAdmin.auth.admin.deleteUser(userId);
     }
     if (createdWorkspace && workspaceId) {
-      await admin.from("workspaces").delete().eq("id", workspaceId);
+      await cleanupAdmin.from("workspaces").delete().eq("id", workspaceId);
     }
   }
 
