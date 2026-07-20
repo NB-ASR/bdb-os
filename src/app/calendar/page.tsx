@@ -5,16 +5,16 @@ import { AlertCircle, CalendarCheck2, CalendarDays, Clock3, Plus, UserRoundCheck
 import { useBdb } from "@/lib/store";
 import { formatDate } from "@/lib/format";
 import { Badge, Button, Card, Dialog, PageHeader, SectionHeading, StatCard } from "@/components/ui";
-import type { BookingStatus } from "@/lib/types";
+import type { Booking, BookingStatus } from "@/lib/types";
 
 const bookingTone: Record<BookingStatus, "green" | "gold" | "neutral"> = { confirmed: "green", pending: "gold", completed: "neutral" };
 
-function dateKey(date = new Date()) {
+function dateKey(date: Date) {
   return date.toLocaleDateString("en-CA");
 }
 
-function nextHour() {
-  const date = new Date();
+function nextHour(base: Date) {
+  const date = new Date(base);
   date.setMinutes(0, 0, 0);
   date.setHours(date.getHours() + 1);
   return `${String(date.getHours()).padStart(2, "0")}:00`;
@@ -22,19 +22,21 @@ function nextHour() {
 
 export default function CalendarPage() {
   const { state, addBooking } = useBdb();
+  const [currentMoment] = useState(() => new Date());
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const initialCustomer = state.customers[0]?.id ?? "";
-  const [form, setForm] = useState({ customerId: initialCustomer, title: "", date: dateKey(), time: nextHour(), duration: "60", staff: "", status: "confirmed" as BookingStatus });
+  const [form, setForm] = useState(() => ({ customerId: initialCustomer, title: "", date: dateKey(currentMoment), time: nextHour(currentMoment), duration: "60", staff: "", status: "confirmed" as BookingStatus }));
 
   const grouped = useMemo(() => {
-    const map = new Map<string, typeof state.bookings>();
+    const map = new Map<string, Booking[]>();
     state.bookings.forEach((booking) => map.set(booking.date, [...(map.get(booking.date) ?? []), booking]));
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [state.bookings]);
-  const today = dateKey();
+  const today = dateKey(currentMoment);
   const todayBookings = state.bookings.filter((item) => item.date === today);
-  const upcoming = state.bookings.filter((item) => new Date(`${item.date}T${item.time}`).getTime() >= Date.now());
+  const currentTimestamp = currentMoment.getTime();
+  const upcoming = state.bookings.filter((item) => new Date(`${item.date}T${item.time}`).getTime() >= currentTimestamp);
   const confirmed = state.bookings.filter((item) => item.status === "confirmed");
   const bookedMinutes = upcoming.reduce((sum, item) => sum + item.duration, 0);
   const firstDate = grouped[0]?.[0];
@@ -48,7 +50,8 @@ export default function CalendarPage() {
     const saved = await addBooking({ ...form, duration: Number(form.duration) });
     setSaving(false);
     if (!saved) return;
-    setForm({ customerId: state.customers[0]?.id ?? "", title: "", date: dateKey(), time: nextHour(), duration: "60", staff: "", status: "confirmed" });
+    const resetMoment = new Date();
+    setForm({ customerId: state.customers[0]?.id ?? "", title: "", date: dateKey(resetMoment), time: nextHour(resetMoment), duration: "60", staff: "", status: "confirmed" });
     setOpen(false);
   }
 
