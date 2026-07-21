@@ -1,4 +1,5 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { normaliseWorkspaceBlueprint } from "./sector-packs";
 import { seedState } from "./seed";
 import type { BdbState, WorkspaceTheme } from "./types";
 
@@ -56,7 +57,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     requireResult(profileUpdate, "Active workspace could not be selected");
   }
 
-  const [customers, invoices, bookings, messages, documents, transactions, automations, activity, settings, themes] = await Promise.all([
+  const [customers, invoices, bookings, messages, documents, transactions, automations, activity, settings, themes, sectorConfig] = await Promise.all([
     supabase.from("customers").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
     supabase.from("invoices").select("*").eq("workspace_id", workspaceId).order("issued_at", { ascending: false }),
     supabase.from("bookings").select("*").eq("workspace_id", workspaceId).order("booking_date"),
@@ -67,6 +68,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     supabase.from("activity_items").select("*").eq("workspace_id", workspaceId).order("occurred_at", { ascending: false }).limit(100),
     supabase.from("workspace_settings").select("*").eq("workspace_id", workspaceId).maybeSingle(),
     supabase.from("workspace_themes").select("*").eq("workspace_id", workspaceId).maybeSingle(),
+    supabase.from("workspace_sector_configs").select("published_config,status").eq("workspace_id", workspaceId).eq("status", "published").maybeSingle(),
   ]);
 
   const customerRows = requireResult(customers, "Customers could not be loaded") ?? [];
@@ -79,10 +81,12 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
   const activityRows = requireResult(activity, "Activity could not be loaded") ?? [];
   const settingsData = requireResult(settings, "Workspace settings could not be loaded");
   const themeData = requireResult(themes, "Workspace appearance could not be loaded");
+  const sectorData = requireResult(sectorConfig, "Published Sector Pack could not be loaded");
 
   const row = (value: unknown) => value as Row;
   const settingsRow = row(settingsData ?? {});
   const themeRow = row(themeData ?? {});
+  const sectorRow = row(sectorData ?? {});
   let clientLogoUrl: string | undefined;
   if (themeRow.client_logo_path) {
     const signed = await supabase.storage.from("workspace-assets").createSignedUrl(String(themeRow.client_logo_path), 3600);
@@ -114,6 +118,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
       vatRate: Number(settingsRow.vat_rate ?? 20),
     },
     theme,
+    blueprint: normaliseWorkspaceBlueprint(sectorRow.published_config),
     customers: customerRows.map((item) => { const r = row(item); return { id: String(r.id), code: String(r.code), name: String(r.name), company: String(r.company ?? ""), email: String(r.email ?? ""), phone: String(r.phone ?? ""), address: String(r.address ?? ""), notes: String(r.notes ?? ""), createdAt: String(r.created_at) }; }),
     invoices: invoiceRows.map((item) => { const r = row(item); return { id: String(r.id), number: String(r.number), customerId: String(r.customer_id), issuedAt: String(r.issued_at), dueAt: String(r.due_at), description: String(r.description), amount: Number(r.amount), status: r.status as BdbState["invoices"][number]["status"] }; }),
     bookings: bookingRows.map((item) => { const r = row(item); return { id: String(r.id), customerId: String(r.customer_id), title: String(r.title), date: String(r.booking_date), time: String(r.booking_time).slice(0, 5), duration: Number(r.duration_minutes), staff: String(r.staff_name), status: r.status as BdbState["bookings"][number]["status"] }; }),
