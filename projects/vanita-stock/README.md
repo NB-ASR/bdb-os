@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v24 — Calendar and appointment scheduling
+- **Release:** v25 — Topbar sales and appointment actions
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `9b7eab104cc3aaae931b59db413b2e7de9bc3333`
-- **Vercel production deployment:** `dpl_7tKSSVmRRyDQqKLksvKSRpP8vNaG`
+- **Runtime source commit:** `500209a477866fd20488d2c9e42eac54c16e5db3`
+- **Vercel production deployment:** `dpl_GTNDWGVtMSaV7FxTNuXx6HHBGnof`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -32,6 +32,15 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document, c
 11. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
 12. Open a Settings tab with planned configuration areas and backup, restore and selective-reset tools.
 13. Open and share the Test Version without requiring a staff login.
+
+## Release v25 — topbar sales and appointment actions
+
+- Replaced the top-right **Scan document** button with **Record Sale** and **Book Appointment** actions.
+- **Record Sale** opens the existing product and service sales workflow directly from any tab.
+- **Book Appointment** opens the Calendar appointment form for the current date.
+- Document scanning remains available from Inventory and Documents, so no document-import functionality was removed.
+- Added responsive icon-only behaviour at narrower screen widths to protect the topbar layout.
+- Added `top-actions.js` to the standard module loader and the v25 offline cache.
 
 ## Release v24 — Calendar and appointment scheduling
 
