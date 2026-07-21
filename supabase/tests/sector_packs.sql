@@ -1,6 +1,6 @@
 begin;
 
-select plan(8);
+select plan(10);
 
 select has_table('public', 'sector_packs', 'Sector Pack catalogue exists');
 select has_table('public', 'workspace_sector_configs', 'Workspace Sector Pack configuration exists');
@@ -30,6 +30,25 @@ select is(
   (select count(*) from public.sector_packs where key = 'general-services' and version = 1),
   1::bigint,
   'General Services fallback pack exists exactly once'
+);
+select ok(
+  exists(
+    select 1
+    from pg_proc procedure
+    join pg_namespace namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'private'
+      and procedure.proname = 'provision_default_sector_config'
+  ),
+  'Default Sector Pack provisioning function exists'
+);
+select ok(
+  exists(
+    select 1
+    from pg_trigger
+    where tgname = 'workspaces_provision_default_sector_config'
+      and not tgisinternal
+  ),
+  'New workspaces receive a default Sector Pack configuration'
 );
 
 select * from finish();
