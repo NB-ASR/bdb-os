@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v22 — Temporary public test mode
+- **Release:** v23 — Permanent no-login Test Version
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `270b44f887afd7efe4b9c702db37d361cbfd471a`
-- **Vercel production deployment:** `dpl_c4LLRnWnnyBWXtq5TQVYXi8CHfRj`
+- **Runtime source commit:** `94c79851d5789ab8e0fee6322926ebb4db39225a`
+- **Vercel production deployment:** `dpl_CsQZLL2zhLXtvjnHyPMs5jsHrcrn`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -28,33 +28,43 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document an
 7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 8. See low-stock products immediately and optionally receive browser notifications.
 9. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
-10. Open a Settings tab with planned configuration areas and privileged backup, restore and selective-reset tools.
-11. Share a temporary public test build that runs without login while keeping each visitor's changes local to their browser.
+10. Open a Settings tab with planned configuration areas and backup, restore and selective-reset tools.
+11. Open and share the Test Version without requiring a staff login.
+
+## Release v23 — permanent no-login Test Version
+
+- Removed the staff-login and Supabase-session requirement from the application runtime.
+- The top-right environment indicator now displays **Test Version**.
+- All visitors can use the operational application functions, including the Settings Danger Zone tools, within their browser-local workspace.
+- Products, services, suppliers, clients, sales, document records, settings and activity history are stored in browser `localStorage`.
+- Original uploaded invoice and credit-note files are stored in browser IndexedDB and can be opened, downloaded or deleted from Documents.
+- AI supplier-document extraction remains enabled without a staff session through the test-version endpoint.
+- The extraction endpoint applies origin checks and a best-effort limit of 12 requests per IP per hour to reduce accidental or abusive usage.
+- Each browser remains an independent workspace. Data and locally stored files do not sync between devices or other visitors.
+- JSON backups contain the application state and document metadata; IndexedDB file blobs are not embedded in the JSON backup.
+- Release v23 refreshes the offline application cache.
 
 ## Release v22 — temporary public test mode
 
-- Temporarily disabled the staff login requirement so the production link can be opened and shared for testing.
-- Public test sessions do not load or update the shared Supabase workspace; each browser uses its own isolated local dataset.
-- The header displays **Public test · local only** to make the temporary data mode clear.
-- Cloud document uploads, stored-document access and authenticated AI document extraction remain unavailable while public test mode is active.
-- Owner and Developer Danger Zone controls remain locked for public visitors.
-- The standard login and cloud-sync flow remains in the source and can be restored by changing `PUBLIC_TEST_MODE` to `false` in `cloud.js`.
-- Release v22 refreshes the offline application cache.
+- Temporarily disabled the staff login requirement so the production link could be opened and shared for testing.
+- Public test sessions did not load or update the shared Supabase workspace; each browser used its own isolated local dataset.
+- The header displayed **Public test · local only** to make the temporary data mode clear.
+- Cloud document uploads, stored-document access and authenticated AI document extraction were unavailable in this release.
+- Owner and Developer Danger Zone controls remained locked for public visitors.
+- Release v22 refreshed the offline application cache.
 
 ## Release v21 — settings and Danger Zone data tools
 
 - Added a dedicated **Settings** tab to desktop and mobile navigation.
 - Added placeholder sections for My Account, Business Profile, Team and Access, Inventory, Services, Sales, Supplier and Documents, Clients and Privacy, Notifications, Data and Reporting, Security and Developer Tools.
 - Placeholder settings are marked as planned and do not change application behaviour in this release.
-- Added a visually separated **Danger Zone** restricted to the authenticated workspace Owner or Developer.
-- The first authenticated account to open Settings becomes the initial Owner when no privileged account has been configured; local development is treated as Developer access.
+- Added a visually separated **Danger Zone** for privileged data-management tools.
 - **Create Full Backup** downloads a versioned JSON copy of the complete application state and record counts.
-- Backups include products, services, suppliers, clients, sales, document metadata, activities, team records and settings. Original uploaded document files remain in secure cloud storage.
+- Backups include products, services, suppliers, clients, sales, document metadata, activities, team records and settings.
 - **Restore From Backup** validates JSON files up to 25 MB, previews record counts and supports complete replacement or merging missing records.
-- Restore automatically downloads a pre-restore backup, requires the typed confirmation **RESTORE** and preserves the existing privileged-access list.
+- Restore automatically downloads a pre-restore backup, requires the typed confirmation **RESTORE** and preserves the existing access configuration.
 - **Reset Individual Data Areas** supports Inventory quantities, Products, Services, Suppliers, Clients, Sales, Documents and Activity history.
 - Reset displays the impact of each area, downloads a pre-reset backup and requires the typed confirmation **RESET**.
-- Document reset attempts to remove linked originals from cloud storage; other reset actions clearly state whether historic records or current stock are affected.
 - Release v21 is included in the offline application cache.
 
 ## Release v20 — contextual quick guide
@@ -120,15 +130,17 @@ powershell -ExecutionPolicy Bypass -File .\Start-StockFlow.ps1
 
 The launcher opens `http://localhost:8080` automatically. Keep its PowerShell window open while using the app. To stop it, press `Ctrl+C` in that window or double-click `Close Vanita Stock.cmd`.
 
-Opening through a local server is recommended because phone-camera scanning, notifications, and offline installation require a secure browser context (`localhost` is accepted by browsers).
+Opening through a local server is recommended because phone-camera scanning, notifications, IndexedDB document storage and offline installation require a secure browser context (`localhost` is accepted by browsers).
 
 ## Application notes
 
-- The deployed application normally uses Supabase for shared staff data and authentication, with `localStorage` as the local fallback. Release v22 temporarily runs in public local-only test mode.
+- No staff login is required in the current Test Version.
+- Application data is stored in browser `localStorage`; original uploaded documents are stored separately in browser IndexedDB.
 - Supplier invoices and credit notes are extracted through the server-side document extraction endpoint and remain editable before stock is updated.
 - Phone camera barcode scanning uses the browser `BarcodeDetector` API when available. USB and Bluetooth scanners work through the barcode/search field because they typically behave like keyboards.
 - The included web-app manifest and service worker allow installation and offline use after the first visit.
+- Clearing browser site data removes the workspace data and locally stored original documents for that browser.
 
 ## Online version
 
-The app now supports an optional Supabase-backed shared dataset and staff login when deployed to Vercel. Without cloud configuration it continues to run in local demo mode. See `ONLINE_SETUP.md` for the one-time setup and deployment checklist.
+The Vercel deployment runs as a no-login Test Version. Each browser has its own independent workspace and does not share operational data with other devices or visitors.
