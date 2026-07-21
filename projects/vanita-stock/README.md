@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v20 — Contextual quick guide
+- **Release:** v21 — Settings and Danger Zone data tools
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `023253c47dd369ee47da358c479d735c01cdde68`
-- **Vercel production deployment:** `dpl_DMdtx5H5vUwQKjwQJrjWrw6jiAoS`
+- **Runtime source commit:** `bffb009c7fe86aea643d50ad10c2dffe0bdabeab`
+- **Vercel production deployment:** `dpl_12VxAMkUVjWfabyqS82DgKjVze2G`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -28,6 +28,23 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document an
 7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 8. See low-stock products immediately and optionally receive browser notifications.
 9. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
+10. Open a Settings tab with planned configuration areas and privileged backup, restore and selective-reset tools.
+
+## Release v21 — settings and Danger Zone data tools
+
+- Added a dedicated **Settings** tab to desktop and mobile navigation.
+- Added placeholder sections for My Account, Business Profile, Team and Access, Inventory, Services, Sales, Supplier and Documents, Clients and Privacy, Notifications, Data and Reporting, Security and Developer Tools.
+- Placeholder settings are marked as planned and do not change application behaviour in this release.
+- Added a visually separated **Danger Zone** restricted to the authenticated workspace Owner or Developer.
+- The first authenticated account to open Settings becomes the initial Owner when no privileged account has been configured; local development is treated as Developer access.
+- **Create Full Backup** downloads a versioned JSON copy of the complete application state and record counts.
+- Backups include products, services, suppliers, clients, sales, document metadata, activities, team records and settings. Original uploaded document files remain in secure cloud storage.
+- **Restore From Backup** validates JSON files up to 25 MB, previews record counts and supports complete replacement or merging missing records.
+- Restore automatically downloads a pre-restore backup, requires the typed confirmation **RESTORE** and preserves the existing privileged-access list.
+- **Reset Individual Data Areas** supports Inventory quantities, Products, Services, Suppliers, Clients, Sales, Documents and Activity history.
+- Reset displays the impact of each area, downloads a pre-reset backup and requires the typed confirmation **RESET**.
+- Document reset attempts to remove linked originals from cloud storage; other reset actions clearly state whether historic records or current stock are affected.
+- Release v21 is included in the offline application cache.
 
 ## Release v20 — contextual quick guide
 
