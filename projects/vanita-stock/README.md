@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v18 — Supplier and Client registers
+- **Release:** v19 — Optional service codes and qualified staff picker
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `ea38acc2a42eef78311b6097b30a80b79c23344b`
-- **Vercel production deployment:** `dpl_4jfppxP1ZD3vGJXDa3QTTWRHCGH2`
+- **Runtime source commit:** `03818377533e5024fdee58c4d45001e0012cffda`
+- **Vercel production deployment:** `dpl_GBdgzuvHPjUQDKSe96LKP5zMuag1`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -27,6 +27,17 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document an
 6. Maintain client contacts and optionally assign a client to each recorded sale.
 7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 8. See low-stock products immediately and optionally receive browser notifications.
+
+## Release v19 — optional service codes and team-member selection
+
+- Service codes are now optional; blank codes can be saved without triggering duplicate-code validation.
+- The Services table labels the field as **Code (optional)** and shows an em dash where no code is used.
+- Qualified staff are selected through a dedicated team-member view rather than typed as comma-separated names.
+- The picker shows each employee's name, job title, placeholder `@vanita.com` email and app-access status.
+- Added placeholder employee records for a Beautician, Nail Technician, Massage Therapist, Hair Stylist and Receptionist.
+- Service-to-staff links use stable team-member IDs while retaining staff names for existing sales and reports.
+- Existing free-text staff names are migrated into selectable team-member records automatically.
+- Release v19 is included in the offline application cache.
 
 ## Release v18 — supplier and client registers
 
