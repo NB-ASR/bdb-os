@@ -1,6 +1,6 @@
 # Vanita Stock — Client Project
 
-> **Project scope:** This folder contains the dedicated stock, document, product, service, supplier, client and sales application for **Vanita Beauty and Wellness Spa**. It is maintained separately from the BDB OS application and is stored in the `bdb-os` repository only for central version control.
+> **Project scope:** This folder contains the dedicated stock, document, product, service, supplier, client, appointment and sales application for **Vanita Beauty and Wellness Spa**. It is maintained separately from the BDB OS application and is stored in the `bdb-os` repository only for central version control.
 
 ## Live application
 
@@ -10,26 +10,45 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v23 — Permanent no-login Test Version
+- **Release:** v24 — Calendar and appointment scheduling
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `94c79851d5789ab8e0fee6322926ebb4db39225a`
-- **Vercel production deployment:** `dpl_CsQZLL2zhLXtvjnHyPMs5jsHrcrn`
+- **Runtime source commit:** `9b7eab104cc3aaae931b59db413b2e7de9bc3333`
+- **Vercel production deployment:** `dpl_7tKSSVmRRyDQqKLksvKSRpP8vNaG`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
-Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document and lightweight client-management system tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
+Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document, client-management and appointment-scheduling system tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
 
 1. Take a photo of or upload a supplier invoice or credit note.
 2. Review the extracted supplier, document type, item purpose, stock codes, quantities and prices.
 3. Add invoice quantities to stock, or upload the original to Documents without changing stock.
 4. Maintain separate product and salon/spa service catalogues.
 5. Maintain supplier contacts linked to products, documents and net supplier spend.
-6. Maintain client contacts and optionally assign a client to each recorded sale.
-7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
-8. See low-stock products immediately and optionally receive browser notifications.
-9. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
-10. Open a Settings tab with planned configuration areas and backup, restore and selective-reset tools.
-11. Open and share the Test Version without requiring a staff login.
+6. Maintain client contacts and connect clients to appointments and recorded sales.
+7. Schedule appointments across Day, Week, Month and Agenda views.
+8. Assign one or more services and qualified staff members to each appointment.
+9. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
+10. See low-stock products immediately and optionally receive browser notifications.
+11. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
+12. Open a Settings tab with planned configuration areas and backup, restore and selective-reset tools.
+13. Open and share the Test Version without requiring a staff login.
+
+## Release v24 — Calendar and appointment scheduling
+
+- Added a dedicated **Calendar** tab to desktop and mobile navigation.
+- Added **Day**, **Week**, **Month** and **Agenda** views with Today and previous/next period controls.
+- Added appointment search and filters for staff member and appointment status.
+- Appointments support an existing client or quick client creation, multiple services, a separate staff assignment for each service, duration, price, discount, deposit, booking source, room, reminder status and notes.
+- Service duration, price and qualified staff are loaded from the Services catalogue and remain editable for the individual appointment.
+- Added appointment statuses for Tentative, Confirmed, Checked in, In progress, Completed, Cancelled and No-show.
+- Added appointment actions to edit/reschedule, duplicate, progress through statuses, cancel, mark as no-show, delete and convert completed appointments into sales.
+- Appointment-to-sale conversion preloads the client, service lines, staff assignments and appointment discount. Paid deposits are retained separately from revenue and reduce the remaining checkout balance.
+- Added per-team-member weekly working hours and blocked periods for breaks, leave, training or other unavailability.
+- Added conflict checks for staff double-booking, blocked time, working hours and service qualifications, with suggested alternative start times and an explicit Test Version override.
+- Appointment records and calendar settings are stored in the browser-local workspace.
+- Full backups include appointments and calendar settings. Restore supports replacement and appointment merging, and Reset Individual Data Areas now includes Appointments.
+- Added a Calendar-specific contextual quick guide.
+- Release v24 is included in the offline application cache.
 
 ## Release v23 — permanent no-login Test Version
 
@@ -135,7 +154,7 @@ Opening through a local server is recommended because phone-camera scanning, not
 ## Application notes
 
 - No staff login is required in the current Test Version.
-- Application data is stored in browser `localStorage`; original uploaded documents are stored separately in browser IndexedDB.
+- Application data, including appointments and calendar settings, is stored in browser `localStorage`; original uploaded documents are stored separately in browser IndexedDB.
 - Supplier invoices and credit notes are extracted through the server-side document extraction endpoint and remain editable before stock is updated.
 - Phone camera barcode scanning uses the browser `BarcodeDetector` API when available. USB and Bluetooth scanners work through the barcode/search field because they typically behave like keyboards.
 - The included web-app manifest and service worker allow installation and offline use after the first visit.
