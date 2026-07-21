@@ -5,7 +5,7 @@ import { BdbMonogram } from "@/components/brand";
 import styles from "../admin/sector-packs/sector-packs.module.css";
 
 export const metadata: Metadata = {
-  title: "Sector Packs Preview · BDB OS",
+  title: "Sector Packs Preview",
   description: "No-index founder review environment for BDB OS Sector Packs.",
   robots: { index: false, follow: false },
 };
