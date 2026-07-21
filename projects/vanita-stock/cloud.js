@@ -146,28 +146,19 @@
     get publicTestMode() { return false; }
   };
 
-  const enhancements = document.createElement("script");
-  enhancements.src = "discount-reporting.js";
-  enhancements.defer = true;
-  document.head.append(enhancements);
+  function appendModule(source) {
+    const script = document.createElement("script");
+    script.src = source;
+    script.async = false;
+    document.head.append(script);
+  }
 
-  const contacts = document.createElement("script");
-  contacts.src = "contacts.js";
-  contacts.defer = true;
-  document.head.append(contacts);
-
-  const serviceTeam = document.createElement("script");
-  serviceTeam.src = "service-team.js";
-  serviceTeam.defer = true;
-  document.head.append(serviceTeam);
-
-  const quickGuide = document.createElement("script");
-  quickGuide.src = "quick-guide.js";
-  quickGuide.defer = true;
-  document.head.append(quickGuide);
-
-  const settings = document.createElement("script");
-  settings.src = "settings.js";
-  settings.defer = true;
-  document.head.append(settings);
+  [
+    "discount-reporting.js",
+    "contacts.js",
+    "service-team.js",
+    "calendar.js",
+    "quick-guide.js",
+    "settings.js"
+  ].forEach(appendModule);
 })();
