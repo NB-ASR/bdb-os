@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v19 — Optional service codes and qualified staff picker
+- **Release:** v20 — Contextual quick guide
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `03818377533e5024fdee58c4d45001e0012cffda`
-- **Vercel production deployment:** `dpl_GBdgzuvHPjUQDKSe96LKP5zMuag1`
+- **Runtime source commit:** `023253c47dd369ee47da358c479d735c01cdde68`
+- **Vercel production deployment:** `dpl_DMdtx5H5vUwQKjwQJrjWrw6jiAoS`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -27,6 +27,18 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document an
 6. Maintain client contacts and optionally assign a client to each recorded sale.
 7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
 8. See low-stock products immediately and optionally receive browser notifications.
+9. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
+
+## Release v20 — contextual quick guide
+
+- Replaced the previous quick-guide toast with a full-screen contextual tutorial overlay.
+- The guide detects the active tab and loads a dedicated sequence for Overview, Inventory, Products, Services, Suppliers, Clients, Documents or Sales.
+- Only one tutorial bubble is displayed at a time, with a visual pointer and highlighted target area showing the feature being explained.
+- Added previous and next arrow controls, an **X** close control and a centred progress counter such as **5/10**.
+- The guide automatically scrolls the relevant screen element into view and repositions the bubble around the available viewport space.
+- Added keyboard support: left/right arrows move through the guide and Escape closes it.
+- The overlay blocks accidental interaction with the highlighted screen while the guide is open.
+- Release v20 is included in the offline application cache.
 
 ## Release v19 — optional service codes and team-member selection
 
