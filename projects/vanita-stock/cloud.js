@@ -150,4 +150,9 @@
   contacts.src = "contacts.js";
   contacts.defer = true;
   document.head.append(contacts);
+
+  const serviceTeam = document.createElement("script");
+  serviceTeam.src = "service-team.js";
+  serviceTeam.defer = true;
+  document.head.append(serviceTeam);
 })();
