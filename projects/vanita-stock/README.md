@@ -8,6 +8,15 @@
 
 The source code is stored in GitHub, while the working application is hosted by Vercel.
 
+### Current production release
+
+- **Release:** v18 — Supplier and Client registers
+- **Deployed:** 21 July 2026
+- **Runtime source commit:** `ea38acc2a42eef78311b6097b30a80b79c23344b`
+- **Vercel production deployment:** `dpl_4jfppxP1ZD3vGJXDa3QTTWRHCGH2`
+- **Branch:** `agent/vanita-stock-project`
+- Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
+
 Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document and lightweight client-management system tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
 
 1. Take a photo of or upload a supplier invoice or credit note.
