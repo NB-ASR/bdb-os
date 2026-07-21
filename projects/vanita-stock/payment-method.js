@@ -103,6 +103,12 @@
       }
     }
 
+    function markPaymentRequired() {
+      const field = document.querySelector("#salePaymentMethod");
+      document.querySelector("#salePaymentSection")?.classList.add("payment-error");
+      field?.setAttribute("aria-invalid", "true");
+    }
+
     function showPaymentRequiredPopup() {
       closePaymentPopup();
       injectStyles();
@@ -132,12 +138,29 @@
       injectPaymentField();
     };
 
+    document.addEventListener("click", event => {
+      const completeButton = event.target.closest?.("#completeSale");
+      if (!completeButton) return;
+      const method = String(document.querySelector("#salePaymentMethod")?.value || selectedPaymentMethod || "").trim();
+      if (method) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      markPaymentRequired();
+      showPaymentRequiredPopup();
+    }, true);
+
+    document.addEventListener("keydown", event => {
+      if (event.key !== "Escape" || !document.querySelector(".payment-required-overlay")) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closePaymentPopup(true);
+    }, true);
+
     saveSale = function () {
       const field = document.querySelector("#salePaymentMethod");
       const method = String(field?.value || selectedPaymentMethod || "").trim();
       if (!method) {
-        document.querySelector("#salePaymentSection")?.classList.add("payment-error");
-        field?.setAttribute("aria-invalid", "true");
+        markPaymentRequired();
         showPaymentRequiredPopup();
         return;
       }
