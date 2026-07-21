@@ -111,8 +111,6 @@ function bookingAction(state: BdbState, booking: Booking, now: Date): SoloOperat
 
 export function buildSoloOperatorSnapshot(state: BdbState, now = new Date()): SoloOperatorSnapshot {
   const todayKey = now.toLocaleDateString("en-CA");
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
   const reminderCutoff = new Date(now);
   reminderCutoff.setHours(reminderCutoff.getHours() + 36);
 
