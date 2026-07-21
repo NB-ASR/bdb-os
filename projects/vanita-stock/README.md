@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v21 — Settings and Danger Zone data tools
+- **Release:** v22 — Temporary public test mode
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `bffb009c7fe86aea643d50ad10c2dffe0bdabeab`
-- **Vercel production deployment:** `dpl_12VxAMkUVjWfabyqS82DgKjVze2G`
+- **Runtime source commit:** `270b44f887afd7efe4b9c702db37d361cbfd471a`
+- **Vercel production deployment:** `dpl_c4LLRnWnnyBWXtq5TQVYXi8CHfRj`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -29,6 +29,17 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document an
 8. See low-stock products immediately and optionally receive browser notifications.
 9. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
 10. Open a Settings tab with planned configuration areas and privileged backup, restore and selective-reset tools.
+11. Share a temporary public test build that runs without login while keeping each visitor's changes local to their browser.
+
+## Release v22 — temporary public test mode
+
+- Temporarily disabled the staff login requirement so the production link can be opened and shared for testing.
+- Public test sessions do not load or update the shared Supabase workspace; each browser uses its own isolated local dataset.
+- The header displays **Public test · local only** to make the temporary data mode clear.
+- Cloud document uploads, stored-document access and authenticated AI document extraction remain unavailable while public test mode is active.
+- Owner and Developer Danger Zone controls remain locked for public visitors.
+- The standard login and cloud-sync flow remains in the source and can be restored by changing `PUBLIC_TEST_MODE` to `false` in `cloud.js`.
+- Release v22 refreshes the offline application cache.
 
 ## Release v21 — settings and Danger Zone data tools
 
@@ -113,7 +124,7 @@ Opening through a local server is recommended because phone-camera scanning, not
 
 ## Application notes
 
-- The deployed application uses Supabase for shared staff data and authentication, with `localStorage` as the local fallback.
+- The deployed application normally uses Supabase for shared staff data and authentication, with `localStorage` as the local fallback. Release v22 temporarily runs in public local-only test mode.
 - Supplier invoices and credit notes are extracted through the server-side document extraction endpoint and remain editable before stock is updated.
 - Phone camera barcode scanning uses the browser `BarcodeDetector` API when available. USB and Bluetooth scanners work through the barcode/search field because they typically behave like keyboards.
 - The included web-app manifest and service worker allow installation and offline use after the first visit.
