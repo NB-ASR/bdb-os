@@ -5,6 +5,12 @@ import type { BdbState, WorkspaceTheme } from "./types";
 type Row = Record<string, unknown>;
 type QueryResult<T = unknown> = { data: T | null; error: { message: string } | null };
 
+const SOLO_PREVIEW_WORKSPACE_ID = "__solo-operator-preview__";
+
+function isSoloOperatorPreview() {
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/solo-operator-preview");
+}
+
 function requireConfigured() {
   if (!isSupabaseConfigured()) {
     throw new Error("Cloud workspace is not configured.");
@@ -17,6 +23,9 @@ function requireResult<T>(result: QueryResult<T>, context: string): T | null {
 }
 
 export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspaceId: string; role: string } | null> {
+  if (isSoloOperatorPreview()) {
+    return { state: seedState, workspaceId: SOLO_PREVIEW_WORKSPACE_ID, role: "preview" };
+  }
   if (!isSupabaseConfigured()) return null;
   const supabase = createClient();
   const claimsResult = await supabase.auth.getClaims();
