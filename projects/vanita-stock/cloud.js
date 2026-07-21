@@ -145,4 +145,9 @@
   enhancements.src = "discount-reporting.js";
   enhancements.defer = true;
   document.head.append(enhancements);
+
+  const contacts = document.createElement("script");
+  contacts.src = "contacts.js";
+  contacts.defer = true;
+  document.head.append(contacts);
 })();
