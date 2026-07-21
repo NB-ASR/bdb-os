@@ -10,10 +10,10 @@ The source code is stored in GitHub, while the working application is hosted by 
 
 ### Current production release
 
-- **Release:** v25 — Topbar sales and appointment actions
+- **Release:** v26 — Required sale payment method
 - **Deployed:** 21 July 2026
-- **Runtime source commit:** `500209a477866fd20488d2c9e42eac54c16e5db3`
-- **Vercel production deployment:** `dpl_GTNDWGVtMSaV7FxTNuXx6HHBGnof`
+- **Runtime source commit:** `765a18559bcb986fa23f49b75dabfa17ef7b6740`
+- **Vercel production deployment:** `dpl_43Dzk2EGANJyuVq7KQK9CEwJDBqV`
 - **Branch:** `agent/vanita-stock-project`
 - Production is loaded from the pinned runtime commit above; no release changes were made to `main`.
 
@@ -27,11 +27,23 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document, c
 6. Maintain client contacts and connect clients to appointments and recorded sales.
 7. Schedule appointments across Day, Week, Month and Agenda views.
 8. Assign one or more services and qualified staff members to each appointment.
-9. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
+9. Record products and services together in the same sale, including the assigned service staff member, discounts and payment method.
 10. See low-stock products immediately and optionally receive browser notifications.
 11. Open a tab-specific visual guide that explains the controls and reports currently shown on screen.
 12. Open a Settings tab with planned configuration areas and backup, restore and selective-reset tools.
 13. Open and share the Test Version without requiring a staff login.
+
+## Release v26 — required sale payment method
+
+- Added a required **Payment method** field to the final sale checkout screen.
+- Available methods are Cash, Card, Bank transfer, Revolut, Voucher and Other.
+- A sale cannot be completed or updated until a payment method is selected.
+- Attempting to complete a sale without a payment method opens a dedicated warning popup and highlights the required field.
+- The validation intercepts the Complete Sale action before client, appointment or sales hooks can modify data.
+- Existing sales retain their saved method when edited; older sales without a method must select one before being saved again.
+- The selected payment method is stored on the sale record and displayed in Sales history.
+- Appointment-to-sale conversions use the same required payment workflow.
+- Added `payment-method.js` to the standard module loader and the v26 offline cache.
 
 ## Release v25 — topbar sales and appointment actions
 
@@ -136,7 +148,7 @@ Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document, c
 - The document review screen shows an editable supplier discount, paid net cost and actual paid total.
 - Saved document records retain both valuation bases: catalogue stock cost and actual discounted supplier spend.
 - The Documents summary now reports supplier discounts captured and actual supplier spend as the first purchasing-reporting dataset.
-- Historical documents remain compatible and are treated as having no separately recorded supplier discount.
+- Historical documents remain compatible and are treated as having no separately recorded discount.
 
 ## Release v16 — sales, barcode and document controls
 
