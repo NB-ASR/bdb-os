@@ -1,4 +1,4 @@
-import { createAdminClient, bootstrapFounder } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   const admin = createAdminClient();
@@ -14,7 +14,9 @@ export async function POST(request: Request) {
     return Response.json({ error: "UNAUTHENTICATED" }, { status: 401 });
   }
 
-  await bootstrapFounder(userData.user.id, userData.user.email);
+  // Founder access is provisioned only through the explicitly enabled,
+  // one-time bootstrap route. Normal login must never grant or reactivate
+  // platform privileges.
   const [profileResult, founderResult] = await Promise.all([
     admin
       .from("profiles")

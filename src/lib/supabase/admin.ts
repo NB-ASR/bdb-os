@@ -9,38 +9,21 @@ export function createAdminClient() {
   });
 }
 
-export async function bootstrapFounder(userId: string, email?: string | null) {
-  const allowed = (process.env.BDB_FOUNDER_EMAILS ?? "")
-    .split(",")
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-  if (!email || !allowed.includes(email.toLowerCase())) return;
-  const admin = createAdminClient();
-  if (!admin) return;
+type MembershipWorkspace = { status: string };
 
-  const { data: existing } = await admin
-    .from("platform_admins")
-    .select("user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+type PendingMembership = {
+  workspace_id: string;
+  invitation_expires_at: string | null;
+  created_at: string;
+  workspaces: MembershipWorkspace;
+};
 
-  await admin
-    .from("platform_admins")
-    .upsert(
-      { user_id: userId, role: "founder", active: true },
-      { onConflict: "user_id" },
-    );
+type ActiveMembership = {
+  workspace_id: string;
+  workspaces: MembershipWorkspace;
+};
 
-  if (!existing) {
-    await admin.from("audit_logs").insert({
-      actor_user_id: userId,
-      action: "platform.founder_bootstrapped",
-      entity_type: "platform_admin",
-      entity_id: userId,
-      metadata: { email },
-    });
-  }
-}
+const AVAILABLE_WORKSPACE_STATUSES = new Set(["trial", "active"]);
 
 export async function activatePendingMemberships(userId: string) {
   const admin = createAdminClient();
@@ -50,13 +33,13 @@ export async function activatePendingMemberships(userId: string) {
   const [pendingResult, activeResult, profileResult] = await Promise.all([
     admin
       .from("workspace_memberships")
-      .select("workspace_id,invitation_expires_at,created_at")
+      .select("workspace_id,invitation_expires_at,created_at,workspaces!inner(status)")
       .eq("user_id", userId)
       .eq("status", "invited")
       .order("created_at"),
     admin
       .from("workspace_memberships")
-      .select("workspace_id")
+      .select("workspace_id,workspaces!inner(status)")
       .eq("user_id", userId)
       .eq("status", "active")
       .order("created_at"),
@@ -69,30 +52,55 @@ export async function activatePendingMemberships(userId: string) {
   const failed = [pendingResult, activeResult, profileResult].find((result) => result.error);
   if (failed?.error) throw failed.error;
 
-  const pending = pendingResult.data ?? [];
-  const nonExpired = pending.filter(
-    (membership) =>
-      !membership.invitation_expires_at || membership.invitation_expires_at > now,
+  const pending = (pendingResult.data ?? []) as unknown as PendingMembership[];
+  const availablePending = pending.filter((membership) =>
+    AVAILABLE_WORKSPACE_STATUSES.has(membership.workspaces.status),
   );
-  const expiredWorkspaceIds = pending
+  const unavailableWorkspaceIds = pending
+    .filter((membership) => !AVAILABLE_WORKSPACE_STATUSES.has(membership.workspaces.status))
+    .map((membership) => membership.workspace_id);
+
+  // Missing expiry is invalid. Invitation records must never outlive the Auth
+  // token merely because a database timestamp was absent.
+  const nonExpired = availablePending.filter(
+    (membership) =>
+      Boolean(membership.invitation_expires_at) && membership.invitation_expires_at! > now,
+  );
+  const expiredWorkspaceIds = availablePending
     .filter(
       (membership) =>
-        Boolean(membership.invitation_expires_at) &&
-        membership.invitation_expires_at <= now,
+        !membership.invitation_expires_at || membership.invitation_expires_at <= now,
     )
     .map((membership) => membership.workspace_id);
 
   if (!nonExpired.length) {
-    return { activated: [], expired: expiredWorkspaceIds, blocked: [] };
+    return {
+      activated: [],
+      expired: expiredWorkspaceIds,
+      blocked: [],
+      unavailable: unavailableWorkspaceIds,
+    };
   }
 
-  const activeWorkspaceIds = (activeResult.data ?? []).map((membership) => membership.workspace_id);
+  const activeMemberships = (activeResult.data ?? []) as unknown as ActiveMembership[];
+  const activeWorkspaceIds = activeMemberships
+    .filter((membership) => AVAILABLE_WORKSPACE_STATUSES.has(membership.workspaces.status))
+    .map((membership) => membership.workspace_id);
+  const selectedActiveWorkspaceId = activeWorkspaceIds.includes(
+    profileResult.data?.active_workspace_id ?? "",
+  )
+    ? profileResult.data?.active_workspace_id
+    : null;
   const baseWorkspaceId =
-    profileResult.data?.active_workspace_id ??
-    activeWorkspaceIds[0] ??
-    nonExpired[0].workspace_id;
+    selectedActiveWorkspaceId ?? activeWorkspaceIds[0] ?? nonExpired[0].workspace_id;
 
-  const candidateIds = [...new Set([baseWorkspaceId, ...activeWorkspaceIds, ...nonExpired.map((item) => item.workspace_id)])];
+  const candidateIds = [
+    ...new Set([
+      baseWorkspaceId,
+      ...activeWorkspaceIds,
+      ...nonExpired.map((item) => item.workspace_id),
+    ]),
+  ];
   const { data: links, error: linksError } = await admin
     .from("business_group_workspaces")
     .select("group_id,workspace_id")
@@ -121,6 +129,7 @@ export async function activatePendingMemberships(userId: string) {
       activated: [],
       expired: expiredWorkspaceIds,
       blocked: blockedWorkspaceIds,
+      unavailable: unavailableWorkspaceIds,
     };
   }
 
@@ -139,14 +148,19 @@ export async function activatePendingMemberships(userId: string) {
 
   const activated = (data ?? []).map((membership) => membership.workspace_id);
   if (activated.length) {
-    if (!profileResult.data?.active_workspace_id) {
-      await admin
+    // Replace a missing or stale selection. A stale suspended/cancelled workspace
+    // must not keep the newly activated user outside their available business.
+    if (!selectedActiveWorkspaceId) {
+      const { error: profileError } = await admin
         .from("profiles")
         .update({ active_workspace_id: activated[0] })
         .eq("id", userId);
+      if (profileError) {
+        console.error("Activated membership but could not select the workspace", profileError);
+      }
     }
 
-    await admin.from("audit_logs").insert(
+    const { error: auditError } = await admin.from("audit_logs").insert(
       activated.map((workspaceId) => ({
         actor_user_id: userId,
         workspace_id: workspaceId,
@@ -156,10 +170,13 @@ export async function activatePendingMemberships(userId: string) {
         metadata: {},
       })),
     );
+    if (auditError) {
+      console.error("Invitation activation audit could not be recorded", auditError);
+    }
   }
 
   if (blockedWorkspaceIds.length) {
-    await admin.from("audit_logs").insert(
+    const { error: blockedAuditError } = await admin.from("audit_logs").insert(
       blockedWorkspaceIds.map((workspaceId) => ({
         actor_user_id: userId,
         workspace_id: workspaceId,
@@ -169,11 +186,15 @@ export async function activatePendingMemberships(userId: string) {
         metadata: { active_workspace_id: baseWorkspaceId },
       })),
     );
+    if (blockedAuditError) {
+      console.error("Blocked invitation audit could not be recorded", blockedAuditError);
+    }
   }
 
   return {
     activated,
     expired: expiredWorkspaceIds,
     blocked: blockedWorkspaceIds,
+    unavailable: unavailableWorkspaceIds,
   };
 }

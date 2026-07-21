@@ -36,7 +36,6 @@ const seedData = {
 };
 
 let state = loadState();
-let activeView = "dashboard";
 let stockFilter = "all";
 let serviceStatusFilter = "all";
 let serviceCategoryFilter = "all";
@@ -57,7 +56,12 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const currency = (value) => new Intl.NumberFormat("en-MT", { style: "currency", currency: "EUR" }).format(value);
 const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
-const makeId = (prefix) => `${prefix}-${String(Date.now()).slice(-5)}`;
+const makeId = (prefix) => {
+  const token = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID().split("-")[0].toUpperCase()
+    : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
+  return `${prefix}-${token}`;
+};
 const SERVICE_CATEGORIES = ["Hair", "Nails", "Facials", "Massage", "Body treatments", "Waxing", "Makeup", "Spa packages", "Consultations", "Other"];
 
 function loadState() {
@@ -163,7 +167,7 @@ function renderMetrics() {
     return totals;
   }, { product:0, service:0 });
   const metrics = [
-    { icon: "□", value: totalUnits.toLocaleString(), label: `${stockedProducts.length} products in inventory`, delta: "+6.2%", tone: "#347c65", tint: "#e7f3ee" },
+    { icon: "□", value: totalUnits.toLocaleString(), label: `${stockedProducts.length} products in inventory`, delta: "Live count", tone: "#347c65", tint: "#e7f3ee" },
     { icon: "€", value: currency(costValue), label: missingCost ? `${missingCost} stocked product${missingCost === 1 ? "" : "s"} missing cost` : "Current stock cost value", delta: missingCost ? "Cost needed" : "At cost", tone: "#6078ad", tint: "#edf0f8", warn: missingCost > 0 },
     { icon: "€", value: currency(retailValue), label: missingRrp ? `${missingRrp} stocked product${missingRrp === 1 ? "" : "s"} missing RRP` : "Potential retail value", delta: missingRrp ? "RRP needed" : "At RRP", tone: "#7669a7", tint: "#f0edf8", warn: missingRrp > 0 },
     { icon: "!", value: low, label: "Products need restocking", delta: low ? "Action needed" : "All good", tone: "#b57525", tint: "#fff2de", warn: true },
@@ -446,13 +450,36 @@ function relativeTime(date) {
 }
 
 function renderChart() {
-  const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-  const stockIn = [58,92,46,110,76,128,65], stockOut = [36,55,68,52,87,73,42];
-  $("#stockChart").innerHTML = days.map((day, i) => `<div class="chart-day"><div class="bar-pair"><i class="bar in" style="height:${stockIn[i]}px"></i><i class="bar out" style="height:${stockOut[i]}px"></i></div><span>${day}</span></div>`).join("");
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return date;
+  });
+  const key = value => new Date(value).toLocaleDateString("en-CA");
+  const movements = days.map(day => {
+    const dayKey = key(day);
+    const stockIn = state.invoices
+      .filter(document => document.stockApplied !== false && Number(document.direction) === 1 && key(document.date) === dayKey)
+      .reduce((sum, document) => sum + (document.lines || []).reduce((lineSum, line) => lineSum + (Number(line.qty) || 0), 0), 0);
+    const supplierReturns = state.invoices
+      .filter(document => document.stockApplied !== false && Number(document.direction) === -1 && key(document.date) === dayKey)
+      .reduce((sum, document) => sum + (document.lines || []).reduce((lineSum, line) => lineSum + (Number(line.qty) || 0), 0), 0);
+    const sold = state.sales
+      .filter(sale => key(sale.date) === dayKey)
+      .reduce((sum, sale) => sum + saleItemCounts(sale).product, 0);
+    return { day, stockIn, stockOut: sold + supplierReturns };
+  });
+  const maximum = Math.max(1, ...movements.flatMap(item => [item.stockIn, item.stockOut]));
+  $("#stockChart").innerHTML = movements.map(item => {
+    const inHeight = item.stockIn ? Math.max(4, Math.round(item.stockIn / maximum * 160)) : 0;
+    const outHeight = item.stockOut ? Math.max(4, Math.round(item.stockOut / maximum * 160)) : 0;
+    const label = item.day.toLocaleDateString("en-GB", { weekday: "short" });
+    return `<div class="chart-day"><div class="bar-pair"><i class="bar in" title="${item.stockIn} units in" style="height:${inHeight}px"></i><i class="bar out" title="${item.stockOut} units out" style="height:${outHeight}px"></i></div><span>${label}</span></div>`;
+  }).join("");
 }
 
 function switchView(view) {
-  activeView = view;
   $$(".view").forEach(el => el.classList.toggle("active", el.id === `${view}View`));
   $$('[data-view]').forEach(el => el.classList.toggle("active", el.dataset.view === view));
   $(".mobile-catalog")?.classList.toggle("active", view === "products" || view === "services");
@@ -1289,12 +1316,16 @@ function wireEvents() {
 async function init() {
   $("#todayLabel").textContent=new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"}).toUpperCase();
   wireEvents();
+  window.addEventListener("vanita-cloud-conflict", () => {
+    window.alert("Another staff member saved newer Vanita Stock changes. This page will reload the latest shared records; your conflicting unsynced edit will not overwrite them.");
+    window.location.reload();
+  }, { once: true });
   try {
     const cloud = await window.VanitaCloud?.connect();
     if (cloud?.enabled) {
       const sharedState = await window.VanitaCloud.loadState();
-      if (sharedState?.products) state = normalizeState(sharedState);
-      else window.VanitaCloud.saveState(state);
+      state = normalizeState(sharedState);
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
     }
   } catch (error) {
     console.error("Vanita cloud initialization failed", error);

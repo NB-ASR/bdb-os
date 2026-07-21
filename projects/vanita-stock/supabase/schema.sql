@@ -1,13 +1,15 @@
--- Run this once in the Supabase SQL Editor for the dedicated Vanita project.
+-- Run this in the dedicated Vanita Supabase project before enabling shared cloud editing.
 -- Staff accounts should be created by an administrator in Authentication > Users.
 
 create table if not exists public.app_state (
   id text primary key,
   data jsonb not null default '{}'::jsonb,
+  revision bigint not null default 0,
   updated_at timestamptz not null default now(),
   constraint vanita_only check (id = 'vanita')
 );
 
+alter table public.app_state add column if not exists revision bigint not null default 0;
 alter table public.app_state enable row level security;
 
 revoke all on table public.app_state from anon;
@@ -32,9 +34,44 @@ to authenticated
 using (id = 'vanita')
 with check (id = 'vanita');
 
-insert into public.app_state (id, data)
-values ('vanita', '{}'::jsonb)
+insert into public.app_state (id, data, revision)
+values ('vanita', '{}'::jsonb, 0)
 on conflict (id) do nothing;
+
+-- Prevent two staff devices from silently overwriting each other's stock changes.
+-- The client sends the revision it loaded. A stale revision raises a serialization
+-- conflict and forces a reload rather than accepting last-write-wins data loss.
+create or replace function public.save_vanita_state(
+  p_data jsonb,
+  p_expected_revision bigint
+)
+returns table (revision bigint, updated_at timestamptz)
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  return query
+  update public.app_state as target
+  set
+    data = p_data,
+    revision = target.revision + 1,
+    updated_at = clock_timestamp()
+  where target.id = 'vanita'
+    and target.revision = p_expected_revision
+  returning target.revision, target.updated_at;
+
+  if not found then
+    raise exception 'STATE_CONFLICT'
+      using errcode = '40001',
+            hint = 'Reload the latest Vanita state before saving again.';
+  end if;
+end;
+$$;
+
+revoke all on function public.save_vanita_state(jsonb, bigint) from public;
+revoke all on function public.save_vanita_state(jsonb, bigint) from anon;
+grant execute on function public.save_vanita_state(jsonb, bigint) to authenticated;
 
 -- Private original-document storage for staff previews and downloads.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

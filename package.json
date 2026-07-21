@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:db:static && npm run test:migrations && npm run test:vanita",
+    "test:unit": "node --experimental-strip-types --test tests/unit/*.test.ts",
+    "test:db:static": "node scripts/check-db-security-contract.mjs",
+    "test:migrations": "node scripts/check-migration-history.mjs",
+    "test:vanita": "npm --prefix projects/vanita-stock run check",
+    "test:e2e": "playwright test",
+    "smoke": "node scripts/smoke-production.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.1",

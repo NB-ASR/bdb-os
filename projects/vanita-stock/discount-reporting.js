@@ -58,8 +58,10 @@
       totals.insertBefore(discountField, $("#reviewVatRate")?.parentElement || null);
       totals.insertBefore(paidNetField, $("#reviewVatRate")?.parentElement || null);
       $("#reviewVatRate").value = extractedVatRate.toFixed(2);
-      $("#reviewNetAmount")?.previousElementSibling && ($("#reviewNetAmount").previousElementSibling.textContent = "Stock cost before discount");
-      $("#reviewGrossAmount")?.previousElementSibling && ($("#reviewGrossAmount").previousElementSibling.textContent = "Actual paid total");
+      const netLabel = $("#reviewNetAmount")?.previousElementSibling;
+      if (netLabel) netLabel.textContent = "Stock cost before discount";
+      const grossLabel = $("#reviewGrossAmount")?.previousElementSibling;
+      if (grossLabel) grossLabel.textContent = "Actual paid total";
       $("#reviewSupplierDiscount").addEventListener("input", updateReviewTotals);
       updateReviewTotals();
     };
