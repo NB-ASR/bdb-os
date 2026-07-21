@@ -160,4 +160,9 @@
   quickGuide.src = "quick-guide.js";
   quickGuide.defer = true;
   document.head.append(quickGuide);
+
+  const settings = document.createElement("script");
+  settings.src = "settings.js";
+  settings.defer = true;
+  document.head.append(settings);
 })();
