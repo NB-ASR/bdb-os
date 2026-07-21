@@ -155,4 +155,9 @@
   serviceTeam.src = "service-team.js";
   serviceTeam.defer = true;
   document.head.append(serviceTeam);
+
+  const quickGuide = document.createElement("script");
+  quickGuide.src = "quick-guide.js";
+  quickGuide.defer = true;
+  document.head.append(quickGuide);
 })();
