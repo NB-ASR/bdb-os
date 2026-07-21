@@ -1,3 +1,5 @@
+import type { WorkspaceBlueprint } from "./sector-packs";
+
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 export type BookingStatus = "confirmed" | "pending" | "completed";
 
@@ -117,4 +119,5 @@ export interface BdbState {
   activity: ActivityItem[];
   settings: BusinessSettings;
   theme: WorkspaceTheme;
+  blueprint: WorkspaceBlueprint;
 }
