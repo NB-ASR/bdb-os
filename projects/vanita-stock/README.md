@@ -1,6 +1,6 @@
 # Vanita Stock — Client Project
 
-> **Project scope:** This folder contains the dedicated stock, document, product, service and sales application for **Vanita Beauty and Wellness Spa**. It is maintained separately from the BDB OS application and is stored in the `bdb-os` repository only for central version control.
+> **Project scope:** This folder contains the dedicated stock, document, product, service, supplier, client and sales application for **Vanita Beauty and Wellness Spa**. It is maintained separately from the BDB OS application and is stored in the `bdb-os` repository only for central version control.
 
 ## Live application
 
@@ -8,14 +8,28 @@
 
 The source code is stored in GitHub, while the working application is hosted by Vercel.
 
-Vanita Stock is a mobile-friendly beauty-product inventory and supplier-document manager tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
+Vanita Stock is a mobile-friendly beauty-product inventory, supplier-document and lightweight client-management system tailored for Vanita Beauty and Wellness Spa. The sample data reflects the supplied Makiba Essence and Collis Williams paperwork.
 
 1. Take a photo of or upload a supplier invoice or credit note.
 2. Review the extracted supplier, document type, item purpose, stock codes, quantities and prices.
 3. Add invoice quantities to stock, or upload the original to Documents without changing stock.
 4. Maintain separate product and salon/spa service catalogues.
-5. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
-6. See low-stock products immediately and optionally receive browser notifications.
+5. Maintain supplier contacts linked to products, documents and net supplier spend.
+6. Maintain client contacts and optionally assign a client to each recorded sale.
+7. Record products and services together in the same sale, including the assigned service staff member and fixed line or basket discounts.
+8. See low-stock products immediately and optionally receive browser notifications.
+
+## Release v18 — supplier and client registers
+
+- Added a dedicated **Suppliers** tab with contact details, status, linked product count, linked document count, net spend and latest-document date.
+- Existing supplier names are migrated automatically from the Products and Documents data already stored in the app.
+- Supplier names can be selected from the directory when editing a product or reviewing an imported supplier document.
+- Renaming a supplier updates its linked products and documents; suppliers with linked records are archived rather than deleted.
+- Added a dedicated **Clients** tab with contact details, preferred services, notes, visit count, total spend and last-visit date.
+- Sales can be assigned to an active client or left as an unassigned walk-in, and completed-sale editing retains or changes the client link.
+- Client-linked sales show the client in Sales history; clients with linked sales are archived rather than deleted.
+- Supplier and client records are searchable from their tabs and from the global app search.
+- Mobile users can open Products, Services, Suppliers and Clients through the expanded Catalogue & contacts menu.
 
 ## Release v17 — supplier discounts and reporting foundation
 
