@@ -1,4 +1,7 @@
 const MAX_DATA_LENGTH = 4.1 * 1024 * 1024;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 12;
+const TEST_VERSION_TOKEN = "test-version";
 
 const documentSchema = {
   type: "object",
@@ -40,13 +43,41 @@ function send(response, status, body) {
   response.status(status).setHeader("Cache-Control", "no-store").json(body);
 }
 
-async function verifyStaff(request) {
-  const authorization = request.headers.authorization || "";
-  if (!authorization.startsWith("Bearer ")) return false;
-  const result = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
-    headers: { Authorization:authorization, apikey:process.env.SUPABASE_ANON_KEY }
-  });
-  return result.ok;
+function isAllowedOrigin(request) {
+  const origin = String(request.headers.origin || "").trim();
+  if (!origin) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
+  if (origin === "https://vanita-stock.vercel.app") return true;
+  return /^https:\/\/vanita-stock-[a-z0-9-]+\.vercel\.app$/i.test(origin);
+}
+
+function isTestVersionRequest(request) {
+  return String(request.headers.authorization || "") === `Bearer ${TEST_VERSION_TOKEN}`;
+}
+
+function clientIdentifier(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || String(request.socket?.remoteAddress || "unknown");
+}
+
+function rateLimitExceeded(request) {
+  const now = Date.now();
+  const key = clientIdentifier(request);
+  const buckets = globalThis.__vanitaExtractionRateLimits || (globalThis.__vanitaExtractionRateLimits = new Map());
+  const existing = buckets.get(key);
+  const bucket = !existing || now - existing.startedAt >= RATE_LIMIT_WINDOW_MS
+    ? { startedAt:now, requests:0 }
+    : existing;
+  bucket.requests += 1;
+  buckets.set(key, bucket);
+
+  if (buckets.size > 1000) {
+    for (const [entryKey, entry] of buckets) {
+      if (now - entry.startedAt >= RATE_LIMIT_WINDOW_MS) buckets.delete(entryKey);
+    }
+  }
+
+  return bucket.requests > RATE_LIMIT_MAX_REQUESTS;
 }
 
 function outputText(response) {
@@ -56,10 +87,10 @@ function outputText(response) {
 export default async function handler(request, response) {
   if (request.method !== "POST") return send(response, 405, { error:"Method not allowed." });
   if (!process.env.OPENAI_API_KEY) return send(response, 503, { error:"Automatic extraction is not configured yet." });
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) return send(response, 503, { error:"Staff authentication is not configured." });
+  if (!isAllowedOrigin(request) || !isTestVersionRequest(request)) return send(response, 403, { error:"This extraction request is not permitted." });
+  if (rateLimitExceeded(request)) return send(response, 429, { error:"The test-version extraction limit has been reached. Try again later." });
 
   try {
-    if (!(await verifyStaff(request))) return send(response, 401, { error:"Please sign in again before extracting a document." });
     const { fileName, mimeType, fileData } = request.body || {};
     if (!fileName || !fileData || typeof fileData !== "string") return send(response, 400, { error:"No document was supplied." });
     if (!/^data:(application\/pdf|image\/(jpeg|png|webp));base64,/.test(fileData)) return send(response, 400, { error:"Only PDF, JPG, PNG and WebP documents are supported." });
