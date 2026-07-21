@@ -1,165 +1,135 @@
 (function () {
-  // Temporary sharing switch. Set to false to restore the normal staff login flow.
-  const PUBLIC_TEST_MODE = true;
+  const TEST_VERSION = true;
+  const DOCUMENT_DB_NAME = "vanita-stock-local-files";
+  const DOCUMENT_DB_VERSION = 1;
+  const DOCUMENT_STORE = "documents";
+  const EXTRACTION_TOKEN = "test-version";
 
-  let client = null;
-  let cloudEnabled = false;
-  let syncing = false;
+  let documentDatabasePromise = null;
 
-  async function loadSupabaseLibrary() {
-    if (window.supabase?.createClient) return;
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js";
-      script.crossOrigin = "anonymous";
-      script.onload = resolve;
-      script.onerror = () => reject(new Error("Could not load the secure cloud connection library."));
-      document.head.append(script);
-    });
-  }
-
-  async function fetchConfiguration() {
-    try {
-      const response = await fetch("/api/config", { cache: "no-store" });
-      if (!response.ok) return null;
-      const config = await response.json();
-      return config.configured ? config : null;
-    } catch {
-      return null;
+  function openDocumentDatabase() {
+    if (!window.indexedDB) {
+      return Promise.reject(new Error("This browser does not support local document storage."));
     }
+    if (documentDatabasePromise) return documentDatabasePromise;
+
+    documentDatabasePromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(DOCUMENT_DB_NAME, DOCUMENT_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const database = request.result;
+        if (!database.objectStoreNames.contains(DOCUMENT_STORE)) {
+          database.createObjectStore(DOCUMENT_STORE, { keyPath:"path" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new Error("Local document storage could not be opened."));
+      request.onblocked = () => reject(new Error("Local document storage is blocked by another app tab."));
+    });
+
+    return documentDatabasePromise;
   }
 
-  async function waitForSignIn() {
-    const screen = document.querySelector("#authScreen");
-    const form = document.querySelector("#loginForm");
-    const error = document.querySelector("#authError");
-    screen.hidden = false;
-
-    return new Promise(resolve => {
-      form.addEventListener("submit", async event => {
-        event.preventDefault();
-        error.hidden = true;
-        const button = form.querySelector("button[type='submit']");
-        button.disabled = true;
-        button.textContent = "Signing in…";
-
-        const { data, error: signInError } = await client.auth.signInWithPassword({
-          email: document.querySelector("#loginEmail").value.trim(),
-          password: document.querySelector("#loginPassword").value
-        });
-
-        button.disabled = false;
-        button.textContent = "Sign in securely";
-        if (signInError) {
-          error.textContent = signInError.message;
-          error.hidden = false;
-          return;
-        }
-
-        screen.hidden = true;
-        resolve(data.session);
-      });
+  async function runDocumentTransaction(mode, operation) {
+    const database = await openDocumentDatabase();
+    return new Promise((resolve, reject) => {
+      const transaction = database.transaction(DOCUMENT_STORE, mode);
+      const store = transaction.objectStore(DOCUMENT_STORE);
+      let request;
+      try {
+        request = operation(store);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("The local document operation failed."));
+      transaction.onerror = () => reject(transaction.error || new Error("The local document transaction failed."));
     });
   }
 
   async function connect() {
-    if (PUBLIC_TEST_MODE) {
-      // Keep the app in an authenticated production context for permission checks,
-      // but do not load or write the shared Supabase workspace.
-      cloudEnabled = true;
-      const authScreen = document.querySelector("#authScreen");
-      const signOutButton = document.querySelector("#signOutButton");
-      const cloudStatus = document.querySelector("#cloudStatus");
-      if (authScreen) authScreen.hidden = true;
-      if (signOutButton) signOutButton.hidden = true;
-      if (cloudStatus) {
-        cloudStatus.textContent = "Public test · local only";
-        cloudStatus.classList.remove("online");
-        cloudStatus.title = "Login is temporarily disabled. Changes are stored only in this browser.";
-      }
-      return { enabled:false, publicTestMode:true };
+    const authScreen = document.querySelector("#authScreen");
+    const signOutButton = document.querySelector("#signOutButton");
+    const status = document.querySelector("#cloudStatus");
+
+    if (authScreen) authScreen.hidden = true;
+    if (signOutButton) signOutButton.hidden = true;
+    if (status) {
+      status.textContent = "Test Version";
+      status.classList.add("online");
+      status.title = "No login is required. Workspace data and document files are stored in this browser.";
     }
 
-    const config = await fetchConfiguration();
-    if (!config) return { enabled: false };
-    await loadSupabaseLibrary();
-
-    client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
-    });
-
-    let { data: { session } } = await client.auth.getSession();
-    if (!session) session = await waitForSignIn();
-    cloudEnabled = true;
-    document.querySelector("#signOutButton").hidden = false;
-    document.querySelector("#cloudStatus").textContent = "Cloud synced";
-    document.querySelector("#cloudStatus").classList.add("online");
-    return { enabled: true, session };
+    return { enabled:false, testVersion:true };
   }
 
   async function loadState() {
-    if (PUBLIC_TEST_MODE || !cloudEnabled) return null;
-    const { data, error } = await client.from("app_state").select("data").eq("id", "vanita").maybeSingle();
-    if (error) throw error;
-    return data?.data || null;
+    return null;
   }
 
-  async function saveState(state) {
-    if (PUBLIC_TEST_MODE || !cloudEnabled || syncing) return;
-    syncing = true;
-    document.querySelector("#cloudStatus").textContent = "Syncing…";
-    try {
-      const { error } = await client.from("app_state").upsert({ id: "vanita", data: state, updated_at: new Date().toISOString() });
-      if (error) throw error;
-      document.querySelector("#cloudStatus").textContent = "Cloud synced";
-    } catch (error) {
-      document.querySelector("#cloudStatus").textContent = "Sync failed";
-      console.error("Vanita cloud sync failed", error);
-    } finally {
-      syncing = false;
-    }
+  async function saveState() {
+    // Application state is persisted by app.js in localStorage.
   }
 
   async function signOut() {
-    if (PUBLIC_TEST_MODE) return location.reload();
-    if (client) await client.auth.signOut();
     location.reload();
   }
 
   async function getAccessToken() {
-    if (PUBLIC_TEST_MODE || !client) return null;
-    const { data: { session } } = await client.auth.getSession();
-    return session?.access_token || null;
+    // This is not an authentication credential. It only identifies requests from the test build.
+    return EXTRACTION_TOKEN;
   }
 
   async function uploadDocument(file, documentId) {
-    if (PUBLIC_TEST_MODE) throw new Error("Cloud document uploads are disabled in public test mode.");
-    if (!client || !cloudEnabled) throw new Error("Cloud storage is unavailable.");
-    const extension = (file.name.split(".").pop() || "file").replace(/[^a-z0-9]/gi, "").toLowerCase();
-    const safeId = documentId.replace(/[^a-z0-9_-]/gi, "-").slice(0, 50);
-    const path = `${Date.now()}-${safeId}.${extension}`;
-    const { error } = await client.storage.from("documents").upload(path, file, {
-      contentType: file.type || "application/octet-stream",
-      cacheControl: "3600",
-      upsert: false
-    });
-    if (error) throw new Error(`The original file could not be saved: ${error.message}`);
-    return { path, name:file.name, mimeType:file.type || "application/octet-stream" };
+    if (!(file instanceof Blob)) throw new Error("No document file was supplied.");
+    const extension = (String(file.name || "document").split(".").pop() || "file").replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const safeId = String(documentId || "document").replace(/[^a-z0-9_-]/gi, "-").slice(0, 50);
+    const path = `local/${Date.now()}-${safeId}.${extension || "file"}`;
+    const record = {
+      path,
+      name:file.name || `${safeId}.${extension || "file"}`,
+      mimeType:file.type || "application/octet-stream",
+      size:Number(file.size) || 0,
+      createdAt:new Date().toISOString(),
+      blob:file
+    };
+
+    try {
+      await runDocumentTransaction("readwrite", store => store.put(record));
+    } catch (error) {
+      throw new Error(error?.message || "The original file could not be saved in this browser.");
+    }
+
+    return {
+      path:record.path,
+      name:record.name,
+      mimeType:record.mimeType,
+      size:record.size,
+      storage:"browser"
+    };
   }
 
-  async function getDocumentUrl(path, downloadName = null) {
-    if (PUBLIC_TEST_MODE) throw new Error("Cloud documents are unavailable in public test mode.");
-    if (!client || !path) throw new Error("No original file is attached to this document.");
-    const options = downloadName ? { download:downloadName } : {};
-    const { data, error } = await client.storage.from("documents").createSignedUrl(path, 300, options);
-    if (error) throw new Error(error.message);
-    return data.signedUrl;
+  async function getDocumentUrl(path) {
+    if (!path) throw new Error("No original file is attached to this document.");
+    let record;
+    try {
+      record = await runDocumentTransaction("readonly", store => store.get(path));
+    } catch (error) {
+      throw new Error(error?.message || "The saved document could not be read from this browser.");
+    }
+    if (!record?.blob) throw new Error("This document file is not stored in this browser.");
+    const url = URL.createObjectURL(record.blob);
+    setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+    return url;
   }
 
   async function deleteDocumentFile(path) {
-    if (PUBLIC_TEST_MODE || !client || !path) return;
-    const { error } = await client.storage.from("documents").remove([path]);
-    if (error) throw new Error(`The stored file could not be deleted: ${error.message}`);
+    if (!path) return;
+    try {
+      await runDocumentTransaction("readwrite", store => store.delete(path));
+    } catch (error) {
+      throw new Error(error?.message || "The local document file could not be deleted.");
+    }
   }
 
   window.VanitaCloud = {
@@ -171,8 +141,9 @@
     uploadDocument,
     getDocumentUrl,
     deleteDocumentFile,
-    get enabled() { return cloudEnabled; },
-    get publicTestMode() { return PUBLIC_TEST_MODE; }
+    get enabled() { return false; },
+    get testVersion() { return TEST_VERSION; },
+    get publicTestMode() { return false; }
   };
 
   const enhancements = document.createElement("script");
