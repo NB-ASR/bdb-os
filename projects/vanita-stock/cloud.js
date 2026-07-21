@@ -1,4 +1,7 @@
 (function () {
+  // Temporary sharing switch. Set to false to restore the normal staff login flow.
+  const PUBLIC_TEST_MODE = true;
+
   let client = null;
   let cloudEnabled = false;
   let syncing = false;
@@ -60,6 +63,23 @@
   }
 
   async function connect() {
+    if (PUBLIC_TEST_MODE) {
+      // Keep the app in an authenticated production context for permission checks,
+      // but do not load or write the shared Supabase workspace.
+      cloudEnabled = true;
+      const authScreen = document.querySelector("#authScreen");
+      const signOutButton = document.querySelector("#signOutButton");
+      const cloudStatus = document.querySelector("#cloudStatus");
+      if (authScreen) authScreen.hidden = true;
+      if (signOutButton) signOutButton.hidden = true;
+      if (cloudStatus) {
+        cloudStatus.textContent = "Public test · local only";
+        cloudStatus.classList.remove("online");
+        cloudStatus.title = "Login is temporarily disabled. Changes are stored only in this browser.";
+      }
+      return { enabled:false, publicTestMode:true };
+    }
+
     const config = await fetchConfiguration();
     if (!config) return { enabled: false };
     await loadSupabaseLibrary();
@@ -78,14 +98,14 @@
   }
 
   async function loadState() {
-    if (!cloudEnabled) return null;
+    if (PUBLIC_TEST_MODE || !cloudEnabled) return null;
     const { data, error } = await client.from("app_state").select("data").eq("id", "vanita").maybeSingle();
     if (error) throw error;
     return data?.data || null;
   }
 
   async function saveState(state) {
-    if (!cloudEnabled || syncing) return;
+    if (PUBLIC_TEST_MODE || !cloudEnabled || syncing) return;
     syncing = true;
     document.querySelector("#cloudStatus").textContent = "Syncing…";
     try {
@@ -101,17 +121,19 @@
   }
 
   async function signOut() {
+    if (PUBLIC_TEST_MODE) return location.reload();
     if (client) await client.auth.signOut();
     location.reload();
   }
 
   async function getAccessToken() {
-    if (!client) return null;
+    if (PUBLIC_TEST_MODE || !client) return null;
     const { data: { session } } = await client.auth.getSession();
     return session?.access_token || null;
   }
 
   async function uploadDocument(file, documentId) {
+    if (PUBLIC_TEST_MODE) throw new Error("Cloud document uploads are disabled in public test mode.");
     if (!client || !cloudEnabled) throw new Error("Cloud storage is unavailable.");
     const extension = (file.name.split(".").pop() || "file").replace(/[^a-z0-9]/gi, "").toLowerCase();
     const safeId = documentId.replace(/[^a-z0-9_-]/gi, "-").slice(0, 50);
@@ -126,6 +148,7 @@
   }
 
   async function getDocumentUrl(path, downloadName = null) {
+    if (PUBLIC_TEST_MODE) throw new Error("Cloud documents are unavailable in public test mode.");
     if (!client || !path) throw new Error("No original file is attached to this document.");
     const options = downloadName ? { download:downloadName } : {};
     const { data, error } = await client.storage.from("documents").createSignedUrl(path, 300, options);
@@ -134,12 +157,23 @@
   }
 
   async function deleteDocumentFile(path) {
-    if (!client || !path) return;
+    if (PUBLIC_TEST_MODE || !client || !path) return;
     const { error } = await client.storage.from("documents").remove([path]);
     if (error) throw new Error(`The stored file could not be deleted: ${error.message}`);
   }
 
-  window.VanitaCloud = { connect, loadState, saveState, signOut, getAccessToken, uploadDocument, getDocumentUrl, deleteDocumentFile, get enabled() { return cloudEnabled; } };
+  window.VanitaCloud = {
+    connect,
+    loadState,
+    saveState,
+    signOut,
+    getAccessToken,
+    uploadDocument,
+    getDocumentUrl,
+    deleteDocumentFile,
+    get enabled() { return cloudEnabled; },
+    get publicTestMode() { return PUBLIC_TEST_MODE; }
+  };
 
   const enhancements = document.createElement("script");
   enhancements.src = "discount-reporting.js";
