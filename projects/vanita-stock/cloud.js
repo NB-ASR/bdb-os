@@ -159,6 +159,7 @@
     "service-team.js",
     "calendar.js",
     "top-actions.js",
+    "payment-method.js",
     "quick-guide.js",
     "settings.js"
   ].forEach(appendModule);
