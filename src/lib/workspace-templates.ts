@@ -2,7 +2,7 @@ import {
   getWorkspaceModule,
   type WorkspaceModuleDefinition,
   type WorkspaceModuleId,
-} from "./workspace-modules";
+} from "./workspace-modules.ts";
 
 export const industryTemplateIds = ["general", "beauty-wellness"] as const;
 export type IndustryTemplateId = (typeof industryTemplateIds)[number];
