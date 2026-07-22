@@ -1,3 +1,4 @@
+import { normaliseInventoryMovementDelta, type InventoryMovementType } from "@/lib/modules/inventory";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@/lib/server/command";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const MOVEMENT_TYPES = new Set([
+const MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "opening_balance",
   "purchase_receipt",
   "sale",
@@ -86,6 +87,15 @@ function numberValue(value: unknown, field: string, options: { minimum?: number;
     throw new CommandError("INVALID_INVENTORY_INPUT", `${field} must be non-zero.`);
   }
   return result;
+}
+
+function occurredAt(value: unknown) {
+  if (value === null || value === undefined || value === "") return new Date().toISOString();
+  const parsed = new Date(String(value));
+  if (!Number.isFinite(parsed.getTime())) {
+    throw new CommandError("INVALID_INVENTORY_INPUT", "Movement date is invalid.");
+  }
+  return parsed.toISOString();
 }
 
 function objectValue(value: unknown) {
@@ -186,10 +196,17 @@ export async function POST(request: Request) {
         : optionalUuid(body.reversalOfId, "Original movement");
       const movementType = action === "reverse-movement"
         ? "reversal"
-        : text(body.movementType, "Movement type", 3, 48);
+        : text(body.movementType, "Movement type", 3, 48) as InventoryMovementType;
       if (action !== "reverse-movement" && !MOVEMENT_TYPES.has(movementType)) {
         throw new CommandError("INVALID_INVENTORY_INPUT", "Movement type is invalid.");
       }
+
+      const requestedQuantity = action === "reverse-movement"
+        ? 1
+        : numberValue(body.quantity, "Quantity", { allowZero: false });
+      const movementQuantity = action === "reverse-movement"
+        ? requestedQuantity
+        : normaliseInventoryMovementDelta(movementType, requestedQuantity);
 
       const { data, error } = await admin.rpc("post_inventory_movement", {
         p_workspace_id: workspaceId,
@@ -197,13 +214,11 @@ export async function POST(request: Request) {
         p_item_id: uuid(body.itemId, "Item"),
         p_location_id: uuid(body.locationId, "Location"),
         p_movement_type: movementType,
-        p_quantity_delta: action === "reverse-movement"
-          ? 1
-          : numberValue(body.quantity, "Quantity", { allowZero: false }),
+        p_quantity_delta: movementQuantity,
         p_idempotency_key: idempotencyKey,
         p_command_id: context.commandId,
         p_actor_user_id: context.userId,
-        p_occurred_at: body.occurredAt ? new Date(String(body.occurredAt)).toISOString() : new Date().toISOString(),
+        p_occurred_at: occurredAt(body.occurredAt),
         p_source_type: optionalText(body.sourceType, 48),
         p_source_id: optionalText(body.sourceId, 160),
         p_note: optionalText(body.note, 500),
@@ -227,7 +242,7 @@ export async function POST(request: Request) {
         p_idempotency_key: idempotencyKey,
         p_command_id: context.commandId,
         p_actor_user_id: context.userId,
-        p_occurred_at: body.occurredAt ? new Date(String(body.occurredAt)).toISOString() : new Date().toISOString(),
+        p_occurred_at: occurredAt(body.occurredAt),
         p_note: optionalText(body.note, 500),
         p_metadata: objectValue(body.metadata),
       });
