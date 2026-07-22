@@ -5,6 +5,10 @@ const migration = await readFile(
   "supabase/migrations/20260722103000_inventory_ledger_foundation.sql",
   "utf8",
 );
+const retryGuard = await readFile(
+  "supabase/migrations/20260722103100_inventory_location_retry_guard.sql",
+  "utf8",
+);
 const api = await readFile("src/app/api/inventory/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/inventory-queue.ts", "utf8");
 
@@ -27,8 +31,15 @@ assert.match(migration, /foreign key \(workspace_id, item_id\)[\s\S]*inventory_i
 assert.match(migration, /foreign key \(workspace_id, location_id\)[\s\S]*inventory_locations\(workspace_id, id\)/i);
 assert.match(migration, /raise exception 'Posted inventory movements are immutable/i);
 assert.doesNotMatch(migration, /grant\s+(?:insert|update|delete)[\s\S]*inventory_movements\s+to\s+authenticated/i);
+assert.match(retryGuard, /select \* into location_record[\s\S]*where id = p_location_id/i);
+assert.match(retryGuard, /if location_record\.id is not null then[\s\S]*return location_record/i);
+assert.ok(
+  retryGuard.indexOf("return location_record") < retryGuard.indexOf("update public.inventory_locations"),
+  "Location command retries must return before changing the existing default location.",
+);
 assert.match(api, /requireWorkspaceCommand/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);
+assert.match(api, /normaliseInventoryMovementDelta/);
 assert.match(api, /createAdminClient/);
 assert.match(queue, /localStorage/);
 assert.match(queue, /Idempotency-Key/);
