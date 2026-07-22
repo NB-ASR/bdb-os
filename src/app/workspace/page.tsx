@@ -5,11 +5,13 @@ import {
   Activity,
   ArrowUpRight,
   BarChart3,
+  Boxes,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
   FileText,
+  Handshake,
   Landmark,
   MessageSquareText,
   Plus,
@@ -17,20 +19,27 @@ import {
   Sparkles,
   UsersRound,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useBdb } from "@/lib/store";
 import { formatMoney, formatTimeAgo } from "@/lib/format";
+import { getWorkspaceModules } from "@/lib/workspace-templates";
+import type { WorkspaceModuleIconKey } from "@/lib/workspace-modules";
 import { Badge, Button, Card, SectionHeading, StatCard } from "@/components/ui";
 
-const modules = [
-  { name: "Accounts", description: "Invoices, payments and reconciliation", href: "/accounts", icon: CircleDollarSign },
-  { name: "Customers", description: "Every relationship in one record", href: "/customers", icon: UsersRound },
-  { name: "Calendar", description: "Bookings, people and availability", href: "/calendar", icon: CalendarDays },
-  { name: "Communications", description: "One inbox across every channel", href: "/communications", icon: MessageSquareText },
-  { name: "Documents", description: "Files connected to business records", href: "/documents", icon: FileText },
-  { name: "Banking", description: "Cash position and transaction matching", href: "/banking", icon: Landmark },
-  { name: "Reports", description: "Useful detail when you need it", href: "/reports", icon: BarChart3 },
-  { name: "Automation", description: "Smart assistance with human approval", href: "/automation-hub", icon: Sparkles },
-];
+const moduleIcons: Record<WorkspaceModuleIconKey, LucideIcon> = {
+  accounts: CircleDollarSign,
+  customers: UsersRound,
+  calendar: CalendarDays,
+  communications: MessageSquareText,
+  documents: FileText,
+  banking: Landmark,
+  reports: BarChart3,
+  automation: Sparkles,
+  sales: Handshake,
+  inventory: Boxes,
+};
+
+const modules = getWorkspaceModules();
 
 export default function WorkspacePage() {
   const { state } = useBdb();
@@ -110,7 +119,7 @@ export default function WorkspacePage() {
       <SectionHeading title="Business departments" description="Open a department to continue the work." />
       <div className="module-grid">
         {modules.map((module) => {
-          const Icon = module.icon;
+          const Icon = moduleIcons[module.icon];
           return (
             <Link key={module.href} href={module.href} className="card card-interactive module-card">
               <span className="module-icon"><Icon size={21} /></span>
