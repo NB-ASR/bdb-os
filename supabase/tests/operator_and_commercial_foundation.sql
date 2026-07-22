@@ -41,16 +41,20 @@ select ok(
 select ok(
   exists (
     select 1 from pg_constraint
-    where conname = 'operator_runs_workspace_id_policy_id_fkey'
-      and pg_get_constraintdef(oid) like 'FOREIGN KEY (workspace_id, policy_id)%'
+    where conrelid = 'public.operator_runs'::regclass
+      and confrelid = 'public.operator_policies'::regclass
+      and pg_get_constraintdef(oid) like
+        'FOREIGN KEY (workspace_id, workflow_key) REFERENCES operator_policies(workspace_id, workflow_key)%'
   ),
   'operator policy references cannot cross workspaces'
 );
 select ok(
   exists (
     select 1 from pg_constraint
-    where conname = 'operator_approvals_workspace_id_run_id_fkey'
-      and pg_get_constraintdef(oid) like 'FOREIGN KEY (workspace_id, run_id)%'
+    where conrelid = 'public.operator_approvals'::regclass
+      and confrelid = 'public.operator_runs'::regclass
+      and pg_get_constraintdef(oid) like
+        'FOREIGN KEY (run_id, workspace_id) REFERENCES operator_runs(id, workspace_id)%'
   ),
   'operator approval references cannot cross workspaces'
 );
@@ -71,7 +75,10 @@ select ok(
 );
 select ok(
   position(
-    'CURRENT_USER <> ''service_role''' in pg_get_functiondef('public.claim_operator_runs(integer,text)'::regprocedure)
+    'CURRENT_USER' in upper(pg_get_functiondef('public.claim_operator_runs(integer,text)'::regprocedure))
+  ) > 0
+  and position(
+    'OPERATOR WORKER ACCESS DENIED' in upper(pg_get_functiondef('public.claim_operator_runs(integer,text)'::regprocedure))
   ) > 0,
   'worker claims reject non-service roles explicitly'
 );

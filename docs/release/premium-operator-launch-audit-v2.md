@@ -37,9 +37,10 @@ This release is suitable for controlled paying pilots once the environment and a
 - Provider credentials remain server-only; logs contain identifiers and error codes rather than customer payloads.
 - Queue claims use `FOR UPDATE SKIP LOCKED`; planner runs use a transaction advisory lock.
 - An unexpected failure is isolated to its run and enters bounded recovery instead of aborting the rest of the batch.
-- Production Supabase migration history is aligned with the repository through `20260722004208`.
+- Production Supabase migration history is aligned with the repository through `20260722010506`.
 - Supabase performance advisors report no actionable non-unused-index findings after remediation.
 - The last seven days of canonical Vercel runtime telemetry contained no grouped runtime errors at audit time.
+- The production dependency audit reports zero known vulnerabilities after upgrading Next.js and pinning remediated PostCSS and Sharp releases.
 
 ## Verification completed
 
@@ -53,13 +54,14 @@ This release is suitable for controlled paying pilots once the environment and a
 - All pending database migrations replayed successfully against the production schema and are registered.
 - Atomic invoice creation and finance reconciliation executed successfully in a rollback-only production-schema acceptance transaction.
 - Autonomous planning executed successfully in a service-role rollback-only production-schema acceptance transaction.
+- The canonical Vercel preview compiled all 48 routes and reached `READY`; its health endpoint correctly fails closed until Preview-scoped Supabase variables are supplied.
 
 ## Environment and launch gates
 
 These are operational gates, not missing product code:
 
 1. Keep Vercel on a plan that supports the committed ten-minute cron schedules and confirm both cron invocations after deployment.
-2. Set and rotate `CRON_SECRET`, `OPERATOR_WEBHOOK_SECRET` and `SALES_INTAKE_HASH_SECRET`; configure an HTTPS provider/CRM endpoint where sold.
+2. Scope the Supabase URL/public/server keys to both Vercel Preview and Production, then set and rotate `CRON_SECRET`, `OPERATOR_WEBHOOK_SECRET` and `SALES_INTAKE_HASH_SECRET`; configure an HTTPS provider/CRM endpoint where sold.
 3. Run the provider sandbox acceptance journey before changing a client policy from Simulation or Not connected to Verified webhook.
 4. Enable Supabase leaked-password protection in Auth → Attack Protection.
 5. Protect `main`, require the repository quality checks and at least one founder review, and protect the production environment.

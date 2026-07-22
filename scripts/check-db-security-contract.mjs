@@ -31,6 +31,14 @@ const plannerMigration = await readFile(
   "supabase/migrations/20260722004107_autonomous_operator_planner.sql",
   "utf8",
 );
+const operatorPolicyGuardMigration = await readFile(
+  "supabase/migrations/20260722010358_operator_policy_reference_guard.sql",
+  "utf8",
+);
+const operatorPolicyIndexMigration = await readFile(
+  "supabase/migrations/20260722010506_operator_policy_reference_index.sql",
+  "utf8",
+);
 
 const requiredSecurityStatements = [
   "create or replace function private.is_active_profile()",
@@ -99,6 +107,17 @@ for (const statement of [
     `Missing operator security contract: ${statement}`,
   );
 }
+
+assert.match(
+  operatorPolicyGuardMigration,
+  /foreign key \(workspace_id, workflow_key\)[\s\S]*references public\.operator_policies\(workspace_id, workflow_key\)/i,
+  "Durable runs must retain a database-enforced same-workspace policy reference",
+);
+assert.match(
+  operatorPolicyIndexMigration,
+  /on public\.operator_runs\(workspace_id, workflow_key\)/i,
+  "The same-workspace policy reference must have a covering index",
+);
 
 for (const statement of [
   "current_user <> 'service_role'",

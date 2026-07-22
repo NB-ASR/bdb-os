@@ -29,6 +29,7 @@ test("Solo Operator preview hydrates into the simplified operating experience", 
   await expect(page.getByRole("navigation", { name: "Solo Operator navigation" })).toBeVisible();
   await expect(page.getByText("Approval-first operator", { exact: true })).toBeVisible();
   await expect(page.getByText("Review environment only", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Operator$/ }).click();
   await expect(page.getByRole("heading", { name: "Operator control room" })).toBeVisible();
   await expect(page.getByText("Simulation only", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Verified time returned", { exact: true })).toBeVisible();
