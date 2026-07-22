@@ -67,5 +67,9 @@ assert.ok(
   migrationFiles.includes("20260722103000_inventory_ledger_foundation.sql"),
   "Inventory ledger foundation migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260722103100_inventory_location_retry_guard.sql"),
+  "Inventory location retry guard migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
