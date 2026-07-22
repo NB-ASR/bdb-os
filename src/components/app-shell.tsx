@@ -25,21 +25,22 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { blueprintNavigationLabel, type WorkspaceModuleKey } from "@/lib/sector-packs";
 import { useBdb } from "@/lib/store";
 import { SearchDialog } from "./search-dialog";
 import { BdbMonogram, PoweredByBdb } from "./brand";
 import { MobileActions } from "./mobile-actions";
 
-export const navigation = [
-  { name: "Overview", href: "/workspace", icon: Building2 },
-  { name: "Accounts", href: "/accounts", icon: CircleDollarSign },
-  { name: "Customers", href: "/customers", icon: UsersRound },
-  { name: "Calendar", href: "/calendar", icon: CalendarDays },
-  { name: "Communications", href: "/communications", icon: MessageSquareText },
-  { name: "Documents", href: "/documents", icon: FileText },
-  { name: "Banking", href: "/banking", icon: Landmark },
-  { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Automation", href: "/automation-hub", icon: Sparkles },
+export const navigation: Array<{ key: WorkspaceModuleKey; name: string; href: string; icon: typeof Building2 }> = [
+  { key: "overview", name: "Overview", href: "/workspace", icon: Building2 },
+  { key: "accounts", name: "Accounts", href: "/accounts", icon: CircleDollarSign },
+  { key: "customers", name: "Customers", href: "/customers", icon: UsersRound },
+  { key: "calendar", name: "Calendar", href: "/calendar", icon: CalendarDays },
+  { key: "communications", name: "Communications", href: "/communications", icon: MessageSquareText },
+  { key: "documents", name: "Documents", href: "/documents", icon: FileText },
+  { key: "banking", name: "Banking", href: "/banking", icon: Landmark },
+  { key: "reports", name: "Reports", href: "/reports", icon: BarChart3 },
+  { key: "automation", name: "Automation", href: "/automation-hub", icon: Sparkles },
 ];
 
 type LinkedWorkspace = {
@@ -138,6 +139,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       : syncStatus === "saving"
         ? "saving"
         : "online";
+  const navigationOrder = new Map(state.blueprint.navigation.enabled.map((key, index) => [key, index]));
+  const resolvedNavigation = navigation
+    .filter((item) => navigationOrder.has(item.key))
+    .sort((left, right) => (navigationOrder.get(left.key) ?? 99) - (navigationOrder.get(right.key) ?? 99));
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -166,7 +171,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {state.theme.clientLogoUrl ? (
               <Link href="/workspace" className="client-brand">
                 <Image src={state.theme.clientLogoUrl} alt={`${state.settings.businessName} logo`} width={42} height={42} unoptimized />
-                <span><strong>{state.settings.businessName}</strong><small>Business workspace</small></span>
+                <span><strong>{state.settings.businessName}</strong><small>{state.blueprint.name}</small></span>
               </Link>
             ) : <BdbMonogram href="/workspace" />}
           </span>
@@ -178,13 +183,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="sidebar-nav" aria-label="Main navigation">
-          <p className="nav-label">Workspace</p>
-          {navigation.map((item) => {
+          <p className="nav-label">{state.blueprint.sector} workspace</p>
+          {resolvedNavigation.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
+            const label = blueprintNavigationLabel(state.blueprint, item.key, item.name);
             return (
               <Link key={item.href} href={item.href} className={active ? "active" : ""} onClick={() => setMobileOpen(false)}>
-                <Icon size={19} /><span>{item.name}</span>{active ? <ChevronRight size={16} /> : null}
+                <Icon size={19} /><span>{label}</span>{active ? <ChevronRight size={16} /> : null}
               </Link>
             );
           })}

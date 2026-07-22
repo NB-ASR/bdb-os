@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const protectedRoutes = [
   "/workspace",
+  "/solo-operator",
   "/accounts",
   "/customers",
   "/calendar",
@@ -21,6 +22,7 @@ const protectedRoutes = [
 
 const featureRoutes: Record<string, string> = {
   "/workspace": "overview",
+  "/solo-operator": "operator",
   "/accounts": "accounts",
   "/customers": "customers",
   "/calendar": "calendar",

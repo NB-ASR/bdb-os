@@ -8,6 +8,7 @@ import { ThemeRuntime } from "@/components/theme-runtime";
 
 export function Providers({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const isSoloOperator = pathname.startsWith("/solo-operator");
   const isStandalone =
     pathname === "/" ||
     pathname.startsWith("/discovery") ||
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: ReactNode }) {
     pathname.startsWith("/auth") ||
     pathname.startsWith("/mfa") ||
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/sector-packs-preview") ||
     pathname.startsWith("/activate") ||
     pathname.startsWith("/change-password") ||
     pathname.startsWith("/no-workspace") ||
@@ -22,6 +24,15 @@ export function Providers({ children }: { children: ReactNode }) {
     pathname.startsWith("/feature-unavailable");
 
   if (isStandalone) return children;
+
+  if (isSoloOperator) {
+    return (
+      <BdbProvider>
+        <ThemeRuntime />
+        {children}
+      </BdbProvider>
+    );
+  }
 
   return (
     <BdbProvider>

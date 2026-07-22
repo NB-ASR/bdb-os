@@ -9,6 +9,9 @@ BDB OS is a connected operating system for small businesses. It combines private
 - Calendar bookings and communication drafts with approval steps
 - Document tracking and private workspace storage
 - Banking reconciliation with human review
+- Atomic invoice-number allocation and transaction-to-invoice reconciliation
+- Sector Packs for healthcare, wellness, legal, accounting and general services
+- A governed Solo Operator with durable planning, approvals, retries, exceptions and value evidence
 - Reports, automation controls, and business settings
 - Installable PWA, offline service worker, app shortcuts and appointment push reminders
 - Email and password authentication with password reset support
@@ -23,13 +26,14 @@ BDB OS is a connected operating system for small businesses. It combines private
 - Final active Owner and final active Founder protections
 - Client themes, accessibility settings and private logo storage
 - Founder controls for clients, plans, modules, invitations, groups, contracts and audit logs
+- Founder Sector Pack publishing and a durable commercial-enquiry inbox
 - Custom Stripe subscription links, trials, billing portal and signed webhook synchronisation
 
 Public preview workflows may use browser-local demonstration data when Supabase is not configured. Authenticated Founder Admin and Team Management screens never fall back to fake client or employee records.
 
 ## Commercial model
 
-- Starter, Growth and Pro are flexible starting points, not fixed feature bundles.
+- Starter, Growth, Solo Operator and Pro are flexible starting points, not fixed feature bundles.
 - Every client receives a tailored scope and quote after discovery.
 - Clients pay monthly with an agreed minimum commitment of 3 or 6 months.
 - A custom Stripe subscription should only be created after the quote and contract are agreed.
@@ -50,7 +54,9 @@ Copy `.env.example` to `.env.local` to enable Supabase authentication. Never exp
 ```bash
 npx tsc --noEmit
 npm run lint
+npm test
 npm run build
+npm run test:e2e
 ```
 
 ## Main routes
@@ -69,12 +75,16 @@ npm run build
 | `/communications` | Messages and draft approvals |
 | `/documents` | Business documents |
 | `/banking` | Transaction reconciliation |
+| `/solo-operator` | Governed Operator control room for an authenticated workspace |
+| `/solo-operator-preview` | Evidence-safe public product simulation |
 | `/reports` | Performance reporting |
 | `/automation-hub` | Automation controls |
 | `/activity` | Workspace audit trail |
 | `/settings` | Business, appearance and billing controls |
 | `/team` | Employee invitations, roles, suspension and permissions |
 | `/admin` | MFA-protected BDB Founder control plane |
+| `/admin/sector-packs` | Founder Sector Pack configuration and publishing |
+| `/admin/enquiries` | Founder commercial-enquiry inbox |
 | `/mfa` | Founder authenticator enrolment and verification |
 
 ## Stack
@@ -94,6 +104,6 @@ Deploy to Vercel, add the values from `.env.example`, and set the Supabase authe
 
 Follow `docs/v1-foundation-runbook.md` for the complete migration, bootstrap, invitation, permissions and business-isolation acceptance checklist.
 
-The appointment reminder worker is `/api/cron/appointment-reminders`. Vercel Hobby only permits daily cron jobs, which is not frequent enough for timely reminders. On Vercel Pro, copy `docs/vercel-pro.cron.json` to `vercel.json` to run it every ten minutes; alternatively call the endpoint from a trusted external scheduler with `Authorization: Bearer $CRON_SECRET`.
+The appointment-reminder and Operator workers are scheduled in `vercel.json` every ten minutes and authenticate with `CRON_SECRET`. This requires a Vercel plan that supports sub-daily cron schedules. If the hosting plan changes, use a trusted external scheduler with `Authorization: Bearer $CRON_SECRET`; do not silently degrade either worker to one daily run.
 
 Suggested production domains are `bdb-os.com` for marketing, `app.bdb-os.com` for client workspaces, and `admin.bdb-os.com` for the Founder control plane.

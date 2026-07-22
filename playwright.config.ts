@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.BDB_E2E_BASE_URL ?? "http://127.0.0.1:3000";
+const useManagedServer = !process.env.BDB_E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -9,6 +10,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  webServer: useManagedServer ? {
+    command: "npm start -- --hostname 127.0.0.1",
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  } : undefined,
   use: {
     baseURL,
     trace: "retain-on-failure",

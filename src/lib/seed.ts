@@ -1,6 +1,8 @@
+import { generalBusinessBlueprint } from "./sector-packs";
 import type { BdbState } from "./types";
 
 export const seedState: BdbState = {
+  blueprint: generalBusinessBlueprint,
   theme: {
     preset: "obsidian-gold",
     mode: "dark",

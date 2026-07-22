@@ -1,9 +1,16 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/client";
+import { normaliseWorkspaceBlueprint } from "./sector-packs";
 import { seedState } from "./seed";
 import type { BdbState, WorkspaceTheme } from "./types";
 
 type Row = Record<string, unknown>;
 type QueryResult<T = unknown> = { data: T | null; error: { message: string } | null };
+
+const SOLO_PREVIEW_WORKSPACE_ID = "__solo-operator-preview__";
+
+function isSoloOperatorPreview() {
+  return typeof window !== "undefined" && window.location.pathname.startsWith("/solo-operator-preview");
+}
 
 function requireConfigured() {
   if (!isSupabaseConfigured()) {
@@ -17,6 +24,9 @@ function requireResult<T>(result: QueryResult<T>, context: string): T | null {
 }
 
 export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspaceId: string; role: string } | null> {
+  if (isSoloOperatorPreview()) {
+    return { state: seedState, workspaceId: SOLO_PREVIEW_WORKSPACE_ID, role: "preview" };
+  }
   if (!isSupabaseConfigured()) return null;
   const supabase = createClient();
   const claimsResult = await supabase.auth.getClaims();
@@ -56,7 +66,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     requireResult(profileUpdate, "Active workspace could not be selected");
   }
 
-  const [customers, invoices, bookings, messages, documents, transactions, automations, activity, settings, themes] = await Promise.all([
+  const [customers, invoices, bookings, messages, documents, transactions, automations, activity, settings, themes, sectorConfig] = await Promise.all([
     supabase.from("customers").select("*").eq("workspace_id", workspaceId).order("created_at", { ascending: false }),
     supabase.from("invoices").select("*").eq("workspace_id", workspaceId).order("issued_at", { ascending: false }),
     supabase.from("bookings").select("*").eq("workspace_id", workspaceId).order("booking_date"),
@@ -67,6 +77,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     supabase.from("activity_items").select("*").eq("workspace_id", workspaceId).order("occurred_at", { ascending: false }).limit(100),
     supabase.from("workspace_settings").select("*").eq("workspace_id", workspaceId).maybeSingle(),
     supabase.from("workspace_themes").select("*").eq("workspace_id", workspaceId).maybeSingle(),
+    supabase.from("workspace_sector_configs").select("published_config,status").eq("workspace_id", workspaceId).eq("status", "published").maybeSingle(),
   ]);
 
   const customerRows = requireResult(customers, "Customers could not be loaded") ?? [];
@@ -79,10 +90,12 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
   const activityRows = requireResult(activity, "Activity could not be loaded") ?? [];
   const settingsData = requireResult(settings, "Workspace settings could not be loaded");
   const themeData = requireResult(themes, "Workspace appearance could not be loaded");
+  const sectorData = requireResult(sectorConfig, "Published Sector Pack could not be loaded");
 
   const row = (value: unknown) => value as Row;
   const settingsRow = row(settingsData ?? {});
   const themeRow = row(themeData ?? {});
+  const sectorRow = row(sectorData ?? {});
   let clientLogoUrl: string | undefined;
   if (themeRow.client_logo_path) {
     const signed = await supabase.storage.from("workspace-assets").createSignedUrl(String(themeRow.client_logo_path), 3600);
@@ -114,6 +127,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
       vatRate: Number(settingsRow.vat_rate ?? 20),
     },
     theme,
+    blueprint: normaliseWorkspaceBlueprint(sectorRow.published_config),
     customers: customerRows.map((item) => { const r = row(item); return { id: String(r.id), code: String(r.code), name: String(r.name), company: String(r.company ?? ""), email: String(r.email ?? ""), phone: String(r.phone ?? ""), address: String(r.address ?? ""), notes: String(r.notes ?? ""), createdAt: String(r.created_at) }; }),
     invoices: invoiceRows.map((item) => { const r = row(item); return { id: String(r.id), number: String(r.number), customerId: String(r.customer_id), issuedAt: String(r.issued_at), dueAt: String(r.due_at), description: String(r.description), amount: Number(r.amount), status: r.status as BdbState["invoices"][number]["status"] }; }),
     bookings: bookingRows.map((item) => { const r = row(item); return { id: String(r.id), customerId: String(r.customer_id), title: String(r.title), date: String(r.booking_date), time: String(r.booking_time).slice(0, 5), duration: Number(r.duration_minutes), staff: String(r.staff_name), status: r.status as BdbState["bookings"][number]["status"] }; }),
@@ -144,6 +158,47 @@ export async function cloudUpsert(table: string, values: Row, onConflict: string
   requireConfigured();
   const { error } = await createClient().from(table).upsert(values, { onConflict });
   if (error) throw new Error(`${table} could not be saved: ${error.message}`);
+}
+
+export async function createWorkspaceInvoice(input: {
+  workspaceId: string;
+  invoiceId: string;
+  customerId: string;
+  dueAt: string;
+  description: string;
+  amount: number;
+  status: "draft" | "sent";
+}) {
+  requireConfigured();
+  const { data, error } = await createClient().rpc("create_workspace_invoice", {
+    p_workspace_id: input.workspaceId,
+    p_invoice_id: input.invoiceId,
+    p_customer_id: input.customerId,
+    p_due_at: input.dueAt,
+    p_description: input.description,
+    p_amount: input.amount,
+    p_status: input.status,
+  });
+  if (error) throw new Error(`Invoice could not be created: ${error.message}`);
+  const result = data as { number?: unknown; issuedAt?: unknown } | null;
+  if (!result?.number) throw new Error("Invoice creation did not return a confirmed number.");
+  return { number: String(result.number), issuedAt: String(result.issuedAt) };
+}
+
+export async function reconcileWorkspaceTransaction(input: {
+  workspaceId: string;
+  transactionId: string;
+  invoiceId?: string;
+}) {
+  requireConfigured();
+  const { data, error } = await createClient().rpc("reconcile_bank_transaction", {
+    p_workspace_id: input.workspaceId,
+    p_transaction_id: input.transactionId,
+    p_invoice_id: input.invoiceId ?? null,
+  });
+  if (error) throw new Error(`Transaction could not be reconciled: ${error.message}`);
+  const result = data as { status?: unknown } | null;
+  if (result?.status !== "matched") throw new Error("Reconciliation did not return a confirmed match.");
 }
 
 export async function uploadWorkspaceLogo(workspaceId: string, file: File) {
