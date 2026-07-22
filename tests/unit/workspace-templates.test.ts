@@ -52,13 +52,14 @@ const vanitaItems: InventoryItemSnapshot[] = [
 test("general workspaces expose only currently available modules", () => {
   const modules = getWorkspaceModules("general");
   assert.ok(modules.length > 0);
-  assert.equal(modules.some((module) => module.id === "inventory"), false);
+  assert.equal(modules.some((module) => module.id === "inventory"), true);
   assert.equal(modules.some((module) => module.availability !== "available"), false);
 });
 
-test("beauty and wellness template recommends reusable sales and inventory modules", () => {
+test("beauty and wellness template activates Inventory and recommends reusable Sales", () => {
   const template = resolveIndustryTemplate("beauty-wellness");
-  assert.deepEqual(template.recommendedModules, ["sales", "inventory"]);
+  assert.deepEqual(template.recommendedModules, ["sales"]);
+  assert.equal(template.activeModules.includes("inventory"), true);
   assert.equal(template.exampleWorkspace, "Vanita Beauty and Wellness Spa");
   assert.equal(getTemplateTerminology(template.id, "customer"), "Client");
   assert.equal(getTemplateTerminology(template.id, "service"), "Treatment");
