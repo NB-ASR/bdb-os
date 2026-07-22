@@ -32,6 +32,7 @@ const coreActiveModules = [
   "calendar",
   "communications",
   "documents",
+  "inventory",
   "banking",
   "reports",
   "automation",
@@ -57,7 +58,7 @@ export const industryWorkspaceTemplates = {
     name: "Beauty & Wellness",
     description: "A reusable workspace template for salons, spas, clinics and wellness providers.",
     activeModules: coreActiveModules,
-    recommendedModules: ["sales", "inventory"],
+    recommendedModules: ["sales"],
     terminology: {
       customer: "Client",
       appointment: "Booking",

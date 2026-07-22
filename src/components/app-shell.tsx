@@ -7,6 +7,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Boxes,
   Building2,
   CalendarDays,
   ChevronRight,
@@ -37,6 +38,7 @@ export const navigation = [
   { name: "Calendar", href: "/calendar", icon: CalendarDays },
   { name: "Communications", href: "/communications", icon: MessageSquareText },
   { name: "Documents", href: "/documents", icon: FileText },
+  { name: "Inventory", href: "/inventory", icon: Boxes },
   { name: "Banking", href: "/banking", icon: Landmark },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Automation", href: "/automation-hub", icon: Sparkles },
@@ -119,7 +121,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(true);
   const canManageTeam = ["owner", "admin", "manager"].includes(role);
   const connectionLabel = !online
-    ? "Offline · view only"
+    ? "Offline · limited mode"
     : mode === "demo"
       ? "Local preview"
       : syncStatus === "saving"
@@ -127,7 +129,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         : syncStatus === "error"
           ? "Save failed"
           : syncStatus === "offline"
-            ? "Offline · view only"
+            ? "Offline · limited mode"
             : syncStatus === "saved"
               ? "Changes saved"
               : "Connected";

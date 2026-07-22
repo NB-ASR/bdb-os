@@ -159,7 +159,7 @@ export const workspaceModuleCatalogue = {
     description: "Products, supplies and stock movement",
     href: "/inventory",
     icon: "inventory",
-    availability: "planned",
+    availability: "available",
     owningRecord: "inventory item",
     connectsTo: ["supplier", "sale", "appointment", "invoice", "inventory movement", "activity"],
     offlineCapability: "full",
