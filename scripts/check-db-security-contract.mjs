@@ -15,6 +15,30 @@ const databaseTest = await readFile(
 );
 const commandHelper = await readFile("src/lib/server/command.ts", "utf8");
 const activityWriter = await readFile("src/lib/server/activity.ts", "utf8");
+const operatorMigration = await readFile(
+  "supabase/migrations/20260722000300_operator_execution_foundation.sql",
+  "utf8",
+);
+const commercialMigration = await readFile(
+  "supabase/migrations/20260722000400_commercial_intake.sql",
+  "utf8",
+);
+const financeMigration = await readFile(
+  "supabase/migrations/20260722003631_atomic_finance_commands.sql",
+  "utf8",
+);
+const plannerMigration = await readFile(
+  "supabase/migrations/20260722004107_autonomous_operator_planner.sql",
+  "utf8",
+);
+const operatorPolicyGuardMigration = await readFile(
+  "supabase/migrations/20260722010358_operator_policy_reference_guard.sql",
+  "utf8",
+);
+const operatorPolicyIndexMigration = await readFile(
+  "supabase/migrations/20260722010506_operator_policy_reference_index.sql",
+  "utf8",
+);
 
 const requiredSecurityStatements = [
   "create or replace function private.is_active_profile()",
@@ -66,5 +90,81 @@ assert.doesNotMatch(
   /"red"/,
   "Activity writer must match the database tone constraint",
 );
+
+for (const statement of [
+  "alter table public.operator_runs enable row level security",
+  "revoke all on table public.operator_runs from public, anon, authenticated",
+  "private.has_workspace_permission(p_workspace_id, 'operator', 'edit')",
+  "private.operator_workflow_is_published",
+  "for update skip locked",
+  "current_user <> 'service_role'",
+  "unique (workspace_id, idempotency_key)",
+  "check (not verified or evidence_source <> 'simulation')",
+  "p_verified and (p_status <> 'succeeded' or p_provider_mode = 'mock')",
+]) {
+  assert.ok(
+    operatorMigration.toLowerCase().includes(statement.toLowerCase()),
+    `Missing operator security contract: ${statement}`,
+  );
+}
+
+assert.match(
+  operatorPolicyGuardMigration,
+  /foreign key \(workspace_id, workflow_key\)[\s\S]*references public\.operator_policies\(workspace_id, workflow_key\)/i,
+  "Durable runs must retain a database-enforced same-workspace policy reference",
+);
+assert.match(
+  operatorPolicyIndexMigration,
+  /on public\.operator_runs\(workspace_id, workflow_key\)/i,
+  "The same-workspace policy reference must have a covering index",
+);
+
+for (const statement of [
+  "current_user <> 'service_role'",
+  "pg_advisory_xact_lock",
+  "join public.bookings booking",
+  "join public.invoices invoice",
+  "join public.messages message",
+  "private.has_feature(policy.workspace_id, 'operator')",
+  "not exists (",
+  "operator.run_planned_automatically",
+  "grant execute on function public.plan_due_operator_runs(integer) to service_role",
+]) {
+  assert.ok(
+    plannerMigration.toLowerCase().includes(statement.toLowerCase()),
+    `Missing autonomous planner contract: ${statement}`,
+  );
+}
+
+for (const statement of [
+  "private.has_workspace_permission(p_workspace_id, 'accounts', 'create')",
+  "for update",
+  "'replayed', true",
+  "private.has_workspace_permission(p_workspace_id, 'banking', 'approve')",
+  "the transaction amount must equal the invoice amount",
+  "update public.bank_transactions",
+  "update public.invoices",
+  "revoke all on function public.reconcile_bank_transaction",
+]) {
+  assert.ok(
+    financeMigration.toLowerCase().includes(statement.toLowerCase()),
+    `Missing atomic finance contract: ${statement}`,
+  );
+}
+
+for (const statement of [
+  "alter table public.sales_enquiries force row level security",
+  "revoke all on table public.sales_enquiries from public, anon, authenticated",
+  "grant all on table public.sales_enquiries to service_role",
+  "grant execute on function public.submit_sales_enquiry",
+  "to service_role",
+  "char_length(ip_hash) = 64",
+  "recent_count >= 5",
+]) {
+  assert.ok(
+    commercialMigration.toLowerCase().includes(statement.toLowerCase()),
+    `Missing commercial intake security contract: ${statement}`,
+  );
+}
 
 console.log("Database and server security contracts are internally consistent.");

@@ -14,6 +14,12 @@ const plans = [
     eyebrow: "For connected operations",
     description: "Connect more of the business, reduce repeated admin and give a growing team one reliable source of truth.",
     examples: ["Broader connected operations", "Team roles and approvals", "Reporting and helpful automation"],
+  },
+  {
+    name: "Solo Operator",
+    eyebrow: "For a business run by one",
+    description: "Give recurring administration to a governed operator that prepares work, requests approval and records proof of what was completed.",
+    examples: ["Diary, inbox, money and records in one plan", "Approval-gated and bounded workflows", "Verified time-saved and exception reporting"],
     featured: true,
   },
   {
@@ -41,12 +47,12 @@ export default function MarketingPage() {
         <div className="marketing-hero-copy">
           <p className="marketing-kicker"><Sparkles size={14} /> Business. Done. Better.</p>
           <h1>Your business, finally working as one.</h1>
-          <p>BDB OS is a calm, connected operating system shaped around the way your business actually works—so your team spends less time chasing admin and more time moving forward.</p>
+          <p>BDB OS is a calm, connected operating system shaped around your sector and the way your business actually works—so routine administration is organised, governed and measurably reduced.</p>
           <div className="marketing-actions">
             <Link href="/discovery" className="marketing-primary">Get a custom quote <ArrowRight size={17} /></Link>
             <Link href="/login" className="marketing-secondary">Login to BDB OS</Link>
           </div>
-          <div className="marketing-trust"><span><Check size={14} /> Tailored module mix</span><span><Check size={14} /> Monthly billing</span><span><Check size={14} /> 3 or 6 month commitment</span></div>
+          <div className="marketing-trust"><span><Check size={14} /> Sector-tailored workspace</span><span><Check size={14} /> Verified value evidence</span><span><Check size={14} /> 3 or 6 month commitment</span></div>
         </div>
         <div className="marketing-product-card">
           <div className="product-card-top"><span>Live workspace</span><span className="live-dot">Connected and secure</span></div>
@@ -60,14 +66,14 @@ export default function MarketingPage() {
       <section className="marketing-section" id="how-it-works">
         <div className="marketing-section-heading"><p className="marketing-kicker">Built around you</p><h2>Software should fit the business—not the other way around.</h2><p>We start with discovery, shape the right workspace, then improve it with you over time.</p></div>
         <div className="marketing-value-grid">
-          <article><span><Blocks size={20} /></span><h3>Choose the right starting shape</h3><p>Begin with Starter, Growth or Pro, then add or remove modules around your real needs.</p></article>
-          <article><span><Workflow size={20} /></span><h3>Connect the daily work</h3><p>Customers, money, bookings, messages and documents stay connected behind the scenes.</p></article>
-          <article><span><ShieldCheck size={20} /></span><h3>Stay supported</h3><p>Your monthly agreement includes an ongoing partnership, not a hand-off and a goodbye.</p></article>
+          <article><span><Blocks size={20} /></span><h3>Start with your sector</h3><p>Healthcare, wellness, legal, accounting and general-service packs change the language, priorities and approved workflows without forking the product.</p></article>
+          <article><span><Workflow size={20} /></span><h3>Give the operator complete outcomes</h3><p>Customers, money, bookings, messages and documents feed one governed queue instead of forty disconnected features.</p></article>
+          <article><span><ShieldCheck size={20} /></span><h3>Prove the value</h3><p>Approvals, retries, failures and completed work stay auditable; simulated demos never inflate verified time or cash saved.</p></article>
         </div>
       </section>
 
       <section className="marketing-section" id="plans">
-        <div className="marketing-section-heading"><p className="marketing-kicker">Flexible plans</p><h2>Three clear places to begin.</h2><p>Every business receives a tailored quote and final scope. These plans help you choose the level of transformation that feels right.</p></div>
+        <div className="marketing-section-heading"><p className="marketing-kicker">Flexible plans</p><h2>Four clear places to begin.</h2><p>Every business receives a tailored quote and final scope. The Solo Operator package is for owners who want recurring administration actively taken off their plate, with evidence.</p></div>
         <div className="plan-grid">
           {plans.map((plan) => (
             <article className={`plan-card ${plan.featured ? "featured" : ""}`} key={plan.name}>
@@ -78,7 +84,7 @@ export default function MarketingPage() {
               <div className="plan-divider" />
               <small>Your plan could include:</small>
               <ul>{plan.examples.map((item) => <li key={item}><Check size={15} /> {item}</li>)}</ul>
-              <Link href={`/discovery?plan=${plan.name.toLowerCase()}`}>Discuss {plan.name} <ArrowRight size={15} /></Link>
+              <Link href={`/discovery?plan=${plan.name.toLowerCase().replaceAll(" ", "-")}`}>Discuss {plan.name} <ArrowRight size={15} /></Link>
             </article>
           ))}
         </div>

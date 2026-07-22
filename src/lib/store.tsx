@@ -27,7 +27,9 @@ import {
   cloudInsert,
   cloudUpdate,
   cloudUpsert,
+  createWorkspaceInvoice,
   loadCloudWorkspace,
+  reconcileWorkspaceTransaction,
   removeWorkspaceDocument,
   uploadWorkspaceDocument,
   uploadWorkspaceLogo,
@@ -47,6 +49,7 @@ interface StoreValue {
   state: BdbState;
   ready: boolean;
   mode: "demo" | "cloud";
+  workspaceId: string | null;
   role: string;
   syncStatus: SyncStatus;
   lastError: string | null;
@@ -180,14 +183,30 @@ export function BdbProvider({ children }: { children: ReactNode }) {
 
   const addInvoice = useCallback(async (invoice: NewInvoice) => {
     const current = stateRef.current;
+    const id = makeId("inv");
+    let issuedAt = new Date().toISOString().slice(0, 10);
     const numbers = current.invoices.map((item) => Number(item.number.split("-").at(-1)) || 0);
     const nextNumber = Math.max(...numbers, 1000) + 1;
-    const created: Invoice = { ...invoice, id: makeId("inv"), number: `${current.settings.invoicePrefix}-${nextNumber}`, issuedAt: new Date().toISOString().slice(0, 10) };
+    let number = `${current.settings.invoicePrefix}-${nextNumber}`;
     const saved = await persist(
-      () => cloudInsert("invoices", { id: created.id, workspace_id: workspaceId, number: created.number, customer_id: created.customerId, issued_at: created.issuedAt, due_at: created.dueAt, description: created.description, amount: created.amount, status: created.status }),
+      async () => {
+        if (!workspaceId) return;
+        const result = await createWorkspaceInvoice({
+          workspaceId,
+          invoiceId: id,
+          customerId: invoice.customerId,
+          dueAt: invoice.dueAt,
+          description: invoice.description,
+          amount: invoice.amount,
+          status: invoice.status as "draft" | "sent",
+        });
+        number = result.number;
+        issuedAt = result.issuedAt;
+      },
       "The invoice could not be saved.",
     );
     if (!saved) return false;
+    const created: Invoice = { ...invoice, id, number, issuedAt };
     setState((latest) => {
       const customer = latest.customers.find((item) => item.id === created.customerId);
       return { ...latest, invoices: [created, ...latest.invoices], activity: addActivity(latest, "Invoice created", `${created.number} for ${customer?.name ?? "customer"}`, "gold") };
@@ -262,13 +281,14 @@ export function BdbProvider({ children }: { children: ReactNode }) {
   }, [persist, workspaceId]);
 
   const reconcileTransaction = useCallback(async (transactionId: string, invoiceId?: string) => {
-    if (workspaceId) {
-      setSyncStatus("error");
-      setLastError("Financial reconciliation is temporarily read-only until the atomic finance command is enabled. No records were changed.");
-      return false;
-    }
     const transaction = stateRef.current.transactions.find((item) => item.id === transactionId);
     const invoice = invoiceId ? stateRef.current.invoices.find((item) => item.id === invoiceId) : undefined;
+    if (!transaction) return false;
+    const saved = await persist(async () => {
+      if (!workspaceId) return;
+      await reconcileWorkspaceTransaction({ workspaceId, transactionId, invoiceId });
+    }, "The transaction could not be reconciled atomically.");
+    if (!saved) return false;
     setState((latest) => ({
       ...latest,
       transactions: latest.transactions.map((item) => item.id === transactionId ? { ...item, status: "matched" as const, matchedInvoiceId: invoiceId } : item),
@@ -276,7 +296,7 @@ export function BdbProvider({ children }: { children: ReactNode }) {
       activity: addActivity(latest, "Transaction reconciled", `${transaction?.description ?? "Transaction"}${invoice ? ` → ${invoice.number}` : ""}`, "green"),
     }));
     return true;
-  }, [workspaceId]);
+  }, [persist, workspaceId]);
 
   const toggleAutomation = useCallback(async (id: string) => {
     const automation = stateRef.current.automations.find((item) => item.id === id);
@@ -332,6 +352,7 @@ export function BdbProvider({ children }: { children: ReactNode }) {
     state,
     ready,
     mode: workspaceId ? "cloud" as const : "demo" as const,
+    workspaceId,
     role,
     syncStatus,
     lastError,

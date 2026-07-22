@@ -1,0 +1,357 @@
+.page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 78% 0%, color-mix(in srgb, var(--gold) 9%, transparent), transparent 34%),
+    var(--background);
+  color: var(--foreground);
+  padding: 28px;
+}
+
+.shell {
+  width: min(1500px, 100%);
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+.header h1 {
+  margin: 6px 0 8px;
+  font-size: clamp(30px, 4vw, 48px);
+  letter-spacing: -0.04em;
+}
+
+.header p {
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(240px, .72fr) minmax(0, 1.75fr) minmax(300px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .18);
+  overflow: hidden;
+}
+
+.panelHeader {
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panelHeader h2,
+.panelHeader h3 {
+  margin: 0 0 6px;
+}
+
+.panelHeader p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.clientList {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  max-height: 72vh;
+  overflow: auto;
+}
+
+.clientButton {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  color: var(--foreground);
+  background: transparent;
+  cursor: pointer;
+}
+
+.clientButton:hover,
+.clientButtonActive {
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--border));
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface));
+}
+
+.initial {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--gold) 14%, var(--surface-2));
+  color: var(--gold-strong);
+  font-weight: 800;
+}
+
+.clientButton strong,
+.clientButton small {
+  display: block;
+}
+
+.clientButton small {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+.editor {
+  padding: 20px 22px 24px;
+  display: grid;
+  gap: 22px;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.sectionHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+}
+
+.sectionHead h3 {
+  margin: 0;
+}
+
+.sectionHead p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--foreground);
+  padding: 11px 12px;
+  font: inherit;
+}
+
+.options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-2);
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.optionActive {
+  border-color: color-mix(in srgb, var(--gold) 58%, var(--border));
+  background: color-mix(in srgb, var(--gold) 10%, var(--surface-2));
+}
+
+.check {
+  flex: 0 0 auto;
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  color: #17130b;
+}
+
+.optionActive .check {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+.option strong,
+.option small {
+  display: block;
+}
+
+.option small {
+  margin-top: 3px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.preview {
+  position: sticky;
+  top: 20px;
+}
+
+.previewBody {
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.statusRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.statusPublished {
+  border-color: color-mix(in srgb, #64c68a 55%, var(--border));
+  color: #91d9aa;
+  background: color-mix(in srgb, #64c68a 8%, transparent);
+}
+
+.mockNav {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px;
+  background: var(--background);
+}
+
+.mockNav p {
+  margin: 0 0 9px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.mockNav span {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--muted);
+}
+
+.mockNav span:first-of-type,
+.mockNav span[data-emphasis="true"] {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface));
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.listItem {
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.notice,
+.error {
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.notice {
+  border-color: color-mix(in srgb, #64c68a 45%, var(--border));
+}
+
+.error {
+  border-color: color-mix(in srgb, #ef6f6c 55%, var(--border));
+}
+
+.footerNote {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1180px) {
+  .grid {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+  .preview {
+    position: static;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .page { padding: 16px; }
+  .header { flex-direction: column; }
+  .actions { justify-content: flex-start; }
+  .grid { grid-template-columns: 1fr; }
+  .clientList { max-height: 260px; }
+  .fieldGrid,
+  .options { grid-template-columns: 1fr; }
+  .preview { grid-column: auto; }
+}

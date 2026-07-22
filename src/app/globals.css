@@ -77,7 +77,9 @@ body {
 .marketing-section-heading { max-width: 730px; margin-bottom: 42px; }
 .marketing-section-heading h2, .marketing-cta h2 { font-size: clamp(34px, 4.4vw, 55px); line-height: 1.08; }
 .marketing-section-heading > p:last-child, .marketing-cta > div > p:last-child { color: var(--muted); font-size: 16px; }
-.marketing-value-grid, .plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.marketing-value-grid, .plan-grid { display: grid; gap: 16px; }
+.marketing-value-grid { grid-template-columns: repeat(3, 1fr); }
+.plan-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .marketing-value-grid article { padding: 26px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .marketing-value-grid article > span { width: 42px; height: 42px; display: grid; place-items: center; margin-bottom: 28px; border-radius: 11px; color: var(--gold-light); background: var(--gold-faint); }
 .marketing-value-grid h3 { font-size: 17px; }.marketing-value-grid p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
@@ -98,6 +100,15 @@ body {
 .back-link { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }.discovery-layout { display: grid; grid-template-columns: .8fr 1.2fr; align-items: start; gap: 70px; padding-top: 100px; }
 .discovery-layout h1 { font-size: clamp(42px, 5vw, 64px); }.discovery-lead { color: var(--muted); font-size: 16px; }.discovery-points { display: flex; flex-direction: column; gap: 13px; margin-top: 30px; color: #c8c5bb; font-size: 13px; }.discovery-points span { display: flex; align-items: center; gap: 9px; }.discovery-points svg { color: var(--gold); }
 .discovery-card { padding: 28px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); }.discovery-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }.discovery-form button { grid-column: 1 / -1; margin-top: 5px; }.success-state { min-height: 420px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }.success-state svg { color: var(--green); }.success-state h2 { max-width: 470px; margin-top: 20px; font-size: 28px; }.success-state p { color: var(--muted); }.success-state a { color: var(--gold-light); font-weight: 800; }
+.discovery-honeypot { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.discovery-submit { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.discovery-submit button:disabled { cursor: wait; opacity: .72; }
+.discovery-spinner { animation: discovery-spin .8s linear infinite; }
+@keyframes discovery-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1180px) and (min-width: 851px) {
+  .plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (max-width: 850px) {
   .marketing-links > a:not(.marketing-nav-cta) { display: none; }
