@@ -63,5 +63,9 @@ assert.ok(
   migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"),
   "Invitation expiry migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260722103000_inventory_ledger_foundation.sql"),
+  "Inventory ledger foundation migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
