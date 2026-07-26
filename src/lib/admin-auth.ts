@@ -1,5 +1,11 @@
+import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  DEV_ACCESS_COOKIE,
+  evaluateDevAccess,
+  matchesDevIdentity,
+} from "@/lib/dev-access";
 
 export type AdminIdentity = { userId: string; email: string; role: "founder" | "support" };
 
@@ -10,6 +16,16 @@ export async function requirePlatformAdmin(): Promise<AdminIdentity> {
   const { data: claimsData, error } = await supabase.auth.getClaims();
   const claims = claimsData?.claims as { sub?: string; email?: string; aal?: string } | undefined;
   if (error || !claims?.sub) throw new Error("UNAUTHENTICATED");
+
+  const devAccess = evaluateDevAccess();
+  if (devAccess.enabled) {
+    const cookieStore = await cookies();
+    const devView = cookieStore.get(DEV_ACCESS_COOKIE)?.value;
+    if (devView === "admin" && matchesDevIdentity("admin", claims.email)) {
+      return { userId: claims.sub, email: claims.email ?? "", role: "founder" };
+    }
+  }
+
   if (claims.aal !== "aal2") throw new Error("MFA_REQUIRED");
   const { data: record } = await admin.from("platform_admins").select("role, active").eq("user_id", claims.sub).eq("active", true).maybeSingle();
   if (!record) throw new Error("FORBIDDEN");
