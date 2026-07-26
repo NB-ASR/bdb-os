@@ -18,6 +18,7 @@ export function Providers({ children }: { children: ReactNode }) {
     pathname.startsWith("/mfa") ||
     isAdmin ||
     pathname.startsWith("/dev-access") ||
+    pathname.startsWith("/dev-password-setup") ||
     pathname.startsWith("/activate") ||
     pathname.startsWith("/change-password") ||
     pathname.startsWith("/no-workspace") ||
