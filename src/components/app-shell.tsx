@@ -29,6 +29,7 @@ import { useBdb } from "@/lib/store";
 import { SearchDialog } from "./search-dialog";
 import { BdbMonogram, PoweredByBdb } from "./brand";
 import { MobileActions } from "./mobile-actions";
+import { DevRoleSwitcher } from "./dev-role-switcher";
 
 export const navigation = [
   { name: "Overview", href: "/workspace", icon: Building2 },
@@ -211,6 +212,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button className="icon-button mobile-only" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu size={21} /></button>
           <BusinessSwitcher fallbackName={state.settings.businessName} />
           <div className="topbar-actions">
+            <DevRoleSwitcher />
             <MobileActions />
             <button className="topbar-search" onClick={() => setSearchOpen(true)}><Search size={17} /><span>Search workspace</span></button>
             <span className={`connection-pill ${connectionTone}`}>
