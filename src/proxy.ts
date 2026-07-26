@@ -1,5 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  DEV_ACCESS_COOKIE,
+  evaluateDevAccess,
+  isDevAccessView,
+  matchesDevIdentity,
+} from "@/lib/dev-access";
 
 const protectedRoutes = [
   "/workspace",
@@ -45,6 +51,14 @@ function serviceUnavailable() {
   });
 }
 
+function accessRedirect(request: NextRequest, effectivePath: string, reason?: string) {
+  const target = request.nextUrl.clone();
+  target.pathname = "/dev-access";
+  target.searchParams.set("next", effectivePath);
+  if (reason) target.searchParams.set("reason", reason);
+  return NextResponse.redirect(target);
+}
+
 export async function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.split(":")[0].toLowerCase() ?? "";
   const effectivePath = hostname === "admin.bdb-os.com" && request.nextUrl.pathname === "/"
@@ -59,6 +73,9 @@ export async function proxy(request: NextRequest) {
     : NextResponse.rewrite(responseUrl);
   const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
   const apiRoute = effectivePath.startsWith("/api/");
+  const devAccess = evaluateDevAccess();
+  const storedDevView = request.cookies.get(DEV_ACCESS_COOKIE)?.value;
+  const devView = isDevAccessView(storedDevView) ? storedDevView : null;
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -80,11 +97,12 @@ export async function proxy(request: NextRequest) {
   });
 
   const claimsResult = await supabase.auth.getClaims();
-  const claims = claimsResult.data?.claims as { sub?: string; aal?: string } | undefined;
+  const claims = claimsResult.data?.claims as { sub?: string; email?: string; aal?: string } | undefined;
 
   if (apiRoute) return response;
 
   if (claimsResult.error && requiresAuth) {
+    if (devAccess.enabled) return accessRedirect(request, effectivePath, "session-verification-failed");
     const login = request.nextUrl.clone();
     login.pathname = "/login";
     login.searchParams.set("next", effectivePath);
@@ -93,12 +111,28 @@ export async function proxy(request: NextRequest) {
   }
 
   if (requiresAuth && !claims?.sub) {
+    if (devAccess.enabled) return accessRedirect(request, effectivePath);
     const login = request.nextUrl.clone();
     login.pathname = "/login";
     login.searchParams.set("next", effectivePath);
     return NextResponse.redirect(login);
   }
   if (!claims?.sub) return response;
+
+  if (devAccess.enabled && devView && !matchesDevIdentity(devView, claims.email)) {
+    return accessRedirect(request, effectivePath, "development-identity-mismatch");
+  }
+
+  const isDevAdmin = devAccess.enabled && devView === "admin" && matchesDevIdentity("admin", claims.email);
+  const isDevWorkspace = devAccess.enabled && devView === "workspace" && matchesDevIdentity("workspace", claims.email);
+
+  if (effectivePath.startsWith("/admin") && isDevWorkspace) {
+    return accessRedirect(request, effectivePath, "choose-admin-view");
+  }
+  if (!effectivePath.startsWith("/admin") && featureRoutes[effectivePath] && isDevAdmin) {
+    return accessRedirect(request, effectivePath, "choose-workspace-view");
+  }
+  if (effectivePath.startsWith("/admin") && isDevAdmin) return response;
 
   const profileResult = await supabase
     .from("profiles")
