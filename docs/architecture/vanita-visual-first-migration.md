@@ -22,9 +22,14 @@ The old Vanita application contains proven business workflows but uses a separat
 
 The workspace sidebar scrolls independently from the brand and account footer so additional modules do not push important controls outside the viewport.
 
-Related routes may be grouped under an expandable operational heading without merging their feature entitlements. The first group is:
+Related routes may be grouped under an expandable department heading without merging their feature entitlements.
 
 ```text
+Calendar
+├─ Appointments
+├─ Timesheets
+└─ Meetings
+
 Catalogue & Stock
 ├─ Inventory
 ├─ Products
@@ -32,7 +37,13 @@ Catalogue & Stock
 └─ Suppliers
 ```
 
-Inventory, Products, Services and Suppliers remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
+Appointments, Timesheets and Meetings remain separate feature keys. Appointments continues using the existing `/calendar` route, while Timesheets and Meetings use `/calendar/timesheets` and `/calendar/meetings`. When a workspace has only the Calendar feature, the shell renders Appointments as a normal standalone link. The Calendar dropdown appears only when another enabled child exists.
+
+Timesheets is surfaced in Calendar because it is time-oriented, but its records and approvals are Workforce-owned. Calendar events may suggest expected time; they cannot prove attendance or replace an auditable time entry.
+
+Meetings is surfaced in Calendar because it coordinates time and attendees. Invitations remain Communications records, minutes remain Documents, and customer or supplier context remains on the linked business record.
+
+Inventory, Products, Services and Suppliers remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable Catalogue & Stock group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
 
 Sales remains a separate operational route because it coordinates catalogue, customers, stock and Accounts rather than belonging to the catalogue definition itself.
 
@@ -103,13 +114,20 @@ Sales is the fifth visual migration:
 
 Calendar and appointment enhancements are the sixth visual migration:
 
-- enhancement of the existing shared `/calendar` route rather than a second Vanita appointment system;
-- representative day agenda with date navigation, search, lifecycle filters, staff, room, service, value and attention states;
-- visual appointment detail window covering customer, service, staff, timing, buffers, room, booking source, invoice/payment connection, planned product consumption and notes;
-- visual New Appointment window connecting customer, approved Service, eligible staff, room, timing, booking source, invoice option and reminders;
+- Calendar becomes an expandable department instead of a single flat route;
+- Appointments keeps the existing shared `/calendar` route and Calendar feature entitlement;
+- Timesheets is introduced at `/calendar/timesheets` with feature key `timesheets`, enabled only for `vanita-integration` during visual review;
+- Meetings is introduced at `/calendar/meetings` with feature key `meetings`, enabled only for `vanita-integration` during visual review;
+- representative appointment agenda with date navigation, search, lifecycle filters, staff, room, service, value and attention states;
+- visual appointment detail and New Appointment windows connecting customers, Services, eligible staff, rooms, invoice options and future Inventory consumption;
+- representative Timesheets register with scheduled hours, recorded hours, variance, overtime, source, approval and exception states;
+- visual Add Time Entry window with an explicit audit and approval boundary;
+- representative Meetings workspace for internal, customer and supplier coordination;
+- visual New Meeting window linking attendees, rooms, Communications, Documents and business records;
 - Services owns duration, buffers, price and staff eligibility, while Calendar owns working hours, leave, room availability and conflict detection;
-- appointment completion may later create customer history, invoice lines and Inventory consumption, but those departments remain authoritative for their records;
-- no appointment, reschedule, cancellation, availability, invoice, payment, reminder, customer-history or Inventory writes.
+- Timesheets may use Calendar schedules as context but remain Workforce-owned and must preserve actual attendance entries;
+- Meetings owns scheduling and participation context, while invitations remain Communications records and minutes remain Documents;
+- no appointment, timesheet, attendance, approval, meeting, invitation, minutes, availability, invoice, payment, reminder, customer-history or Inventory writes.
 
 ## Proposed visual sequence
 
@@ -118,7 +136,7 @@ Calendar and appointment enhancements are the sixth visual migration:
 3. Services
 4. Suppliers
 5. Sales
-6. Calendar and appointment enhancements
+6. Calendar department and appointment enhancements
 7. Documents and purchasing history
 8. Customers/clients enhancements
 9. Settings, access and reporting surfaces
@@ -142,6 +160,8 @@ For each approved module:
 - A visual-first process can accumulate dead screens if functional restoration is delayed.
 - Copying the old interface too literally could preserve Vanita-specific assumptions.
 - Excessive sidebar grouping could hide frequently used work from business users.
+- Timesheets could accidentally become a payroll system if rate, tax and settlement boundaries are not enforced.
+- Meetings could duplicate Communications or Documents if invitations and minutes are stored directly in Calendar.
 
 ## Mitigations
 
@@ -151,3 +171,4 @@ For each approved module:
 - Functional design begins immediately after each tab is approved.
 - Shared BDB OS records and module rules take priority over the old implementation.
 - Navigation groups are used only when at least two enabled child routes exist.
+- Cross-department records are linked rather than duplicated.
