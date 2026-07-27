@@ -7,6 +7,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  Boxes,
   Building2,
   CalendarDays,
   ChevronRight,
@@ -36,6 +37,7 @@ export const navigation = [
   { name: "Accounts", href: "/accounts", icon: CircleDollarSign },
   { name: "Customers", href: "/customers", icon: UsersRound },
   { name: "Calendar", href: "/calendar", icon: CalendarDays },
+  { name: "Inventory", href: "/inventory", icon: Boxes, featureKey: "inventory" },
   { name: "Communications", href: "/communications", icon: MessageSquareText },
   { name: "Documents", href: "/documents", icon: FileText },
   { name: "Banking", href: "/banking", icon: Landmark },
@@ -52,6 +54,12 @@ type LinkedWorkspace = {
   membership_role: string;
   access_profile: string;
   is_active: boolean;
+};
+
+type WorkspaceContext = {
+  workspaces?: LinkedWorkspace[];
+  currentWorkspaceId?: string | null;
+  features?: Record<string, boolean>;
 };
 
 function BusinessSwitcher({ fallbackName }: { fallbackName: string }) {
@@ -118,7 +126,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [online, setOnline] = useState(true);
+  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>({});
   const canManageTeam = ["owner", "admin", "manager"].includes(role);
+  const visibleNavigation = navigation.filter((item) => !item.featureKey || enabledFeatures[item.featureKey]);
   const connectionLabel = !online
     ? "Offline · view only"
     : mode === "demo"
@@ -139,6 +149,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       : syncStatus === "saving"
         ? "saving"
         : "online";
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/workspace/context", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<WorkspaceContext> : null)
+      .then((result) => {
+        if (active && result?.features) setEnabledFeatures(result.features);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -180,7 +201,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <p className="nav-label">Workspace</p>
-          {navigation.map((item) => {
+          {visibleNavigation.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
             return (
