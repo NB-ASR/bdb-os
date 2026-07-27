@@ -99,6 +99,18 @@ Sales is the fifth visual migration:
 - invoices, payments, outstanding balances and settlement remain authoritative in Accounts and Banking;
 - no sale, customer link, stock movement, invoice, payment, refund or balance writes.
 
+## Sixth slice
+
+Calendar and appointment enhancements are the sixth visual migration:
+
+- enhancement of the existing shared `/calendar` route rather than a second Vanita appointment system;
+- representative day agenda with date navigation, search, lifecycle filters, staff, room, service, value and attention states;
+- visual appointment detail window covering customer, service, staff, timing, buffers, room, booking source, invoice/payment connection, planned product consumption and notes;
+- visual New Appointment window connecting customer, approved Service, eligible staff, room, timing, booking source, invoice option and reminders;
+- Services owns duration, buffers, price and staff eligibility, while Calendar owns working hours, leave, room availability and conflict detection;
+- appointment completion may later create customer history, invoice lines and Inventory consumption, but those departments remain authoritative for their records;
+- no appointment, reschedule, cancellation, availability, invoice, payment, reminder, customer-history or Inventory writes.
+
 ## Proposed visual sequence
 
 1. Inventory and supplier-document import
