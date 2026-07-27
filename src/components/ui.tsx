@@ -105,12 +105,14 @@ export function Dialog({
   onClose,
   title,
   description,
+  className = "",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
+  className?: string;
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -168,7 +170,7 @@ export function Dialog({
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <div
         ref={dialogRef}
-        className="dialog"
+        className={`dialog ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
