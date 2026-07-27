@@ -25,6 +25,7 @@ import {
   UsersRound,
   Wifi,
   WifiOff,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -66,6 +67,7 @@ const workspaceNavigation: NavigationEntry[] = [
     children: [
       { name: "Inventory", href: "/inventory", icon: Boxes, featureKey: "inventory" },
       { name: "Products", href: "/products", icon: Package, featureKey: "products" },
+      { name: "Services", href: "/services", icon: Wrench, featureKey: "services" },
     ],
   },
   { name: "Communications", href: "/communications", icon: MessageSquareText },
