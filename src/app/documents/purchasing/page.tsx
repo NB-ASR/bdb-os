@@ -10,13 +10,16 @@ import {
   FileText,
   Link2,
   PackageCheck,
+  Plus,
   RefreshCw,
   ScanLine,
   Search,
   Sparkles,
+  Trash2,
   TriangleAlert,
   UploadCloud,
   WalletCards,
+  WifiOff,
 } from "lucide-react";
 import { useBdb } from "@/lib/store";
 import { formatMoney } from "@/lib/format";
@@ -33,6 +36,7 @@ import styles from "./purchasing.module.css";
 
 type DocumentFilter = "all" | "review" | "approved" | "failed";
 type DocumentStatus = "uploaded" | "extracting" | "review_required" | "approved" | "extraction_failed" | "archived";
+
 type SupplierDocument = {
   id: string;
   workspace_id: string;
@@ -75,6 +79,7 @@ type SupplierOption = {
 
 type ProductOption = { id: string; sku: string; name: string; barcode: string | null };
 type RelationshipOption = { id: string; product_id: string; supplier_id: string; supplier_sku: string | null };
+
 type ReviewLine = {
   id: string;
   lineKind: "product" | "expense";
@@ -114,11 +119,33 @@ type ReviewState = {
   lines: ReviewLine[];
 };
 
-const CACHE_PREFIX = "bdb-purchasing-documents-cache-v1";
+type PendingReviewCommand = {
+  id: string;
+  workspaceId: string;
+  documentId: string;
+  expectedVersion: number;
+  header: ReviewHeader;
+  lines: ReviewLine[];
+  createdAt: string;
+  attempts: number;
+  lastError?: string;
+};
+
+const REGISTER_CACHE_PREFIX = "bdb-purchasing-documents-cache-v1";
+const REVIEW_CACHE_PREFIX = "bdb-purchasing-review-cache-v1";
+const REVIEW_QUEUE_PREFIX = "bdb-purchasing-review-queue-v1";
 const LAST_WORKSPACE_KEY = "bdb-purchasing-last-workspace-v1";
 
-function cacheKey(workspaceId: string) {
-  return `${CACHE_PREFIX}:${workspaceId}`;
+function registerCacheKey(workspaceId: string) {
+  return `${REGISTER_CACHE_PREFIX}:${workspaceId}`;
+}
+
+function reviewCacheKey(workspaceId: string, documentId: string) {
+  return `${REVIEW_CACHE_PREFIX}:${workspaceId}:${documentId}`;
+}
+
+function reviewQueueKey(workspaceId: string) {
+  return `${REVIEW_QUEUE_PREFIX}:${workspaceId}`;
 }
 
 function readLastWorkspace() {
@@ -126,24 +153,73 @@ function readLastWorkspace() {
   return window.localStorage.getItem(LAST_WORKSPACE_KEY);
 }
 
-function readCache(workspaceId: string): SupplierDocument[] {
+function readRegisterCache(workspaceId: string): SupplierDocument[] {
   if (typeof window === "undefined") return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "[]") as unknown;
+    const parsed = JSON.parse(window.localStorage.getItem(registerCacheKey(workspaceId)) ?? "[]") as unknown;
     return Array.isArray(parsed) ? parsed as SupplierDocument[] : [];
   } catch {
     return [];
   }
 }
 
-function writeCache(workspaceId: string, documents: SupplierDocument[]) {
+function writeRegisterCache(workspaceId: string, documents: SupplierDocument[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(documents));
+  window.localStorage.setItem(registerCacheKey(workspaceId), JSON.stringify(documents));
+}
+
+function readReviewCache(workspaceId: string, documentId: string): ReviewState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(reviewCacheKey(workspaceId, documentId)) ?? "null") as ReviewState | null;
+    return parsed ? { ...parsed, originalFileUrl: "" } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeReviewCache(workspaceId: string, review: ReviewState) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    reviewCacheKey(workspaceId, review.document.id),
+    JSON.stringify({ ...review, originalFileUrl: "" }),
+  );
+}
+
+function readReviewQueue(workspaceId: string): PendingReviewCommand[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(reviewQueueKey(workspaceId)) ?? "[]") as unknown;
+    return Array.isArray(parsed) ? parsed as PendingReviewCommand[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeReviewQueue(workspaceId: string, commands: PendingReviewCommand[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(reviewQueueKey(workspaceId), JSON.stringify(commands));
 }
 
 function valueString(value: number | string | null | undefined) {
   return value === null || value === undefined ? "" : String(value);
+}
+
+function createBlankLine(): ReviewLine {
+  return {
+    id: crypto.randomUUID(),
+    lineKind: "product",
+    description: "",
+    supplierSku: "",
+    barcode: "",
+    quantity: "1",
+    unitCost: "",
+    rrp: "",
+    matchedProductId: "",
+    matchedProductSupplierId: "",
+    notes: "",
+  };
 }
 
 function documentTypeLabel(type: SupplierDocument["document_type"]) {
@@ -172,6 +248,12 @@ function dateLabel(value: string | null) {
   if (!value) return "Not confirmed";
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("en-GB").format(date);
+}
+
+function fileSizeLabel(value: number) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function buildReview(result: Record<string, unknown>): ReviewState {
@@ -218,21 +300,38 @@ export default function PurchasingPage() {
   const [documents, setDocuments] = useState<SupplierDocument[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [online, setOnline] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<DocumentFilter>("all");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [review, setReview] = useState<ReviewState | null>(null);
   const [pendingUploads, setPendingUploads] = useState<PendingSupplierDocumentUpload[]>([]);
+  const [pendingReviewCount, setPendingReviewCount] = useState(0);
+  const [activeReviewCommand, setActiveReviewCommand] = useState<{ action: "save_review" | "approve"; key: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [scanningId, setScanningId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const supportMode = role === "platform-support";
+  const cloudMode = mode === "cloud";
 
-  const loadPending = useCallback(async (currentWorkspaceId: string) => {
-    if (typeof indexedDB === "undefined") return;
-    setPendingUploads(await listSupplierDocumentUploads(currentWorkspaceId));
+  useEffect(() => {
+    const update = () => setOnline(window.navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  const loadLocalState = useCallback(async (currentWorkspaceId: string) => {
+    if (typeof indexedDB !== "undefined") {
+      setPendingUploads(await listSupplierDocumentUploads(currentWorkspaceId));
+    }
+    setPendingReviewCount(readReviewQueue(currentWorkspaceId).length);
   }, []);
 
   const loadCloud = useCallback(async () => {
@@ -248,26 +347,28 @@ export default function PurchasingPage() {
     if (!response.ok || !result.ok) throw new Error(result.error ?? "Purchasing documents could not be loaded.");
     const cloudDocuments = (result.result?.documents ?? []) as SupplierDocument[];
     setDocuments(cloudDocuments);
-    writeCache(currentWorkspaceId, cloudDocuments);
-    await loadPending(currentWorkspaceId);
+    writeRegisterCache(currentWorkspaceId, cloudDocuments);
+    await loadLocalState(currentWorkspaceId);
     return currentWorkspaceId;
-  }, [loadPending]);
+  }, [loadLocalState]);
 
   useEffect(() => {
     let active = true;
     async function initialise() {
-      const fallbackWorkspace = mode === "demo" ? "demo" : readLastWorkspace();
-      const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : [];
+      const fallbackWorkspace = cloudMode ? readLastWorkspace() : "demo";
+      const cached = fallbackWorkspace ? readRegisterCache(fallbackWorkspace) : [];
       if (active && fallbackWorkspace) {
         setWorkspaceId(fallbackWorkspace);
         setDocuments(cached);
-        await loadPending(fallbackWorkspace).catch(() => undefined);
+        await loadLocalState(fallbackWorkspace).catch(() => undefined);
       }
       try {
         setError("");
-        if (mode === "demo") return;
-        if (!navigator.onLine) {
-          setNotice(cached.length ? "Showing the last cached Purchasing register. New files can wait locally for upload." : "Purchasing needs one online load before its register can reopen offline.");
+        if (!cloudMode) return;
+        if (!window.navigator.onLine) {
+          setNotice(cached.length
+            ? "Showing the last cached Purchasing register. New files and review drafts can remain local."
+            : "Purchasing needs one online load before its register can reopen offline.");
           return;
         }
         await loadCloud();
@@ -281,11 +382,40 @@ export default function PurchasingPage() {
     }
     void initialise();
     return () => { active = false; };
-  }, [loadCloud, loadPending, mode]);
+  }, [cloudMode, loadCloud, loadLocalState]);
+
+  useEffect(() => {
+    if (workspaceId && review) writeReviewCache(workspaceId, review);
+  }, [review, workspaceId]);
+
+  const openDocument = useCallback(async (documentId: string) => {
+    if (!workspaceId || workspaceId === "demo") return;
+    setBusy(true);
+    setError("");
+    try {
+      if (!online) {
+        const cached = readReviewCache(workspaceId, documentId);
+        if (!cached) throw new Error("Open this document once online before reviewing it offline.");
+        setReview(cached);
+        setNotice("Showing the cached review draft. Save Review will queue changes locally; approval requires internet.");
+        return;
+      }
+      const response = await fetch(`/api/purchasing/documents/${documentId}?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "The supplier document could not be opened.");
+      const nextReview = buildReview(result.result);
+      setReview(nextReview);
+      writeReviewCache(workspaceId, nextReview);
+    } catch (detailError) {
+      setError(detailError instanceof Error ? detailError.message : "The supplier document could not be opened.");
+    } finally {
+      setBusy(false);
+    }
+  }, [online, workspaceId]);
 
   const scanDocument = useCallback(async (documentId: string, openAfter = true) => {
     if (!workspaceId || workspaceId === "demo" || supportMode) return false;
-    if (!navigator.onLine) {
+    if (!online) {
       setError("Document extraction requires an internet connection.");
       return false;
     }
@@ -302,12 +432,7 @@ export default function PurchasingPage() {
       if (!response.ok || !result.ok) throw new Error(result.error ?? "The document could not be scanned.");
       await loadCloud();
       setNotice("The supplier document was extracted. Review every field and line before approval.");
-      if (openAfter) {
-        const detailResponse = await fetch(`/api/purchasing/documents/${documentId}?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
-        const detail = await detailResponse.json().catch(() => ({}));
-        if (!detailResponse.ok || !detail.ok) throw new Error(detail.error ?? "The extracted document could not be opened.");
-        setReview(buildReview(detail.result));
-      }
+      if (openAfter) await openDocument(documentId);
       return true;
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : "The supplier document could not be scanned.");
@@ -316,19 +441,56 @@ export default function PurchasingPage() {
     } finally {
       setScanningId(null);
     }
-  }, [loadCloud, supportMode, workspaceId]);
+  }, [loadCloud, online, openDocument, supportMode, workspaceId]);
+
+  const syncPendingReviews = useCallback(async (currentWorkspaceId: string) => {
+    if (!online || supportMode) return 0;
+    const queue = readReviewQueue(currentWorkspaceId);
+    let completed = 0;
+    for (const command of queue) {
+      try {
+        const response = await fetch(`/api/purchasing/documents/${command.documentId}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": command.id,
+          },
+          body: JSON.stringify({
+            workspaceId: currentWorkspaceId,
+            action: "save_review",
+            expectedVersion: command.expectedVersion,
+            header: command.header,
+            lines: command.lines,
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error ?? "A queued review could not be saved.");
+        writeReviewQueue(currentWorkspaceId, readReviewQueue(currentWorkspaceId).filter((item) => item.id !== command.id));
+        completed += 1;
+      } catch (queueError) {
+        const message = queueError instanceof Error ? queueError.message : "A queued review could not be saved.";
+        writeReviewQueue(currentWorkspaceId, readReviewQueue(currentWorkspaceId).map((item) => item.id === command.id
+          ? { ...item, attempts: item.attempts + 1, lastError: message }
+          : item));
+        setError(message);
+        break;
+      }
+    }
+    setPendingReviewCount(readReviewQueue(currentWorkspaceId).length);
+    return completed;
+  }, [online, supportMode]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || busy || !navigator.onLine) return;
+    if (!workspaceId || workspaceId === "demo" || busy || !online) return;
     setBusy(true);
     setError("");
-    let completed = 0;
-    const queued = await listSupplierDocumentUploads(workspaceId);
-    for (const item of queued) {
+    let uploaded = 0;
+    const queuedUploads = await listSupplierDocumentUploads(workspaceId);
+    for (const item of queuedUploads) {
       try {
         await submitSupplierDocumentUpload(item);
         await removeSupplierDocumentUpload(item.id);
-        completed += 1;
+        uploaded += 1;
         await scanDocument(item.documentId, false);
       } catch (queueError) {
         const message = queueError instanceof Error ? queueError.message : "The queued document could not be uploaded.";
@@ -337,22 +499,22 @@ export default function PurchasingPage() {
         break;
       }
     }
+    const reviews = await syncPendingReviews(workspaceId);
     await loadCloud().catch(() => undefined);
-    await loadPending(workspaceId);
-    if (completed) setNotice(`${completed} queued supplier document${completed === 1 ? "" : "s"} uploaded.`);
+    await loadLocalState(workspaceId);
+    if (uploaded || reviews) {
+      setNotice(`${uploaded} upload${uploaded === 1 ? "" : "s"} and ${reviews} review draft${reviews === 1 ? "" : "s"} synced.`);
+    }
     setBusy(false);
-  }, [busy, loadCloud, loadPending, scanDocument, workspaceId]);
+  }, [busy, loadCloud, loadLocalState, online, scanDocument, syncPendingReviews, workspaceId]);
 
   useEffect(() => {
-    if (mode !== "cloud") return;
-    const handleOnline = () => void syncPending();
-    window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
-  }, [mode, syncPending]);
+    if (cloudMode && online) void syncPending();
+  }, [cloudMode, online, syncPending]);
 
   async function uploadDocument(event: FormEvent) {
     event.preventDefault();
-    if (!selectedFile || !workspaceId || supportMode || busy) return;
+    if (!selectedFile || !workspaceId || workspaceId === "demo" || supportMode || busy) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -360,45 +522,41 @@ export default function PurchasingPage() {
     const queueId = crypto.randomUUID();
     try {
       const item = await enqueueSupplierDocumentUpload(workspaceId, documentId, selectedFile, state.settings.currency, queueId);
-      await loadPending(workspaceId);
+      await loadLocalState(workspaceId);
       setUploadOpen(false);
       setSelectedFile(null);
-      if (!navigator.onLine) {
+      if (!online) {
         setNotice("Document retained offline. BDB OS will upload it when the connection returns; extraction requires internet.");
         return;
       }
       await submitSupplierDocumentUpload(item);
       await removeSupplierDocumentUpload(item.id);
-      await loadPending(workspaceId);
+      await loadLocalState(workspaceId);
       await loadCloud();
       setNotice("Original document stored privately. Automatic extraction is starting.");
       await scanDocument(documentId, true);
     } catch (uploadError) {
       const message = uploadError instanceof Error ? uploadError.message : "The supplier document could not be uploaded.";
       setError(message);
-      await loadPending(workspaceId).catch(() => undefined);
+      await loadLocalState(workspaceId).catch(() => undefined);
     } finally {
       setBusy(false);
     }
   }
 
-  async function openDocument(documentId: string) {
-    if (!workspaceId || workspaceId === "demo") return;
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch(`/api/purchasing/documents/${documentId}?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "The supplier document could not be opened.");
-      setReview(buildReview(result.result));
-    } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : "The supplier document could not be opened.");
-    } finally {
-      setBusy(false);
-    }
+  async function discardUpload(id: string) {
+    if (!workspaceId || busy) return;
+    await removeSupplierDocumentUpload(id);
+    await loadLocalState(workspaceId);
+    setNotice("The local pending document was removed. No cloud record was created by this action.");
+  }
+
+  function resetReviewCommand() {
+    setActiveReviewCommand(null);
   }
 
   function updateLine(index: number, patch: Partial<ReviewLine>) {
+    resetReviewCommand();
     setReview((current) => {
       if (!current) return current;
       const lines = current.lines.map((line, lineIndex) => {
@@ -421,9 +579,14 @@ export default function PurchasingPage() {
   }
 
   function updateHeader(patch: Partial<ReviewHeader>) {
+    resetReviewCommand();
     setReview((current) => {
       if (!current) return current;
       const header = { ...current.header, ...patch };
+      const selectedSupplier = patch.supplierId === undefined
+        ? null
+        : current.suppliers.find((supplier) => supplier.id === patch.supplierId);
+      if (selectedSupplier && !current.header.currency) header.currency = selectedSupplier.document_currency;
       const lines = patch.supplierId === undefined ? current.lines : current.lines.map((line) => ({
         ...line,
         matchedProductSupplierId: current.relationships.find(
@@ -435,17 +598,54 @@ export default function PurchasingPage() {
     });
   }
 
+  function addLine() {
+    resetReviewCommand();
+    setReview((current) => current ? { ...current, lines: [...current.lines, createBlankLine()] } : current);
+  }
+
+  function removeLine(index: number) {
+    resetReviewCommand();
+    setReview((current) => current ? { ...current, lines: current.lines.filter((_, lineIndex) => lineIndex !== index) } : current);
+  }
+
   async function saveReview(action: "save_review" | "approve") {
-    if (!review || !workspaceId || supportMode || busy) return;
+    if (!review || !workspaceId || workspaceId === "demo" || supportMode || busy) return;
+    if (!online) {
+      if (action === "approve") {
+        setError("Approval requires an internet connection so BDB OS can validate the current shared record.");
+        return;
+      }
+      const command: PendingReviewCommand = {
+        id: crypto.randomUUID(),
+        workspaceId,
+        documentId: review.document.id,
+        expectedVersion: review.document.version,
+        header: review.header,
+        lines: review.lines,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+      };
+      const queue = readReviewQueue(workspaceId).filter((item) => item.documentId !== review.document.id);
+      writeReviewQueue(workspaceId, [...queue, command]);
+      setPendingReviewCount(readReviewQueue(workspaceId).length);
+      writeReviewCache(workspaceId, review);
+      setNotice("Review draft saved locally. BDB OS will validate and sync it when connectivity returns.");
+      return;
+    }
+
     setBusy(true);
     setError("");
     setNotice("");
+    const command = activeReviewCommand?.action === action
+      ? activeReviewCommand
+      : { action, key: crypto.randomUUID() };
+    setActiveReviewCommand(command);
     try {
       const response = await fetch(`/api/purchasing/documents/${review.document.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": crypto.randomUUID(),
+          "Idempotency-Key": command.key,
         },
         body: JSON.stringify({
           workspaceId,
@@ -457,6 +657,8 @@ export default function PurchasingPage() {
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.ok) throw new Error(result.error ?? "The supplier document review could not be saved.");
+      setActiveReviewCommand(null);
+      writeReviewQueue(workspaceId, readReviewQueue(workspaceId).filter((item) => item.documentId !== review.document.id));
       await loadCloud();
       setNotice(action === "approve"
         ? "Supplier document approved. Inventory and Accounts posting remain unavailable until their ledgers are connected."
@@ -494,6 +696,23 @@ export default function PurchasingPage() {
   const approvedValue = documents
     .filter((document) => document.status === "approved")
     .reduce((total, document) => total + Number(document.gross_amount ?? 0), 0);
+  const unresolvedReviewLines = review?.lines.filter((line) => line.lineKind === "product" && !line.matchedProductId).length ?? 0;
+  const invalidReviewLines = review?.lines.filter((line) => !line.description.trim() || !(Number(line.quantity) > 0)).length ?? 0;
+  const canApprove = Boolean(
+    review
+      && online
+      && review.header.supplierId
+      && ["invoice", "credit_note"].includes(review.header.documentType)
+      && review.header.documentNumber.trim()
+      && review.header.documentDate
+      && /^[A-Z]{3}$/.test(review.header.currency)
+      && review.lines.length
+      && unresolvedReviewLines === 0
+      && invalidReviewLines === 0
+      && !supportMode
+      && !busy
+      && review.document.status !== "approved",
+  );
 
   if (!loaded) return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Purchasing…</main>;
 
@@ -505,8 +724,9 @@ export default function PurchasingPage() {
         description="Capture supplier invoices and credit notes, review extracted data and approve one shared source document before downstream posting."
         action={(
           <div className={styles.headerActions}>
-            <Button variant="secondary" onClick={() => setUploadOpen(true)} disabled={supportMode}><ScanLine size={17} /> Scan document</Button>
-            <Button onClick={() => setUploadOpen(true)} disabled={supportMode}><UploadCloud size={17} /> Upload supplier document</Button>
+            <Button onClick={() => setUploadOpen(true)} disabled={supportMode || !cloudMode}>
+              <UploadCloud size={17} /> Upload or scan document
+            </Button>
           </div>
         )}
       />
@@ -515,19 +735,42 @@ export default function PurchasingPage() {
         <Sparkles size={19} />
         <div>
           <strong>Functional supplier-document capture</strong>
-          <p>Original files are stored privately. Extraction is a review draft; human approval is mandatory and does not yet alter Inventory or Accounts.</p>
+          <p>Original files are stored privately. Extraction is a review draft; human approval is mandatory and does not alter Inventory or Accounts.</p>
         </div>
       </div>
+
+      {!online ? (
+        <div className={styles.offlineNotice}>
+          <WifiOff size={18} />
+          <div><strong>Working offline</strong><span>New files and review drafts can remain local. Extraction and approval resume after reconnection.</span></div>
+        </div>
+      ) : null}
 
       {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Purchasing needs attention</strong><p>{error}</p></div></div> : null}
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Purchasing updated</strong><p>{notice}</p></div> : null}
 
-      {pendingUploads.length ? (
+      {pendingUploads.length || pendingReviewCount ? (
         <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{pendingUploads.length} document{pendingUploads.length === 1 ? "" : "s"} waiting to upload</strong>
-          <p>Original files remain in this browser. Upload resumes when a connection is available; extraction cannot run offline.</p>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <Button variant="secondary" onClick={() => void syncPending()} disabled={busy || !navigator.onLine}><RefreshCw size={16} className={busy ? "spin" : ""} /> Retry uploads</Button>
+          <strong>{pendingUploads.length} file{pendingUploads.length === 1 ? "" : "s"} and {pendingReviewCount} review draft{pendingReviewCount === 1 ? "" : "s"} waiting to sync</strong>
+          <p>Pending items remain in this browser. Conflicts stop synchronisation instead of overwriting shared records.</p>
+          {pendingUploads.length ? (
+            <div className={styles.pendingList}>
+              {pendingUploads.map((item) => (
+                <div className={styles.pendingItem} key={item.id}>
+                  <div className={styles.pendingMeta}>
+                    <strong>{item.fileName}</strong>
+                    <span>{fileSizeLabel(item.file.size)} · {item.attempts ? `${item.attempts} failed attempt${item.attempts === 1 ? "" : "s"}` : "Waiting"}</span>
+                    {item.lastError ? <small>{item.lastError}</small> : null}
+                  </div>
+                  <Button variant="quiet" disabled={busy} onClick={() => void discardUpload(item.id)}><Trash2 size={15} /> Remove</Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className={styles.pendingActions}>
+            <Button variant="secondary" onClick={() => void syncPending()} disabled={busy || !online}>
+              <RefreshCw size={16} className={busy ? "spin" : ""} /> Retry sync
+            </Button>
           </div>
         </div>
       ) : null}
@@ -579,7 +822,11 @@ export default function PurchasingPage() {
                   <td><Badge tone="neutral">Not available</Badge></td>
                   <td>
                     <div className={styles.rowActions}>
-                      {(document.status === "uploaded" || document.status === "extraction_failed") ? <Button variant="quiet" disabled={supportMode || scanningId === document.id} onClick={() => void scanDocument(document.id)}>{scanningId === document.id ? <RefreshCw size={15} className="spin" /> : <ScanLine size={15} />} Scan</Button> : null}
+                      {document.status !== "approved" && document.status !== "extracting" ? (
+                        <Button variant="quiet" disabled={supportMode || scanningId === document.id || !online} onClick={() => void scanDocument(document.id)}>
+                          {scanningId === document.id ? <RefreshCw size={15} className="spin" /> : <ScanLine size={15} />} {document.extraction_status === "completed" ? "Rescan" : "Scan"}
+                        </Button>
+                      ) : null}
                       <Button variant="quiet" onClick={() => void openDocument(document.id)} disabled={busy}><Eye size={16} /> Review</Button>
                     </div>
                   </td>
@@ -612,7 +859,7 @@ export default function PurchasingPage() {
                 <p>Supplier invoice or credit note · PDF, JPG, PNG or WebP · maximum 20 MB</p>
                 <input type="file" required accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)} />
                 <strong>{selectedFile?.name || "No document selected"}</strong>
-                <small>{navigator.onLine ? "The original will be uploaded privately before extraction." : "The file will remain in this browser until connectivity returns."}</small>
+                <small>{online ? "The original will be uploaded privately before extraction." : "The file will remain in this browser until connectivity returns."}</small>
               </label>
               <div className={styles.reviewPanel}>
                 <div><p className="eyebrow">Controlled workflow</p><h3>Extraction is not approval</h3><p className="muted small">The scanner proposes supplier, dates, totals and lines. A user must confirm all fields and Product matches.</p></div>
@@ -621,7 +868,7 @@ export default function PurchasingPage() {
               </div>
             </div>
           </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setUploadOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={!selectedFile || busy || supportMode}>{busy ? <RefreshCw size={16} className="spin" /> : <UploadCloud size={16} />} {navigator.onLine ? "Upload and scan" : "Save for upload"}</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setUploadOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={!selectedFile || busy || supportMode || !cloudMode}>{busy ? <RefreshCw size={16} className="spin" /> : <UploadCloud size={16} />} {online ? "Upload and scan" : "Save for upload"}</Button></div>
         </form>
       </Dialog>
 
@@ -630,7 +877,10 @@ export default function PurchasingPage() {
           <div className={styles.dialogBody}>
             <div className={styles.detailHero}>
               <div><p className="eyebrow">{review.document.file_name}</p><h3>{review.header.documentNumber || "Document number not confirmed"}</h3><p className="muted">{documentTypeLabel(review.header.documentType)} · confidence {review.document.extraction_confidence === null ? "not available" : `${Math.round(Number(review.document.extraction_confidence) * 100)}%`}</p></div>
-              <div className={styles.rowActions}><a className={styles.fileLink} href={review.originalFileUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Open original</a><Badge tone={statusTone(review.document)}>{statusLabel(review.document)}</Badge></div>
+              <div className={styles.rowActions}>
+                {review.originalFileUrl ? <a className={styles.fileLink} href={review.originalFileUrl} target="_blank" rel="noreferrer"><Link2 size={15} /> Open original</a> : <span className={styles.fileUnavailable}><WifiOff size={15} /> Original available online</span>}
+                <Badge tone={statusTone(review.document)}>{statusLabel(review.document)}</Badge>
+              </div>
             </div>
 
             {review.document.extraction_notes?.length ? <div className="settings-note" style={{ marginBottom: 16 }}><strong>Extraction notes</strong><p>{review.document.extraction_notes.join(" · ")}</p></div> : null}
@@ -650,21 +900,31 @@ export default function PurchasingPage() {
               <label>Gross amount<input type="number" min="0" step="0.01" value={review.header.grossAmount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ grossAmount: event.target.value })} /></label>
             </div>
 
-            <div className={styles.reviewLinesHeader}><div><p className="eyebrow">Extracted lines</p><h3>Product and expense matching</h3></div><Badge tone={review.lines.some((line) => line.lineKind === "product" && !line.matchedProductId) ? "gold" : "green"}>{review.lines.length} lines</Badge></div>
+            <div className={styles.reviewLinesHeader}>
+              <div><p className="eyebrow">Document lines</p><h3>Product and expense matching</h3></div>
+              <div className={styles.rowActions}>
+                <Badge tone={unresolvedReviewLines || invalidReviewLines ? "gold" : "green"}>{review.lines.length} lines</Badge>
+                {review.document.status !== "approved" ? <Button variant="secondary" onClick={addLine} disabled={supportMode || busy}><Plus size={15} /> Add line</Button> : null}
+              </div>
+            </div>
+
             <div className={styles.reviewLines}>
               {review.lines.map((line, index) => (
                 <div className={styles.reviewLine} key={line.id}>
                   <div className={styles.lineNumber}>{index + 1}</div>
-                  <label className={styles.lineDescription}>Printed description<input value={line.description} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { description: event.target.value })} /></label>
+                  <label className={styles.lineDescription}>Printed description<input required value={line.description} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { description: event.target.value })} /></label>
                   <label>Kind<select value={line.lineKind} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { lineKind: event.target.value as ReviewLine["lineKind"] })}><option value="product">Product</option><option value="expense">Non-stock expense</option></select></label>
                   <label>Supplier SKU<input value={line.supplierSku} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { supplierSku: event.target.value })} /></label>
                   <label>Barcode<input value={line.barcode} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { barcode: event.target.value })} /></label>
                   <label>Quantity<input type="number" min="0.0001" step="0.0001" value={line.quantity} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
                   <label>Unit cost<input type="number" min="0" step="0.0001" value={line.unitCost} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { unitCost: event.target.value })} /></label>
                   <label>RRP<input type="number" min="0" step="0.0001" value={line.rrp} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { rrp: event.target.value })} /></label>
-                  <label className={styles.lineProduct}>Matched Product<select value={line.matchedProductId} disabled={supportMode || line.lineKind === "expense" || review.document.status === "approved"} onChange={(event) => updateLine(index, { matchedProductId: event.target.value })}><option value="">Select Product</option>{review.products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select><small>{line.lineKind === "expense" ? "This line will not create Inventory movement." : line.matchedProductSupplierId ? "Product–Supplier relationship matched." : line.matchedProductId ? "Product matched without Supplier terms." : "Match required before approval."}</small></label>
+                  <label className={styles.lineProduct}>Matched Product<select value={line.matchedProductId} disabled={supportMode || line.lineKind === "expense" || review.document.status === "approved"} onChange={(event) => updateLine(index, { matchedProductId: event.target.value })}><option value="">Select Product</option>{review.products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select><small>{line.lineKind === "expense" ? "This line will not create an Inventory movement." : line.matchedProductSupplierId ? "Product–Supplier relationship matched." : line.matchedProductId ? "Product matched without Supplier terms." : "Match required before approval."}</small></label>
+                  <label className={styles.lineNotes}>Review notes<input value={line.notes} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { notes: event.target.value })} /></label>
+                  {review.document.status !== "approved" ? <Button variant="quiet" onClick={() => removeLine(index)} disabled={supportMode || busy}><Trash2 size={15} /> Remove line</Button> : null}
                 </div>
               ))}
+              {!review.lines.length ? <div className={styles.emptyLines}><FileText size={20} /><strong>No document lines</strong><span>Add the printed lines manually or rescan a clearer document.</span></div> : null}
             </div>
 
             <div className={styles.postingLockGrid}>
@@ -675,8 +935,9 @@ export default function PurchasingPage() {
         ) : null}
         <div className="dialog-actions">
           <Button type="button" variant="quiet" onClick={() => setReview(null)} disabled={busy}>Close</Button>
-          {review?.document.status !== "approved" ? <Button type="button" variant="secondary" disabled={busy || supportMode} onClick={() => void saveReview("save_review")}>Save review</Button> : null}
-          {review?.document.status !== "approved" ? <Button type="button" disabled={busy || supportMode} onClick={() => void saveReview("approve")}><CheckCircle2 size={16} /> Approve document</Button> : null}
+          {review?.document.status !== "approved" ? <Button type="button" variant="quiet" disabled={busy || supportMode || !online} onClick={() => review && void scanDocument(review.document.id)}><ScanLine size={15} /> Rescan</Button> : null}
+          {review?.document.status !== "approved" ? <Button type="button" variant="secondary" disabled={busy || supportMode} onClick={() => void saveReview("save_review")}>{online ? "Save review" : "Save locally"}</Button> : null}
+          {review?.document.status !== "approved" ? <Button type="button" disabled={!canApprove} title={!canApprove ? "Confirm Supplier, type, number, date, currency and every line before approval" : undefined} onClick={() => void saveReview("approve")}><CheckCircle2 size={16} /> Approve document</Button> : null}
         </div>
       </Dialog>
     </>
