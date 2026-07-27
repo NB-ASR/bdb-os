@@ -71,5 +71,9 @@ assert.ok(
   migrationFiles.includes("20260727152500_product_support_write_guard.sql"),
   "Product support-session write guard migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260727154000_supplier_directory_foundation.sql"),
+  "Supplier directory foundation migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
