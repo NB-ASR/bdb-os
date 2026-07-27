@@ -28,10 +28,11 @@ Related routes may be grouped under an expandable operational heading without me
 Catalogue & Stock
 ├─ Inventory
 ├─ Products
-└─ Services
+├─ Services
+└─ Suppliers
 ```
 
-Inventory, Products and Services remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
+Inventory, Products, Services and Suppliers remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
 
 ## First slice
 
@@ -68,6 +69,20 @@ Services is the third visual migration:
 - service definitions connect to Calendar, customer history and invoice lines without duplicating the service in each department;
 - working hours, leave and appointment availability remain Calendar responsibilities;
 - no service, pricing, booking, staff-assignment or invoice-line writes.
+
+## Fourth slice
+
+Suppliers is the fourth visual migration:
+
+- shared `/suppliers` route;
+- workspace feature key `suppliers`;
+- enabled for `vanita-integration` by workspace override;
+- representative supplier rows for directory, contact, terms, discount and relationship review only;
+- supplier definition window covering code, type, contact details, tax identifier, payment terms, default discount, document currency, supplied categories, address and lifecycle status;
+- supplier records connect products, purchasing documents, stock receipts and Accounts without storing separate copies in each department;
+- default discounts and terms are starting rules; each supplier document must preserve its actual line discounts, paid costs and payment terms;
+- bank details, payment approval and settlement remain Accounts and Banking responsibilities;
+- no supplier, contact, discount, document, purchasing, payment or product-link writes.
 
 ## Proposed visual sequence
 
