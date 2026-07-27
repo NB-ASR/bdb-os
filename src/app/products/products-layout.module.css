@@ -1,0 +1,39 @@
+.productNav {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.productNav a {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.productNav a:hover,
+.productNav a.active {
+  background: var(--surface-3);
+  color: var(--gold-light);
+}
+
+@media (max-width: 560px) {
+  .productNav {
+    width: 100%;
+  }
+
+  .productNav a {
+    flex: 1;
+    justify-content: center;
+  }
+}
