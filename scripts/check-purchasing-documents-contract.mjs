@@ -46,7 +46,7 @@ assert.match(migration, /grant execute on function public\.apply_supplier_docume
 assert.match(migration, /to service_role/);
 
 assert.match(uploadApi, /createHash\("sha256"\)/);
-assert.match(uploadApi, /detectMimeType/);
+assert.match(uploadApi, /detectFileType/);
 assert.match(uploadApi, /workspace-documents/);
 assert.match(uploadApi, /Idempotency-Key|idempotency-key/i);
 assert.match(uploadApi, /apply_supplier_document_upload/);
