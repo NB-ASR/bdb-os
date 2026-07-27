@@ -164,6 +164,7 @@ export default function InventoryPage() {
         onClose={() => setImportOpen(false)}
         title="Import supplier document"
         description="Visual preview of the Vanita invoice and credit-note workflow inside BDB OS."
+        className={styles.importDialog}
       >
         <div className={styles.dialogBody}>
           <div className={styles.stepper} aria-label="Import progress">
