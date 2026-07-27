@@ -34,6 +34,8 @@ Catalogue & Stock
 
 Inventory, Products, Services and Suppliers remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
 
+Sales remains a separate operational route because it coordinates catalogue, customers, stock and Accounts rather than belonging to the catalogue definition itself.
+
 ## First slice
 
 Inventory is the first visual migration:
@@ -83,6 +85,19 @@ Suppliers is the fourth visual migration:
 - default discounts and terms are starting rules; each supplier document must preserve its actual line discounts, paid costs and payment terms;
 - bank details, payment approval and settlement remain Accounts and Banking responsibilities;
 - no supplier, contact, discount, document, purchasing, payment or product-link writes.
+
+## Fifth slice
+
+Sales is the fifth visual migration:
+
+- shared `/sales` route;
+- workspace feature key `sales`;
+- enabled for `vanita-integration` by workspace override;
+- representative sales register with customer, channel, line summary, gross value, discounts, total, payment status and lifecycle state;
+- visual Record Sale window connecting customer, staff member, products, services, discounts, VAT, payment method and optional invoice linkage;
+- completed product lines will eventually create auditable Inventory movements, while draft sales must not change stock;
+- invoices, payments, outstanding balances and settlement remain authoritative in Accounts and Banking;
+- no sale, customer link, stock movement, invoice, payment, refund or balance writes.
 
 ## Proposed visual sequence
 
