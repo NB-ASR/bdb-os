@@ -75,5 +75,9 @@ assert.ok(
   migrationFiles.includes("20260727154000_supplier_directory_foundation.sql"),
   "Supplier directory foundation migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260727163000_product_supplier_relationship.sql"),
+  "Product Supplier relationship migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
