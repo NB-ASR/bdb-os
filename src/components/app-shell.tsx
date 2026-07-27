@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  Clock3,
   FileText,
   Landmark,
   Loader2,
@@ -62,7 +63,15 @@ const workspaceNavigation: NavigationEntry[] = [
   { name: "Overview", href: "/workspace", icon: Building2 },
   { name: "Accounts", href: "/accounts", icon: CircleDollarSign },
   { name: "Customers", href: "/customers", icon: UsersRound },
-  { name: "Calendar", href: "/calendar", icon: CalendarDays },
+  {
+    name: "Calendar",
+    icon: CalendarDays,
+    children: [
+      { name: "Appointments", href: "/calendar", icon: CalendarDays, featureKey: "calendar" },
+      { name: "Timesheets", href: "/calendar/timesheets", icon: Clock3, featureKey: "timesheets" },
+      { name: "Meetings", href: "/calendar/meetings", icon: UsersRound, featureKey: "meetings" },
+    ],
+  },
   {
     name: "Catalogue & Stock",
     icon: Boxes,
@@ -167,7 +176,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [online, setOnline] = useState(true);
   const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>({});
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ "Catalogue & Stock": true });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ Calendar: true, "Catalogue & Stock": true });
   const canManageTeam = ["owner", "admin", "manager"].includes(role);
   const connectionLabel = !online
     ? "Offline · view only"
