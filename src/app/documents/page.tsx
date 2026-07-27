@@ -51,7 +51,7 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Connected files" title="Documents" description="Business files organised around the customers, invoices and bookings they belong to." action={<Button onClick={() => inputRef.current?.click()}><UploadCloud size={17} /> Upload file</Button>} />
+      <PageHeader eyebrow="Connected files" title="Document Library" description="Business files organised around the customers, invoices, appointments and records they belong to." action={<Button onClick={() => inputRef.current?.click()}><UploadCloud size={17} /> Upload file</Button>} />
       <input ref={inputRef} type="file" hidden onChange={chooseFile} accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" />
       {fileError ? <div className="review-callout"><AlertCircle size={19} /><div><strong>File not selected</strong><p>{fileError}</p></div></div> : null}
       <div className="stat-grid">
@@ -68,7 +68,7 @@ export default function DocumentsPage() {
           <small>PDF, image, Word or spreadsheet · maximum 10 MB</small>
           <input type="file" aria-label="Upload document" onChange={chooseFile} accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx" />
         </div>
-        <Card className="card-pad"><p className="eyebrow">Controlled filing</p><h2>You choose the context</h2><p className="muted small" style={{ marginBottom: 0 }}>Select the customer and linked record before upload. Automatic extraction and filing suggestions are not enabled in this workspace yet.</p></Card>
+        <Card className="card-pad"><p className="eyebrow">Controlled filing</p><h2>You choose the context</h2><p className="muted small" style={{ marginBottom: 0 }}>Select the customer and linked record before upload. Supplier invoices and credit notes follow the separate Purchasing review workflow.</p></Card>
       </div>
 
       <div className="toolbar"><input className="filter-input" placeholder="Search documents or linked records…" value={query} onChange={(event) => setQuery(event.target.value)} /><Badge tone="neutral">{visible.length} files</Badge></div>
@@ -85,7 +85,7 @@ export default function DocumentsPage() {
           <div className="form-grid">
             <div className="field field-full"><label htmlFor="document-name">File name</label><input id="document-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
             <div className="field"><label htmlFor="document-customer">Customer</label><select id="document-customer" value={form.customerId} onChange={(event) => setForm({ ...form, customerId: event.target.value })}><option value="">Business file</option>{state.customers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-            <div className="field"><label htmlFor="document-link">Linked record</label><input id="document-link" required value={form.linkedTo} onChange={(event) => setForm({ ...form, linkedTo: event.target.value })} placeholder="Invoice, booking or business" /></div>
+            <div className="field"><label htmlFor="document-link">Linked record</label><input id="document-link" required value={form.linkedTo} onChange={(event) => setForm({ ...form, linkedTo: event.target.value })} placeholder="Invoice, appointment or business" /></div>
           </div>
           <div className="dialog-actions"><Button type="button" variant="quiet" disabled={uploading} onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={uploading}>{uploading ? "Uploading…" : "Upload document"}</Button></div>
         </form>
