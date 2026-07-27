@@ -43,6 +43,7 @@ const featureRoutes: Record<string, string> = {
   "/suppliers": "suppliers",
   "/sales": "sales",
   "/communications": "communications",
+  "/documents/purchasing": "purchasing",
   "/documents": "documents",
   "/banking": "banking",
   "/reports": "reports",
