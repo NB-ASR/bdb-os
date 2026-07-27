@@ -1,10 +1,14 @@
-.headerActions {
+.headerActions,
+.rowActions,
+.pendingActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
-.supportNotice {
+.supportNotice,
+.offlineNotice {
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -15,20 +19,77 @@
   background: rgba(194, 158, 89, 0.08);
 }
 
-.supportNotice svg {
+.offlineNotice {
+  border-color: rgba(117, 151, 196, 0.3);
+  background: rgba(117, 151, 196, 0.08);
+}
+
+.supportNotice svg,
+.offlineNotice svg {
   flex: 0 0 auto;
   color: var(--gold);
   margin-top: 2px;
 }
 
-.supportNotice div {
+.offlineNotice svg {
+  color: #86a9d7;
+}
+
+.supportNotice div,
+.offlineNotice div {
   display: grid;
   gap: 3px;
 }
 
-.supportNotice span {
+.supportNotice span,
+.offlineNotice span {
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.pendingList {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pendingItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.pendingMeta {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pendingMeta strong,
+.pendingMeta span,
+.pendingMeta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pendingMeta span,
+.pendingMeta small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pendingMeta small {
+  color: #e3b56b;
+}
+
+.pendingActions {
+  margin-top: 12px;
 }
 
 .registerCard {
@@ -94,14 +155,14 @@
 }
 
 .documentTable {
-  min-width: 1260px;
+  min-width: 1340px;
 }
 
 .documentIdentity {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 210px;
+  min-width: 220px;
 }
 
 .documentIdentity > span {
@@ -117,40 +178,56 @@
 
 .documentIdentity div,
 .supplierCell,
-.statusStack {
+.statusStack,
+.amountCell {
   display: grid;
   gap: 3px;
 }
 
 .documentIdentity small,
 .supplierCell small,
-.statusStack small {
+.statusStack small,
+.amountCell small {
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .amountCell {
-  display: grid;
-  gap: 3px;
   text-align: right;
 }
 
-.amountCell small {
-  color: var(--muted);
+.rowActions {
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
-.emptyState {
+.emptyState,
+.emptyLines {
   display: grid;
   justify-items: center;
   text-align: center;
   gap: 8px;
-  padding: 44px 20px 50px;
   color: var(--muted);
+}
+
+.emptyState {
+  padding: 44px 20px 50px;
 }
 
 .emptyState h3,
 .emptyState p {
   margin: 0;
+}
+
+.emptyLines {
+  padding: 26px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.emptyLines span {
+  font-size: 0.86rem;
 }
 
 .lowerGrid {
@@ -186,8 +263,12 @@
 
 .purchasingDialog,
 .detailDialog {
-  width: min(1080px, calc(100vw - 32px));
+  width: min(1120px, calc(100vw - 32px));
   max-width: none;
+}
+
+.detailDialog {
+  width: min(1260px, calc(100vw - 32px));
 }
 
 .dialogBody {
@@ -235,17 +316,14 @@
   background: var(--gold);
 }
 
-.importGrid,
-.detailGrid {
+.importGrid {
   display: grid;
-  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1.14fr);
   gap: 16px;
 }
 
 .uploadZone,
-.reviewPanel,
-.detailPanel,
-.timelinePanel {
+.reviewPanel {
   border: 1px solid var(--border);
   border-radius: 15px;
   background: var(--surface-2);
@@ -253,12 +331,21 @@
 }
 
 .uploadZone {
-  min-height: 310px;
+  min-height: 320px;
   display: grid;
   align-content: center;
   justify-items: center;
   text-align: center;
   gap: 10px;
+  cursor: pointer;
+}
+
+.uploadZone input[type="file"] {
+  width: min(100%, 360px);
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-3);
 }
 
 .uploadIcon {
@@ -283,38 +370,13 @@
 
 .reviewPanel {
   display: grid;
+  align-content: start;
   gap: 15px;
 }
 
-.previewFields,
-.detailList {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.previewFields label {
-  display: grid;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.previewFields input,
-.previewFields select {
-  width: 100%;
-}
-
-.linePreview {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 0.6fr 0.8fr 0.9fr;
-  gap: 10px;
-  padding: 12px;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 0.8rem;
+.reviewPanel h3,
+.reviewPanel p {
+  margin: 0;
 }
 
 .boundaryNote {
@@ -364,79 +426,161 @@
   margin-top: 3px;
 }
 
-.detailPanel h3,
-.timelinePanel h3 {
-  margin: 0 0 12px;
-  font-size: 0.96rem;
+.fileLink,
+.fileUnavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
-.detailItem {
-  display: grid;
-  gap: 3px;
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
+.fileLink:hover {
+  border-color: rgba(194, 158, 89, 0.5);
 }
 
-.detailItem:nth-child(-n + 2) {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.detailItem span {
+.fileUnavailable {
   color: var(--muted);
-  font-size: 0.8rem;
 }
 
-.timeline {
+.reviewFormGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: var(--surface-2);
+}
+
+.reviewFormGrid label,
+.reviewLine label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.reviewFormGrid input,
+.reviewFormGrid select,
+.reviewLine input,
+.reviewLine select {
+  width: 100%;
+}
+
+.reviewLinesHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.reviewLinesHeader h3,
+.reviewLinesHeader p {
+  margin: 0;
+}
+
+.reviewLines {
   display: grid;
   gap: 10px;
 }
 
-.timelineItem {
+.reviewLine {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(210px, 1.5fr) minmax(120px, 0.7fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(100px, 0.55fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(230px, 1.3fr) minmax(160px, 0.9fr) auto;
   gap: 10px;
-  align-items: start;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+  overflow-x: auto;
 }
 
-.timelineItem > span {
-  width: 28px;
-  height: 28px;
+.lineNumber {
+  width: 30px;
+  height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  align-self: center;
+  border-radius: 10px;
   color: var(--gold);
   background: rgba(194, 158, 89, 0.11);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 800;
 }
 
-.timelineItem div {
+.lineDescription,
+.lineProduct,
+.lineNotes {
+  min-width: 0;
+}
+
+.lineProduct small {
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.postingLockGrid {
   display: grid;
-  gap: 2px;
-  padding: 3px 0 10px;
-  border-bottom: 1px solid var(--border);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
 }
 
-.timelineItem:last-child div {
-  border-bottom: 0;
+.postingLockGrid > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-2);
 }
 
-.timelineItem small {
+.postingLockGrid svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+  margin-top: 1px;
+}
+
+.postingLockGrid span {
+  display: grid;
+  gap: 3px;
+}
+
+.postingLockGrid small {
   color: var(--muted);
 }
 
+@media (max-width: 1100px) {
+  .reviewFormGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
-  .toolbar {
+  .toolbar,
+  .importGrid {
     grid-template-columns: 1fr;
   }
 
-  .importGrid,
-  .detailGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .lowerGrid {
+  .lowerGrid,
+  .postingLockGrid {
     grid-template-columns: 1fr;
   }
 }
@@ -455,21 +599,24 @@
   }
 
   .stepper,
-  .previewFields,
-  .detailList {
+  .reviewFormGrid {
     grid-template-columns: 1fr;
   }
 
-  .linePreview {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .detailItem:nth-child(2) {
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
-  }
-
-  .detailHero {
+  .detailHero,
+  .reviewLinesHeader,
+  .pendingItem {
+    align-items: stretch;
     flex-direction: column;
+  }
+
+  .rowActions {
+    flex-wrap: wrap;
+  }
+
+  .pendingMeta strong,
+  .pendingMeta span,
+  .pendingMeta small {
+    white-space: normal;
   }
 }
