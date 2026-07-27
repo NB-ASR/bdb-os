@@ -35,6 +35,10 @@ Catalogue & Stock
 ├─ Products
 ├─ Services
 └─ Suppliers
+
+Documents
+├─ Document Library
+└─ Purchasing
 ```
 
 Appointments, Timesheets and Meetings remain separate feature keys. Appointments continues using the existing `/calendar` route, while Timesheets and Meetings use `/calendar/timesheets` and `/calendar/meetings`. When a workspace has only the Calendar feature, the shell renders Appointments as a normal standalone link. The Calendar dropdown appears only when another enabled child exists.
@@ -44,6 +48,8 @@ Timesheets is surfaced in Calendar because it is time-oriented, but its records 
 Meetings is surfaced in Calendar because it coordinates time and attendees. Invitations remain Communications records, minutes remain Documents, and customer or supplier context remains on the linked business record.
 
 Inventory, Products, Services and Suppliers remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable Catalogue & Stock group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
+
+Document Library keeps the existing `documents` entitlement and `/documents` route. Purchasing uses a separate `purchasing` entitlement at `/documents/purchasing`. When Purchasing is disabled, Document Library remains a standalone link.
 
 Sales remains a separate operational route because it coordinates catalogue, customers, stock and Accounts rather than belonging to the catalogue definition itself.
 
@@ -55,7 +61,8 @@ Inventory is the first visual migration:
 - workspace feature key `inventory`;
 - enabled for `vanita-integration` by workspace override;
 - stock metrics, filters, table structure and empty state;
-- supplier invoice and credit-note import window;
+- supplier-document entry point now routes to the shared Documents → Purchasing workflow;
+- Inventory receives approved posting commands but does not own or duplicate the original supplier file;
 - no product, supplier, stock, upload, extraction or movement writes.
 
 ## Second slice
@@ -129,6 +136,21 @@ Calendar and appointment enhancements are the sixth visual migration:
 - Meetings owns scheduling and participation context, while invitations remain Communications records and minutes remain Documents;
 - no appointment, timesheet, attendance, approval, meeting, invitation, minutes, availability, invoice, payment, reminder, customer-history or Inventory writes.
 
+## Seventh slice
+
+Documents and Purchasing are the seventh visual migration:
+
+- Documents becomes an expandable department with Document Library and Purchasing children;
+- Document Library keeps the existing shared `/documents` route and `documents` entitlement;
+- Purchasing is introduced at `/documents/purchasing` with feature key `purchasing`, enabled only for `vanita-integration` during visual review;
+- representative supplier invoice and credit-note register with supplier, dates, values, extraction, review, product-match, Inventory, Accounts and payment states;
+- visual Upload Supplier Document workflow using Upload → Review → Complete stages;
+- visual document-detail lifecycle showing one source document referenced by Inventory, Accounts and Banking;
+- Documents owns the original file, metadata, extraction and review status;
+- Suppliers owns supplier identity, Products owns catalogue matching, Inventory owns stock movements, Accounts owns payables and Banking owns settlement;
+- the duplicate supplier-document modal is removed from Inventory and replaced by a shortcut to Purchasing;
+- no file, extraction, supplier-document, product-match, stock, payable, payment or reconciliation writes.
+
 ## Proposed visual sequence
 
 1. Inventory and supplier-document import
@@ -162,6 +184,7 @@ For each approved module:
 - Excessive sidebar grouping could hide frequently used work from business users.
 - Timesheets could accidentally become a payroll system if rate, tax and settlement boundaries are not enforced.
 - Meetings could duplicate Communications or Documents if invitations and minutes are stored directly in Calendar.
+- Purchasing could duplicate Inventory or Accounts if each department stores its own supplier-document copy.
 
 ## Mitigations
 
@@ -172,3 +195,4 @@ For each approved module:
 - Shared BDB OS records and module rules take priority over the old implementation.
 - Navigation groups are used only when at least two enabled child routes exist.
 - Cross-department records are linked rather than duplicated.
+- Supplier documents use one lifecycle and controlled departmental posting states.
