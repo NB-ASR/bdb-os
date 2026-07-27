@@ -74,7 +74,8 @@ function finite(value: number) {
 }
 
 export function roundInventoryQuantity(value: number) {
-  return Math.round(finite(value) * 1000) / 1000;
+  const safeValue = finite(value);
+  return Math.sign(safeValue) * Math.round(Math.abs(safeValue) * 1000) / 1000;
 }
 
 export function normaliseInventoryMovementDelta(
@@ -83,8 +84,8 @@ export function normaliseInventoryMovementDelta(
 ) {
   const value = finite(quantity);
   if (value === 0) return 0;
-  if (inboundTypes.has(movementType)) return Math.abs(value);
-  if (outboundTypes.has(movementType)) return -Math.abs(value);
+  if (inboundTypes.has(movementType)) return roundInventoryQuantity(Math.abs(value));
+  if (outboundTypes.has(movementType)) return roundInventoryQuantity(-Math.abs(value));
   return roundInventoryQuantity(value);
 }
 
@@ -157,14 +158,18 @@ export function summariseInventory(products: readonly InventoryProductSnapshot[]
     });
 }
 
-export function canReverseInventoryMovement(movement: {
-  movementType: InventoryMovementType;
-  reversalOfId?: string | null;
-  transferGroupId?: string | null;
-  supplierDocumentId?: string | null;
-}, movements: readonly { reversalOfId?: string | null }[]) {
+export function canReverseInventoryMovement(
+  movement: {
+    id: string;
+    movementType: InventoryMovementType;
+    reversalOfId?: string | null;
+    transferGroupId?: string | null;
+    supplierDocumentId?: string | null;
+  },
+  movements: readonly { reversalOfId?: string | null }[],
+) {
   if (movement.movementType === "reversal") return false;
   if (movement.transferGroupId) return false;
   if (movement.supplierDocumentId) return false;
-  return !movements.some((candidate) => candidate.reversalOfId === (movement as { id?: string }).id);
+  return !movements.some((candidate) => candidate.reversalOfId === movement.id);
 }
