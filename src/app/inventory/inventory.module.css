@@ -180,8 +180,14 @@
   margin-top: 20px;
 }
 
+.importDialog.importDialog {
+  width: min(1040px, calc(100vw - 40px));
+  max-height: min(92vh, 900px);
+  overflow-x: hidden;
+}
+
 .dialogBody {
-  padding: 0 24px 4px;
+  padding: 0 0 4px;
 }
 
 .stepper {
@@ -358,6 +364,13 @@
 
   .filters button {
     flex: 1;
+  }
+
+  .importDialog.importDialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 18px;
+    border-radius: 14px;
   }
 
   .stepper {
