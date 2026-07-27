@@ -10,7 +10,7 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTIONS = new Set(["create", "update", "archive", "restore"]);
 
-interface ProductSupplierCommandBody {
+type ProductSupplierCommandBody = Record<string, unknown> & {
   workspaceId?: unknown;
   action?: unknown;
   id?: unknown;
@@ -24,7 +24,7 @@ interface ProductSupplierCommandBody {
   leadTimeDays?: unknown;
   minimumOrderQuantity?: unknown;
   notes?: unknown;
-}
+};
 
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
