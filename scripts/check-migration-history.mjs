@@ -83,5 +83,9 @@ assert.ok(
   migrationFiles.includes("20260727161000_supplier_document_capture_review.sql"),
   "Supplier document capture and review migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260727161500_supplier_document_reference_indexes.sql"),
+  "Supplier document reference index migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
