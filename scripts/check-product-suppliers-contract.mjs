@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 
 const migration = await readFile(
-  "supabase/migrations/20260727163000_product_supplier_relationship.sql",
+  "supabase/migrations/20260727155000_product_supplier_relationship.sql",
   "utf8",
 );
 const api = await readFile("src/app/api/product-suppliers/route.ts", "utf8");

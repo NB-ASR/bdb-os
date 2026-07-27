@@ -76,7 +76,7 @@ assert.ok(
   "Supplier directory foundation migration is missing.",
 );
 assert.ok(
-  migrationFiles.includes("20260727163000_product_supplier_relationship.sql"),
+  migrationFiles.includes("20260727155000_product_supplier_relationship.sql"),
   "Product Supplier relationship migration is missing.",
 );
 assert.ok(
