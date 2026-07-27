@@ -87,9 +87,20 @@ const emptyForm: ProductForm = {
 };
 
 const CACHE_PREFIX = "bdb-products-cache-v1";
+const LAST_WORKSPACE_KEY = "bdb-products-last-workspace-v1";
 
 function cacheKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
+}
+
+function readLastWorkspace() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(LAST_WORKSPACE_KEY);
+}
+
+function rememberWorkspace(workspaceId: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
 }
 
 function readCache(workspaceId: string): ProductRow[] {
@@ -210,6 +221,7 @@ export default function ProductsPage() {
 
     const currentWorkspaceId = String(context.currentWorkspaceId);
     setWorkspaceId(currentWorkspaceId);
+    rememberWorkspace(currentWorkspaceId);
     const response = await fetch(`/api/products?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error ?? "Products could not be loaded.");
@@ -224,30 +236,34 @@ export default function ProductsPage() {
   useEffect(() => {
     let active = true;
     async function initialise() {
+      const fallbackWorkspace = mode === "demo" ? "demo" : readLastWorkspace();
+      const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : [];
+      const queued = fallbackWorkspace ? readProductQueue(fallbackWorkspace) : [];
+
+      if (active && fallbackWorkspace) {
+        setWorkspaceId(fallbackWorkspace);
+        setProducts(queued.reduce(applyCommand, cached));
+        setPendingCount(queued.length);
+      }
+
       try {
         setError("");
-        if (mode === "demo") {
-          const demoProducts = readCache("demo");
-          if (active) {
-            setWorkspaceId("demo");
-            setProducts(demoProducts);
+        if (mode === "demo") return;
+        if (!navigator.onLine) {
+          if (cached.length || queued.length) {
+            setNotice("Showing the last cached catalogue. Product changes will stay queued until the connection returns.");
+          } else {
+            setError("Products need one successful online load before this workspace can open from a cold offline start.");
           }
-        } else {
-          await loadCloud();
+          return;
         }
+        await loadCloud();
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Products could not be loaded.";
-        const fallbackWorkspace = workspaceId;
-        const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : [];
-        if (active) {
-          if (cached.length) {
-            const queue = readProductQueue(fallbackWorkspace!);
-            setProducts(queue.reduce(applyCommand, cached));
-            setPendingCount(queue.length);
-            setNotice("Showing the last cached catalogue. Changes can be queued while offline.");
-          } else {
-            setError(message);
-          }
+        if (cached.length || queued.length) {
+          if (active) setNotice("Showing the last cached catalogue. Product changes can remain queued while cloud access is unavailable.");
+        } else if (active) {
+          setError(message);
         }
       } finally {
         if (active) setLoaded(true);
@@ -255,7 +271,7 @@ export default function ProductsPage() {
     }
     void initialise();
     return () => { active = false; };
-  }, [loadCloud, mode, workspaceId]);
+  }, [loadCloud, mode]);
 
   useEffect(() => {
     if (mode === "demo" && loaded) writeCache("demo", products);
@@ -461,7 +477,7 @@ export default function ProductsPage() {
         <div className="settings-note" style={{ marginBottom: 18 }}>
           <strong>{pendingCount} product change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
           <p>Commands remain local with stable retry keys. Conflicting edits will be stopped rather than silently overwritten.</p>
-          <div className={styles.syncActions}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
             <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
           </div>
@@ -530,7 +546,7 @@ export default function ProductsPage() {
             <tbody>
               {visibleProducts.map((product) => (
                 <tr key={product.id}>
-                  <td><div className={styles.productIdentity}><span><Package size={17} /></span><div><strong>{product.name}</strong>{product.pending ? <small>Pending sync</small> : null}</div></div></td>
+                  <td><div className={styles.productIdentity}><span><Package size={17} /></span><div><strong>{product.name}</strong>{product.pending ? <small style={{ display: "block", color: "var(--gold-light)", marginTop: 2 }}>Pending sync</small> : null}</div></div></td>
                   <td><code>{product.sku}</code></td>
                   <td><Badge tone={product.purpose === "resale" ? "gold" : "blue"}>{product.purpose === "resale" ? "Resale stock" : "Business supply"}</Badge></td>
                   <td>{product.brand || <span className="muted">—</span>}</td>
@@ -543,7 +559,7 @@ export default function ProductsPage() {
                   <td>{Number(product.reorder_level)} {product.unit_label}</td>
                   <td><Badge tone={product.status === "active" ? "green" : "neutral"}>{product.status === "active" ? "Active" : "Archived"}</Badge></td>
                   <td>
-                    <div className={styles.rowActions}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                       <Button type="button" variant="quiet" disabled={supportMode || product.pending} onClick={() => openEdit(product)}>Edit</Button>
                       <Button type="button" variant="quiet" disabled={supportMode || product.pending || saving} onClick={() => void changeStatus(product)}>
                         {product.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
