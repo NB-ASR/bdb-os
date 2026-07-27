@@ -1,9 +1,9 @@
 name: Inventory Test Diagnostics
 
 on:
-  push:
+  pull_request:
     branches:
-      - integration/vanita-workspace
+      - main
 
 permissions:
   contents: read
