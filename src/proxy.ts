@@ -34,6 +34,8 @@ const featureRoutes: Record<string, string> = {
   "/workspace": "overview",
   "/accounts": "accounts",
   "/customers": "customers",
+  "/calendar/timesheets": "timesheets",
+  "/calendar/meetings": "meetings",
   "/calendar": "calendar",
   "/inventory": "inventory",
   "/products": "products",
