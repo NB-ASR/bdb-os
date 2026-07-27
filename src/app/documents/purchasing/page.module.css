@@ -1,0 +1,4 @@
+.page :global(table[class*="documentTable"] th:nth-child(8)),
+.page :global(table[class*="documentTable"] td:nth-child(8)) {
+  display: none;
+}
