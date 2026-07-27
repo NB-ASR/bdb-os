@@ -87,5 +87,9 @@ assert.ok(
   migrationFiles.includes("20260727161500_supplier_document_reference_indexes.sql"),
   "Supplier document reference index migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260727190000_inventory_movement_ledger.sql"),
+  "Inventory movement ledger migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
