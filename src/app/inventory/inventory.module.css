@@ -1,0 +1,370 @@
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.supportNotice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 14px 0 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 13px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.supportNotice div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.supportNotice span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.inventoryCard {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.searchField {
+  min-width: 240px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.searchField:focus-within {
+  border-color: rgba(211, 168, 75, 0.55);
+  box-shadow: 0 0 0 3px rgba(211, 168, 75, 0.08);
+}
+
+.searchField input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.filters {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.filters button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filters button:hover,
+.filters button.activeFilter {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.filters button.activeFilter {
+  color: var(--gold-light);
+}
+
+.lowerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.workflowCard {
+  position: relative;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.workflowCard::after {
+  content: "";
+  position: absolute;
+  top: -85px;
+  right: -70px;
+  width: 180px;
+  height: 180px;
+  border: 1px solid rgba(211, 168, 75, 0.09);
+  border-radius: 50%;
+}
+
+.cardIcon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 24px;
+  border: 1px solid rgba(211, 168, 75, 0.28);
+  border-radius: 11px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.workflowCard h2 {
+  margin: 5px 0 8px;
+  font-size: 1.08rem;
+}
+
+.workflowCard > p:last-of-type {
+  margin-bottom: 0;
+}
+
+.workflowCard ol {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 20px 0 0;
+  list-style: none;
+}
+
+.workflowCard li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #c6c3b9;
+  font-size: 0.82rem;
+}
+
+.workflowCard li span {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--gold-light);
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
+.scopeBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.dialogBody {
+  padding: 0 24px 4px;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 12px 0 20px;
+}
+
+.stepper > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--surface-2);
+  font-size: 0.78rem;
+}
+
+.stepper span {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+  font-size: 0.68rem;
+}
+
+.stepper .activeStep {
+  border-color: rgba(211, 168, 75, 0.38);
+  color: var(--gold-light);
+  background: var(--gold-faint);
+}
+
+.stepper .activeStep span {
+  background: var(--gold);
+  color: #16130c;
+}
+
+.importGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(340px, 1.2fr);
+  gap: 14px;
+}
+
+.uploadZone,
+.reviewPreview {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+
+.uploadZone {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+}
+
+.uploadIcon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 16px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 16px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.uploadZone h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.uploadZone p {
+  margin: 6px 0 18px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.uploadZone small {
+  margin-top: 12px;
+  color: var(--muted-2);
+  font-size: 0.7rem;
+}
+
+.reviewPreview {
+  padding: 20px;
+}
+
+.reviewPreview h3 {
+  margin: 4px 0 6px;
+  font-size: 1rem;
+}
+
+.previewFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  margin-top: 18px;
+}
+
+.previewFields label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.previewFields input,
+.previewFields select {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+.linePreview {
+  display: grid;
+  grid-template-columns: 1.4fr 0.7fr 0.8fr 0.9fr;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted-2);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+@media (max-width: 980px) {
+  .toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .searchField {
+    min-width: 100%;
+  }
+
+  .importGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .headerActions,
+  .headerActions > button {
+    width: 100%;
+  }
+
+  .lowerGrid,
+  .previewFields {
+    grid-template-columns: 1fr;
+  }
+
+  .filters {
+    width: 100%;
+  }
+
+  .filters button {
+    flex: 1;
+  }
+
+  .stepper {
+    grid-template-columns: 1fr;
+  }
+
+  .linePreview {
+    grid-template-columns: 1fr 1fr;
+  }
+}
