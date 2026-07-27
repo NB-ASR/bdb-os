@@ -48,7 +48,9 @@ assert.match(migration, /to service_role/);
 assert.match(uploadApi, /createHash\("sha256"\)/);
 assert.match(uploadApi, /detectFileType/);
 assert.match(uploadApi, /workspace-documents/);
-assert.match(uploadApi, /Idempotency-Key|idempotency-key/i);
+assert.match(uploadApi, /requireWorkspaceCommand/);
+assert.match(uploadApi, /context\.idempotencyKey/);
+assert.match(uploadApi, /IDEMPOTENCY_REQUIRED/);
 assert.match(uploadApi, /apply_supplier_document_upload/);
 
 assert.match(extractionApi, /store: false/);
