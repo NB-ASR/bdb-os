@@ -27,10 +27,11 @@ Related routes may be grouped under an expandable operational heading without me
 ```text
 Catalogue & Stock
 ├─ Inventory
-└─ Products
+├─ Products
+└─ Services
 ```
 
-Inventory and Products remain separate feature keys. When a workspace has both enabled, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
+Inventory, Products and Services remain separate feature keys. When a workspace has at least two enabled children, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
 
 ## First slice
 
@@ -54,6 +55,19 @@ Products is the second visual migration:
 - product definition window covering SKU, barcode, supplier, category, purpose, pricing, VAT and reorder level;
 - opening stock deliberately excluded from the product definition because it must become an auditable inventory movement;
 - no product, price, supplier, barcode or stock writes.
+
+## Third slice
+
+Services is the third visual migration:
+
+- shared `/services` route;
+- workspace feature key `services`;
+- enabled for `vanita-integration` by workspace override;
+- representative service rows for table, filter and terminology review only;
+- service definition window covering code, category, duration, preparation and recovery buffers, price, VAT, booking visibility, staff eligibility and lifecycle status;
+- service definitions connect to Calendar, customer history and invoice lines without duplicating the service in each department;
+- working hours, leave and appointment availability remain Calendar responsibilities;
+- no service, pricing, booking, staff-assignment or invoice-line writes.
 
 ## Proposed visual sequence
 
