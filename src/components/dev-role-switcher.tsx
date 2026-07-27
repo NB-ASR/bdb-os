@@ -145,7 +145,7 @@ export function DevRoleSwitcher({ expanded = false }: { expanded?: boolean }) {
     <div className={`${styles.switcher} ${expanded ? styles.expanded : ""}`} data-dev-access>
       <div className={styles.copy}>
         <span className={styles.label}>Preview access</span>
-        {expanded ? <small>Switches between seeded development identities. Production authentication is unchanged.</small> : null}
+        {expanded ? <small>Open Founder Admin, any created workspace in audited read-only mode, or the seeded client identity.</small> : null}
       </div>
       <div className={styles.actions}>
         <button
@@ -158,6 +158,19 @@ export function DevRoleSwitcher({ expanded = false }: { expanded?: boolean }) {
           {busy === "admin" ? <Loader2 className={styles.spin} size={15} /> : <ShieldCheck size={15} />}
           <span>Admin</span>
         </button>
+        {status.view === "admin" && support?.workspaces.length ? (
+          <select
+            value=""
+            onChange={(event) => void switchSupportWorkspace(event.target.value)}
+            disabled={Boolean(busy)}
+            aria-label="Open a workspace in support mode"
+          >
+            <option value="">Open workspace…</option>
+            {support.workspaces.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+            ))}
+          </select>
+        ) : null}
         <button
           type="button"
           className={status.view === "workspace" ? styles.active : ""}
