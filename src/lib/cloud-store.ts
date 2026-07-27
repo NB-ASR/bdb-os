@@ -5,6 +5,20 @@ import type { BdbState, WorkspaceTheme } from "./types";
 type Row = Record<string, unknown>;
 type QueryResult<T = unknown> = { data: T | null; error: { message: string } | null };
 
+type MembershipContext = {
+  workspace_id: string;
+  role: string;
+  access_profile: string;
+  workspaces: { name: string; status: string };
+};
+
+type SupportContext = {
+  workspace_id: string;
+  workspace_name: string;
+  access_mode: string;
+  expires_at: string;
+};
+
 function requireConfigured() {
   if (!isSupabaseConfigured()) {
     throw new Error("Cloud workspace is not configured.");
@@ -39,21 +53,52 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
   if (profile?.active_workspace_id) membershipQuery = membershipQuery.eq("workspace_id", profile.active_workspace_id);
   const membershipResult = await membershipQuery.limit(1);
   const memberships = requireResult(membershipResult, "Workspace membership could not be loaded");
-  const membership = memberships?.[0] as {
-    workspace_id: string;
-    role: string;
-    access_profile: string;
-    workspaces: { name: string; status: string };
-  } | undefined;
-  if (!membership) return null;
-  if (["suspended", "cancelled"].includes(membership.workspaces.status)) {
-    throw new Error("This workspace is not currently available.");
+  const membership = memberships?.[0] as MembershipContext | undefined;
+
+  let supportContext: SupportContext | null = null;
+  if (!membership) {
+    const supportResult = await supabase.rpc("get_my_support_session");
+    const supportRows = requireResult(supportResult, "Support workspace could not be loaded") as SupportContext[] | null;
+    supportContext = supportRows?.[0] ?? null;
   }
 
-  const workspaceId = membership.workspace_id;
-  if (!profile?.active_workspace_id) {
-    const profileUpdate = await supabase.from("profiles").update({ active_workspace_id: workspaceId }).eq("id", userId);
-    requireResult(profileUpdate, "Active workspace could not be selected");
+  if (!membership && !supportContext) return null;
+
+  let workspaceId: string;
+  let workspaceName: string;
+  let workspaceStatus: string;
+  let role: string;
+
+  if (membership) {
+    workspaceId = membership.workspace_id;
+    workspaceName = membership.workspaces.name;
+    workspaceStatus = membership.workspaces.status;
+    role = membership.access_profile || membership.role;
+
+    if (!profile?.active_workspace_id) {
+      const profileUpdate = await supabase.from("profiles").update({ active_workspace_id: workspaceId }).eq("id", userId);
+      requireResult(profileUpdate, "Active workspace could not be selected");
+    }
+  } else {
+    const workspaceResult = await supabase
+      .from("workspaces")
+      .select("id,name,status")
+      .eq("id", supportContext!.workspace_id)
+      .maybeSingle();
+    const workspace = requireResult(workspaceResult, "Support workspace record could not be loaded") as {
+      id: string;
+      name: string;
+      status: string;
+    } | null;
+    if (!workspace) return null;
+    workspaceId = workspace.id;
+    workspaceName = workspace.name;
+    workspaceStatus = workspace.status;
+    role = "platform-support";
+  }
+
+  if (["suspended", "cancelled"].includes(workspaceStatus)) {
+    throw new Error("This workspace is not currently available.");
   }
 
   const [customers, invoices, bookings, messages, documents, transactions, automations, activity, settings, themes] = await Promise.all([
@@ -105,7 +150,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
 
   const state: BdbState = {
     settings: {
-      businessName: membership.workspaces.name,
+      businessName: workspaceName,
       ownerName: String(settingsRow.owner_name ?? "Owner"),
       email: String(settingsRow.email ?? ""),
       phone: String(settingsRow.phone ?? ""),
@@ -124,7 +169,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     activity: activityRows.map((item) => { const r = row(item); return { id: String(r.id), action: String(r.action), detail: String(r.detail), timestamp: String(r.occurred_at), tone: r.tone as BdbState["activity"][number]["tone"] }; }),
   };
 
-  return { state: { ...seedState, ...state }, workspaceId, role: membership.access_profile || membership.role };
+  return { state: { ...seedState, ...state }, workspaceId, role };
 }
 
 export async function cloudInsert(table: string, values: Row | Row[]) {
