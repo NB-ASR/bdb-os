@@ -40,6 +40,19 @@ const featureRoutes: Record<string, string> = {
   "/team": "team_members",
 };
 
+type SupportSession = {
+  workspace_id: string;
+  access_mode: string;
+  expires_at: string;
+};
+
+type WorkspaceAccess = {
+  workspace_id: string;
+  role: string;
+  access_profile: string;
+  workspaces: { plan_id: string | null; status: string };
+};
+
 function serviceUnavailable() {
   return new NextResponse("BDB OS is temporarily unavailable. No workspace data has been loaded.", {
     status: 503,
@@ -119,6 +132,10 @@ export async function proxy(request: NextRequest) {
   }
   if (!claims?.sub) return response;
 
+  const supportResult = await supabase.rpc("get_my_support_session");
+  if (supportResult.error) return serviceUnavailable();
+  const supportSession = (supportResult.data as SupportSession[] | null)?.[0] ?? null;
+
   if (devAccess.enabled && devView && !matchesDevIdentity(devView, claims.email)) {
     return accessRedirect(request, effectivePath, "development-identity-mismatch");
   }
@@ -129,7 +146,7 @@ export async function proxy(request: NextRequest) {
   if (effectivePath.startsWith("/admin") && isDevWorkspace) {
     return accessRedirect(request, effectivePath, "choose-admin-view");
   }
-  if (!effectivePath.startsWith("/admin") && featureRoutes[effectivePath] && isDevAdmin) {
+  if (!effectivePath.startsWith("/admin") && featureRoutes[effectivePath] && isDevAdmin && !supportSession) {
     return accessRedirect(request, effectivePath, "choose-workspace-view");
   }
   if (effectivePath.startsWith("/admin") && isDevAdmin) return response;
@@ -166,34 +183,51 @@ export async function proxy(request: NextRequest) {
 
   const requestedFeature = featureRoutes[route];
   const preferredWorkspace = profile?.active_workspace_id ?? request.cookies.get("bdb-workspace")?.value ?? undefined;
-  let membershipQuery = supabase
-    .from("workspace_memberships")
-    .select("workspace_id,role,access_profile,workspaces!inner(plan_id,status)")
-    .eq("user_id", claims.sub)
-    .eq("status", "active");
-  if (preferredWorkspace) membershipQuery = membershipQuery.eq("workspace_id", preferredWorkspace);
-  const membershipResult = await membershipQuery.limit(1);
-  if (membershipResult.error) return serviceUnavailable();
-  const membership = membershipResult.data?.[0] as unknown as {
-    workspace_id: string;
-    role: string;
-    access_profile: string;
-    workspaces: { plan_id: string | null; status: string };
-  } | undefined;
-  if (!membership) return NextResponse.redirect(new URL("/no-workspace", request.url));
-  if (["suspended", "cancelled"].includes(membership.workspaces.status)) {
+  let workspaceAccess: WorkspaceAccess | undefined;
+
+  if (supportSession) {
+    const workspaceResult = await supabase
+      .from("workspaces")
+      .select("id,plan_id,status")
+      .eq("id", supportSession.workspace_id)
+      .maybeSingle();
+    if (workspaceResult.error) return serviceUnavailable();
+    if (!workspaceResult.data) return NextResponse.redirect(new URL("/admin", request.url));
+    workspaceAccess = {
+      workspace_id: workspaceResult.data.id,
+      role: "support",
+      access_profile: "platform-support",
+      workspaces: {
+        plan_id: workspaceResult.data.plan_id,
+        status: workspaceResult.data.status,
+      },
+    };
+  } else {
+    let membershipQuery = supabase
+      .from("workspace_memberships")
+      .select("workspace_id,role,access_profile,workspaces!inner(plan_id,status)")
+      .eq("user_id", claims.sub)
+      .eq("status", "active");
+    if (preferredWorkspace) membershipQuery = membershipQuery.eq("workspace_id", preferredWorkspace);
+    const membershipResult = await membershipQuery.limit(1);
+    if (membershipResult.error) return serviceUnavailable();
+    workspaceAccess = membershipResult.data?.[0] as unknown as WorkspaceAccess | undefined;
+  }
+
+  if (!workspaceAccess) return NextResponse.redirect(new URL("/no-workspace", request.url));
+  if (["suspended", "cancelled"].includes(workspaceAccess.workspaces.status)) {
     return NextResponse.redirect(new URL("/workspace-suspended", request.url));
   }
 
   const now = new Date().toISOString();
   const [planFeatureResult, overrideResult] = await Promise.all([
-    membership.workspaces.plan_id
-      ? supabase.from("plan_features").select("enabled").eq("plan_id", membership.workspaces.plan_id).eq("feature_key", requestedFeature).maybeSingle()
+    workspaceAccess.workspaces.plan_id
+      ? supabase.from("plan_features").select("enabled").eq("plan_id", workspaceAccess.workspaces.plan_id).eq("feature_key", requestedFeature).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     supabase
       .from("workspace_feature_overrides")
       .select("enabled")
-      .eq("workspace_id", membership.workspace_id)
+      .eq("workspace_id", workspaceAccess.workspace_id)
       .eq("feature_key", requestedFeature)
       .lte("starts_at", now)
       .or(`ends_at.is.null,ends_at.gt.${now}`)
@@ -201,19 +235,20 @@ export async function proxy(request: NextRequest) {
   ]);
   if (planFeatureResult.error || overrideResult.error) return serviceUnavailable();
 
-  const ownerTeamAccess = requestedFeature === "team_members" && membership.access_profile === "owner";
+  const ownerTeamAccess = requestedFeature === "team_members" && workspaceAccess.access_profile === "owner";
   if (!ownerTeamAccess && !(overrideResult.data?.enabled ?? planFeatureResult.data?.enabled ?? false)) {
     const unavailable = new URL("/feature-unavailable", request.url);
     unavailable.searchParams.set("feature", requestedFeature);
     return NextResponse.redirect(unavailable);
   }
 
-  if (!preferredWorkspace) {
-    response.cookies.set("bdb-workspace", membership.workspace_id, {
+  if (!preferredWorkspace || supportSession) {
+    response.cookies.set("bdb-workspace", workspaceAccess.workspace_id, {
       httpOnly: true,
       sameSite: "lax",
       secure: request.nextUrl.protocol === "https:",
       path: "/",
+      maxAge: supportSession ? Math.max(0, Math.floor((new Date(supportSession.expires_at).getTime() - Date.now()) / 1000)) : undefined,
     });
   }
   return response;
