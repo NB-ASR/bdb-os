@@ -18,6 +18,20 @@ The old Vanita application contains proven business workflows but uses a separat
 6. Production and `main` remain unchanged until the integration branch is reviewed.
 7. Functional restoration begins only after the relevant visual tab is approved.
 
+## Navigation structure
+
+The workspace sidebar scrolls independently from the brand and account footer so additional modules do not push important controls outside the viewport.
+
+Related routes may be grouped under an expandable operational heading without merging their feature entitlements. The first group is:
+
+```text
+Catalogue & Stock
+├─ Inventory
+└─ Products
+```
+
+Inventory and Products remain separate feature keys. When a workspace has both enabled, the shell renders the expandable group. When only one child is enabled, the shell renders that route as a normal standalone item instead of an unnecessary dropdown.
+
 ## First slice
 
 Inventory is the first visual migration:
@@ -28,6 +42,18 @@ Inventory is the first visual migration:
 - stock metrics, filters, table structure and empty state;
 - supplier invoice and credit-note import window;
 - no product, supplier, stock, upload, extraction or movement writes.
+
+## Second slice
+
+Products is the second visual migration:
+
+- shared `/products` route;
+- workspace feature key `products`;
+- enabled for `vanita-integration` by workspace override;
+- representative preview rows for table and filter review only;
+- product definition window covering SKU, barcode, supplier, category, purpose, pricing, VAT and reorder level;
+- opening stock deliberately excluded from the product definition because it must become an auditable inventory movement;
+- no product, price, supplier, barcode or stock writes.
 
 ## Proposed visual sequence
 
@@ -59,6 +85,7 @@ For each approved module:
 - Visual approval may imply functionality that is not yet available.
 - A visual-first process can accumulate dead screens if functional restoration is delayed.
 - Copying the old interface too literally could preserve Vanita-specific assumptions.
+- Excessive sidebar grouping could hide frequently used work from business users.
 
 ## Mitigations
 
@@ -67,3 +94,4 @@ For each approved module:
 - Only one or two visual modules are open for review at a time.
 - Functional design begins immediately after each tab is approved.
 - Shared BDB OS records and module rules take priority over the old implementation.
+- Navigation groups are used only when at least two enabled child routes exist.
