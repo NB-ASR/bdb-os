@@ -265,8 +265,8 @@ export default function ProductsPage() {
             <label>Supplier<select disabled defaultValue=""><option value="">Choose supplier</option></select></label>
             <label>Category<select disabled defaultValue="skincare"><option value="skincare">Skincare</option><option value="body">Body care</option><option value="consumables">Consumables</option></select></label>
             <label>Item purpose<select disabled defaultValue="resale"><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
-            <label>Unit cost (£)<input disabled type="number" placeholder="0.00" /></label>
-            <label>Selling price (£)<input disabled type="number" placeholder="0.00" /></label>
+            <label>Unit cost ({state.settings.currency})<input disabled type="number" placeholder="0.00" /></label>
+            <label>Selling price ({state.settings.currency})<input disabled type="number" placeholder="0.00" /></label>
             <label>VAT rate (%)<input disabled type="number" placeholder="18" /></label>
             <label>Reorder level<input disabled type="number" placeholder="5" /></label>
             <label className={styles.wide}>Notes<textarea disabled rows={3} placeholder="Optional product notes" /></label>
