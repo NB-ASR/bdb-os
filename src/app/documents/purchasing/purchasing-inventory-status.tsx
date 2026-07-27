@@ -48,7 +48,10 @@ export default function PurchasingInventoryStatus() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const ready = documents.filter((document) => document.inventory_posting_status === "ready").length;
