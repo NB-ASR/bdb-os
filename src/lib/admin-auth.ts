@@ -33,7 +33,13 @@ export async function requirePlatformAdmin(): Promise<AdminIdentity> {
 }
 
 export function adminErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
+  const candidate = error as {
+    message?: string;
+    name?: string;
+    code?: string;
+    status?: number;
+  } | null;
+  const message = candidate?.message ?? "";
   const knownStatuses: Record<string, number> = {
     NOT_CONFIGURED: 503,
     UNAUTHENTICATED: 401,
@@ -43,6 +49,21 @@ export function adminErrorResponse(error: unknown) {
 
   if (message in knownStatuses) {
     return Response.json({ error: message }, { status: knownStatuses[message] });
+  }
+
+  const authDeliveryFailure =
+    candidate?.name === "AuthRetryableFetchError" ||
+    candidate?.code === "unexpected_failure" ||
+    /send(?:ing)? (?:an? )?(?:invite|email)|invite email|smtp/i.test(message);
+  if (authDeliveryFailure) {
+    console.error("Founder Admin Auth delivery failed", error);
+    return Response.json(
+      {
+        error: "Supabase Auth could not send the Owner invitation. Check the project's SMTP credentials and retry.",
+        code: "AUTH_DELIVERY_UNAVAILABLE",
+      },
+      { status: 502 },
+    );
   }
 
   console.error("Founder Admin request failed", error);
