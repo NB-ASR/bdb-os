@@ -13,6 +13,10 @@ const supportRpcMigration = await readFile(
   "supabase/migrations/20260727090500_support_session_rpc_invoker.sql",
   "utf8",
 );
+const founderTestWriteMigration = await readFile(
+  "supabase/migrations/20260728170000_founder_test_write_support.sql",
+  "utf8",
+);
 const databaseTest = await readFile(
   "supabase/tests/quality_foundation_security.sql",
   "utf8",
@@ -61,6 +65,16 @@ assert.match(supportRpcMigration, /create or replace function public\.get_my_sup
 assert.match(supportRpcMigration, /security invoker/i);
 assert.match(supportRpcMigration, /support_session\.admin_user_id = \(select auth\.uid\(\)\)/i);
 
+assert.match(founderTestWriteMigration, /access_mode in \('read_only', 'test_write'\)/i);
+assert.match(founderTestWriteMigration, /private\.has_test_write_support_session/i);
+assert.match(founderTestWriteMigration, /private\.actor_has_workspace_permission/i);
+assert.match(founderTestWriteMigration, /when private\.has_test_write_support_session\(target_workspace_id\) then true/i);
+assert.match(founderTestWriteMigration, /when private\.has_active_support_session\(target_workspace_id\) then false/i);
+assert.match(founderTestWriteMigration, /create or replace function private\.product_actor_can_write/i);
+assert.match(founderTestWriteMigration, /create or replace function private\.supplier_document_actor_can_write/i);
+assert.match(founderTestWriteMigration, /create or replace function private\.inventory_actor_can_write/i);
+assert.match(founderTestWriteMigration, /create or replace function private\.sales_actor_can_write/i);
+
 assert.match(commandHelper, /const supabase = await createClient\(\)/);
 assert.doesNotMatch(
   commandHelper,
@@ -69,10 +83,11 @@ assert.doesNotMatch(
 );
 assert.match(commandHelper, /from\("workspace_memberships"\)/);
 assert.match(commandHelper, /rpc\("get_my_support_session"\)/);
-assert.match(commandHelper, /supportSession\s*&&\s*request\.method\s*!==\s*"GET"/);
-assert.match(commandHelper, /supportSession\s*&&\s*request\.method\s*===\s*"GET"/);
+assert.match(commandHelper, /supportSession && request\.method !== "GET" && !supportWriteEnabled/);
+assert.match(commandHelper, /supportSession\?\.access_mode === "test_write"/);
 assert.match(commandHelper, /SUPPORT_READ_ONLY/);
 assert.match(commandHelper, /support_read_only/);
+assert.match(commandHelper, /support_test_write/);
 
 assert.doesNotMatch(
   activityWriter,
@@ -80,4 +95,4 @@ assert.doesNotMatch(
   "Activity writer must match the database tone constraint",
 );
 
-console.log("Database, authenticated support-session and server security contracts are internally consistent.");
+console.log("Database, authenticated support-session and guarded Founder testing contracts are internally consistent.");
