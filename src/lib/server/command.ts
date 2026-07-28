@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
@@ -41,26 +40,6 @@ export async function parseCommandBody<T extends Record<string, unknown>>(reques
   return body as T;
 }
 
-async function activeReadOnlySupportSession(userId: string, workspaceId: string) {
-  const admin = createAdminClient();
-  if (!admin) return null;
-
-  const { data, error } = await admin
-    .from("platform_support_sessions")
-    .select("id,access_mode,workspaces!inner(status)")
-    .eq("admin_user_id", userId)
-    .eq("workspace_id", workspaceId)
-    .eq("access_mode", "read_only")
-    .is("ended_at", null)
-    .gt("expires_at", new Date().toISOString())
-    .in("workspaces.status", ["trial", "active"])
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
 export async function requireWorkspaceCommand(
   request: Request,
   workspaceId: string,
@@ -80,7 +59,7 @@ export async function requireWorkspaceCommand(
   }
 
   const userId = userData.user.id;
-  const [membershipResult, supportSession] = await Promise.all([
+  const [membershipResult, supportResult] = await Promise.all([
     // Use the authenticated client rather than the service role. Existing RLS
     // enforces active-profile, workspace and approved Business Group context.
     supabase
@@ -90,9 +69,12 @@ export async function requireWorkspaceCommand(
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
-    activeReadOnlySupportSession(userId, workspaceId),
+    // This SECURITY INVOKER RPC exposes only the signed-in platform admin's
+    // active, unexpired support session and remains subject to RLS.
+    supabase.rpc("get_my_support_session"),
   ]);
   if (membershipResult.error) throw membershipResult.error;
+  if (supportResult.error) throw supportResult.error;
 
   const membership = membershipResult.data as unknown as {
     role: string;
@@ -103,6 +85,14 @@ export async function requireWorkspaceCommand(
   const memberAccess = Boolean(
     membership && ["trial", "active"].includes(membership.workspaces.status),
   );
+  const supportSession = (
+    (supportResult.data ?? []) as Array<{
+      workspace_id: string;
+      access_mode: string;
+    }>
+  ).find(
+    (session) => session.workspace_id === workspaceId && session.access_mode === "read_only",
+  ) ?? null;
 
   // Founder support access is deliberately read-only even when the Founder also
   // has an operational membership. Trusted database commands retain the same
