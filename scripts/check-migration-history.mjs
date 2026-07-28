@@ -28,76 +28,34 @@ assert.deepEqual(
 );
 
 const versions = migrationFiles.map((name) => name.split("_")[0]);
-assert.equal(
-  new Set(versions).size,
-  versions.length,
-  "Every migration version must be unique.",
-);
+assert.equal(new Set(versions).size, versions.length, "Every migration version must be unique.");
 
 const obsoleteVersions = new Set([
-  "20260714080000",
-  "20260714090000",
-  "20260714093000",
-  "20260714100000",
-  "20260714231500",
-  "20260715150000",
-  "20260715160000",
-  "20260715161000",
-  "20260715162000",
-  "20260717115900",
-  "20260717120000",
-  "20260717172000",
+  "20260714080000", "20260714090000", "20260714093000", "20260714100000",
+  "20260714231500", "20260715150000", "20260715160000", "20260715161000",
+  "20260715162000", "20260717115900", "20260717120000", "20260717172000",
 ]);
-
 assert.equal(
   migrationFiles.some((name) => obsoleteVersions.has(name.split("_")[0])),
   false,
   "Obsolete parallel migration versions must not return.",
 );
 
-assert.ok(
-  migrationFiles.includes("20260718193000_quality_foundation_security.sql"),
-  "Quality Foundation security migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"),
-  "Invitation expiry migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727152000_product_catalogue_foundation.sql"),
-  "Product catalogue foundation migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727152500_product_support_write_guard.sql"),
-  "Product support-session write guard migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727154000_supplier_directory_foundation.sql"),
-  "Supplier directory foundation migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727155000_product_supplier_relationship.sql"),
-  "Product Supplier relationship migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727161000_supplier_document_capture_review.sql"),
-  "Supplier document capture and review migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727161500_supplier_document_reference_indexes.sql"),
-  "Supplier document reference index migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727190000_inventory_movement_ledger.sql"),
-  "Inventory movement ledger migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260727190500_inventory_reference_indexes.sql"),
-  "Inventory reference index migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260728090000_service_catalogue_foundation.sql"),
-  "Service catalogue foundation migration is missing.",
-);
+for (const [file, message] of [
+  ["20260718193000_quality_foundation_security.sql", "Quality Foundation security migration is missing."],
+  ["20260718193500_invitation_expiry_guard.sql", "Invitation expiry migration is missing."],
+  ["20260727152000_product_catalogue_foundation.sql", "Product catalogue foundation migration is missing."],
+  ["20260727152500_product_support_write_guard.sql", "Product support-session write guard migration is missing."],
+  ["20260727154000_supplier_directory_foundation.sql", "Supplier directory foundation migration is missing."],
+  ["20260727155000_product_supplier_relationship.sql", "Product Supplier relationship migration is missing."],
+  ["20260727161000_supplier_document_capture_review.sql", "Supplier document capture and review migration is missing."],
+  ["20260727161500_supplier_document_reference_indexes.sql", "Supplier document reference index migration is missing."],
+  ["20260727190000_inventory_movement_ledger.sql", "Inventory movement ledger migration is missing."],
+  ["20260727190500_inventory_reference_indexes.sql", "Inventory reference index migration is missing."],
+  ["20260728090000_service_catalogue_foundation.sql", "Service catalogue foundation migration is missing."],
+  ["20260728100000_sales_transaction_foundation.sql", "Sales transaction foundation migration is missing."],
+]) {
+  assert.ok(migrationFiles.includes(file), message);
+}
 
 console.log("Migration history matches the canonical production prefix.");
