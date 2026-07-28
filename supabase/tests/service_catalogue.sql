@@ -42,8 +42,10 @@ select ok(
   'Service reads require Services visibility'
 );
 select ok(
-  position('platform_support_sessions' in pg_get_functiondef('private.service_actor_can_write(uuid,uuid,text)'::regprocedure)) > 0,
-  'Service writes explicitly reject Founder support sessions'
+  position('actor_has_workspace_permission' in lower(pg_get_functiondef(
+    'private.service_actor_can_write(uuid,uuid,text)'::regprocedure
+  ))) > 0,
+  'Service writes use the shared support-aware permission boundary'
 );
 select ok(
   position('changed on another device' in pg_get_functiondef('public.apply_service_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,integer,integer,integer,numeric,numeric,text,text,text)'::regprocedure)) > 0,
