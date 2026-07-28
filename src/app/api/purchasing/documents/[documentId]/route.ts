@@ -34,14 +34,20 @@ function friendlyReviewError(error: { message: string; code?: string | null }) {
   if (message.includes("changed on another device")) {
     return new CommandError("SUPPLIER_DOCUMENT_CONFLICT", "This document changed on another device. Refresh before saving.", 409);
   }
-  if (message.includes("write access denied")) {
-    return new CommandError("SUPPLIER_DOCUMENT_FORBIDDEN", "You do not have permission to review Purchasing documents.", 403);
+  if (message.includes("write access denied") || message.includes("creation access denied")) {
+    return new CommandError("SUPPLIER_DOCUMENT_FORBIDDEN", "You do not have permission to approve this Purchasing document and create its catalogue records.", 403);
   }
   if (message.includes("workspace_number_idx") || error.code === "23505" || message.includes("duplicate key")) {
-    return new CommandError("SUPPLIER_DOCUMENT_NUMBER_DUPLICATE", "This Supplier already has a document with the same number and type.", 409);
+    return new CommandError("SUPPLIER_DOCUMENT_NUMBER_DUPLICATE", "This Supplier already has a document with the same number and type, or one proposed Product conflicts with an existing SKU or barcode.", 409);
   }
-  if (message.includes("every product line")) {
-    return new CommandError("SUPPLIER_DOCUMENT_LINES_UNRESOLVED", "Match every Product line or mark it as a non-stock expense before approval.", 409);
+  if (message.includes("linked to an existing product") || message.includes("product match is invalid")) {
+    return new CommandError("SUPPLIER_DOCUMENT_LINES_UNRESOLVED", "Choose the correct existing Product or leave Create new Product selected before approval.", 409);
+  }
+  if (message.includes("existing product already uses this barcode")) {
+    return new CommandError("SUPPLIER_DOCUMENT_BARCODE_CONFLICT", "An existing Product already uses one extracted barcode. Select that Product on the affected line.", 409);
+  }
+  if (message.includes("supplier sku is already linked")) {
+    return new CommandError("SUPPLIER_DOCUMENT_SUPPLIER_SKU_CONFLICT", "A Supplier SKU is already linked to another Product. Select the existing Product on that line.", 409);
   }
   if (message.includes("approved or archived")) {
     return new CommandError("SUPPLIER_DOCUMENT_LOCKED", "Approved or archived supplier documents cannot be edited.", 409);
@@ -104,12 +110,37 @@ export async function GET(
       .createSignedUrl(documentResult.data.file_path, 300);
     if (signedResult.error) throw signedResult.error;
 
+    const products = [...(productsResult.data ?? [])];
+    const productIds = new Set(products.map((product) => product.id));
+    const lines = (linesResult.data ?? []).map((line) => {
+      if (line.line_kind !== "product" || line.matched_product_id) return line;
+      const proposedProductId = line.id;
+      if (!productIds.has(proposedProductId)) {
+        products.push({
+          id: proposedProductId,
+          sku: `NEW-${line.line_number}`,
+          name: `Create new Product · ${line.printed_description}`,
+          barcode: line.barcode,
+          status: "active",
+        });
+        productIds.add(proposedProductId);
+      }
+      return {
+        ...line,
+        matched_product_id: proposedProductId,
+        matched_product_supplier_id: null,
+        match_method: "none",
+        review_status: "needs_review",
+        proposed_new_product: true,
+      };
+    });
+
     return {
       workspaceId,
       document: documentResult.data,
-      lines: linesResult.data ?? [],
+      lines,
       suppliers: suppliersResult.data ?? [],
-      products: productsResult.data ?? [],
+      products,
       relationships: relationshipsResult.data ?? [],
       originalFileUrl: signedResult.data.signedUrl,
     };
