@@ -21,7 +21,7 @@ export type WorkspaceCommandContext = {
   workspaceId: string;
   role: string;
   accessProfile: string;
-  accessMode: "member" | "support_read_only";
+  accessMode: "member" | "support_read_only" | "support_test_write";
   isSupportSession: boolean;
 };
 
@@ -88,16 +88,15 @@ export async function requireWorkspaceCommand(
   const supportSession = (
     (supportResult.data ?? []) as Array<{
       workspace_id: string;
-      access_mode: string;
+      access_mode: "read_only" | "test_write";
     }>
-  ).find(
-    (session) => session.workspace_id === workspaceId && session.access_mode === "read_only",
-  ) ?? null;
+  ).find((session) => session.workspace_id === workspaceId) ?? null;
+  const supportWriteEnabled = supportSession?.access_mode === "test_write";
 
-  // Founder support access is deliberately read-only even when the Founder also
-  // has an operational membership. Trusted database commands retain the same
-  // guard, so this server boundary and the database fail closed together.
-  if (supportSession && request.method !== "GET") {
+  // Normal Founder support remains read-only. The separate test_write mode is
+  // issued only by the guarded integration-preview access harness and is also
+  // enforced by the database permission functions.
+  if (supportSession && request.method !== "GET" && !supportWriteEnabled) {
     throw new CommandError(
       "SUPPORT_READ_ONLY",
       "Founder support access is read-only. Switch to an operational workspace account to make changes.",
@@ -105,7 +104,7 @@ export async function requireWorkspaceCommand(
     );
   }
 
-  if (!memberAccess && !(supportSession && request.method === "GET")) {
+  if (!memberAccess && !supportSession) {
     throw new CommandError("WORKSPACE_FORBIDDEN", "This workspace is not available.", 403);
   }
 
@@ -114,14 +113,16 @@ export async function requireWorkspaceCommand(
     throw new CommandError("INVALID_IDEMPOTENCY_KEY", "The idempotency key is too long.", 400);
   }
 
+  const supportAccessMode = supportWriteEnabled ? "support_test_write" : "support_read_only";
+
   return {
     commandId: randomUUID(),
     idempotencyKey: rawIdempotencyKey,
     userId,
     workspaceId,
     role: supportSession ? "support" : membership?.role ?? "",
-    accessProfile: supportSession ? "support_read_only" : membership?.access_profile ?? "",
-    accessMode: supportSession ? "support_read_only" : "member",
+    accessProfile: supportSession ? supportAccessMode : membership?.access_profile ?? "",
+    accessMode: supportSession ? supportAccessMode : "member",
     isSupportSession: Boolean(supportSession),
   };
 }
