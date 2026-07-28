@@ -95,5 +95,9 @@ assert.ok(
   migrationFiles.includes("20260727190500_inventory_reference_indexes.sql"),
   "Inventory reference index migration is missing.",
 );
+assert.ok(
+  migrationFiles.includes("20260728090000_service_catalogue_foundation.sql"),
+  "Service catalogue foundation migration is missing.",
+);
 
 console.log("Migration history matches the canonical production prefix.");
