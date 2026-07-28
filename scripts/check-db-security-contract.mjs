@@ -9,6 +9,10 @@ const invitationMigration = await readFile(
   "supabase/migrations/20260718193500_invitation_expiry_guard.sql",
   "utf8",
 );
+const supportRpcMigration = await readFile(
+  "supabase/migrations/20260727090500_support_session_rpc_invoker.sql",
+  "utf8",
+);
 const databaseTest = await readFile(
   "supabase/tests/quality_foundation_security.sql",
   "utf8",
@@ -53,6 +57,10 @@ assert.match(databaseTest, /interval '1 hour'/i);
 assert.match(databaseTest, /activity_items/i);
 assert.match(databaseTest, /workspace isolation constraint/i);
 
+assert.match(supportRpcMigration, /create or replace function public\.get_my_support_session\(\)/i);
+assert.match(supportRpcMigration, /security invoker/i);
+assert.match(supportRpcMigration, /support_session\.admin_user_id = \(select auth\.uid\(\)\)/i);
+
 assert.match(commandHelper, /const supabase = await createClient\(\)/);
 assert.doesNotMatch(
   commandHelper,
@@ -60,6 +68,11 @@ assert.doesNotMatch(
   "Workspace authorization must not use the service role",
 );
 assert.match(commandHelper, /from\("workspace_memberships"\)/);
+assert.match(commandHelper, /rpc\("get_my_support_session"\)/);
+assert.match(commandHelper, /supportSession\s*&&\s*request\.method\s*!==\s*"GET"/);
+assert.match(commandHelper, /supportSession\s*&&\s*request\.method\s*===\s*"GET"/);
+assert.match(commandHelper, /SUPPORT_READ_ONLY/);
+assert.match(commandHelper, /support_read_only/);
 
 assert.doesNotMatch(
   activityWriter,
@@ -67,4 +80,4 @@ assert.doesNotMatch(
   "Activity writer must match the database tone constraint",
 );
 
-console.log("Database and server security contracts are internally consistent.");
+console.log("Database, authenticated support-session and server security contracts are internally consistent.");
