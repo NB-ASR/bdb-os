@@ -40,7 +40,7 @@ assert.match(api, /requireWorkspaceCommand/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);
 assert.match(api, /complete_sale/);
 assert.match(api, /reverse_sale/);
-assert.match(api, /settlement_status/);
+assert.match(api, /select\("\*,sale_lines\(\*\)"\)/);
 
 assert.match(queue, /localStorage/);
 assert.match(queue, /Idempotency-Key/);
