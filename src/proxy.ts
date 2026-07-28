@@ -55,7 +55,7 @@ const featureRoutes: Record<string, string> = {
 
 type SupportSession = {
   workspace_id: string;
-  access_mode: string;
+  access_mode: "read_only" | "test_write";
   expires_at: string;
 };
 
@@ -209,7 +209,7 @@ export async function proxy(request: NextRequest) {
     workspaceAccess = {
       workspace_id: workspaceResult.data.id,
       role: "support",
-      access_profile: "platform-support",
+      access_profile: supportSession.access_mode === "test_write" ? "owner" : "platform-support",
       workspaces: {
         plan_id: workspaceResult.data.plan_id,
         status: workspaceResult.data.status,
@@ -230,6 +230,18 @@ export async function proxy(request: NextRequest) {
   if (!workspaceAccess) return NextResponse.redirect(new URL("/no-workspace", request.url));
   if (["suspended", "cancelled"].includes(workspaceAccess.workspaces.status)) {
     return NextResponse.redirect(new URL("/workspace-suspended", request.url));
+  }
+
+  const founderTestWrite = supportSession?.access_mode === "test_write";
+  if (founderTestWrite) {
+    response.cookies.set("bdb-workspace", workspaceAccess.workspace_id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+      path: "/",
+      maxAge: Math.max(0, Math.floor((new Date(supportSession.expires_at).getTime() - Date.now()) / 1000)),
+    });
+    return response;
   }
 
   const now = new Date().toISOString();
