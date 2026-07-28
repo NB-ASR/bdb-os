@@ -22,7 +22,12 @@ select ok(exists(select 1 from pg_trigger where tgrelid='public.sale_lines'::reg
 select ok(exists(select 1 from pg_trigger where tgrelid='public.sales'::regclass and tgname='sales_immutable_except_reversal' and not tgisinternal),'Sale headers only allow controlled reversal');
 select ok(exists(select 1 from pg_trigger where tgrelid='public.sales'::regclass and tgname='sales_prepare_reference' and not tgisinternal),'Sale references use the hardened deterministic trigger');
 select ok(exists(select 1 from pg_indexes where schemaname='public' and indexname='inventory_movements_single_sale_line_idx'),'one stock movement per Product Sale line is enforced');
-select ok(position('platform_support_sessions' in pg_get_functiondef('private.sales_actor_can_write(uuid,uuid,text)'::regprocedure))>0,'Sales reject Founder support writes');
+select ok(
+  position('actor_has_workspace_permission' in lower(pg_get_functiondef(
+    'private.sales_actor_can_write(uuid,uuid,text)'::regprocedure
+  ))) > 0,
+  'Sales use the shared support-aware permission boundary'
+);
 select ok(position('inventory_movements' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Product Sale completion posts Inventory movements');
 select ok(position('settlement_status' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Sale completion preserves settlement boundary');
 select ok(position('sale_command_receipts' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Sale completion stores idempotency receipts');
