@@ -4,7 +4,7 @@ import {
   manualOwnerEmail,
   normaliseManualLoginId,
   validateTemporaryPassword,
-} from "../../src/lib/auth/manual-provisioning";
+} from "../../src/lib/auth/manual-provisioning.ts";
 
 test("normaliseManualLoginId produces a stable login identifier", () => {
   assert.equal(normaliseManualLoginId("  Giovanni Owner  "), "giovanni-owner");
