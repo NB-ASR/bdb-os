@@ -94,7 +94,7 @@ export async function loadCloudWorkspace(): Promise<{ state: BdbState; workspace
     workspaceId = workspace.id;
     workspaceName = workspace.name;
     workspaceStatus = workspace.status;
-    role = "platform-support";
+    role = supportContext!.access_mode === "test_write" ? "owner" : "platform-support";
   }
 
   if (["suspended", "cancelled"].includes(workspaceStatus)) {
