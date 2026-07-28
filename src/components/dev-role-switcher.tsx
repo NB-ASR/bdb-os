@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Building2, Eye, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import styles from "./dev-role-switcher.module.css";
-import type { DevAccessView } from "@/lib/dev-access";
+import type { DevAccessView, SupportAccessMode } from "@/lib/dev-access";
 
 type SessionStatus = {
   enabled: boolean;
@@ -21,12 +21,12 @@ type SupportWorkspace = {
 
 type SupportStatus = {
   enabled: boolean;
-  accessMode: "read_only";
+  accessMode: SupportAccessMode;
   active: {
     id: string;
     workspace_id: string;
     reason: string;
-    access_mode: string;
+    access_mode: SupportAccessMode;
     expires_at: string;
     workspace: SupportWorkspace | null;
   } | null;
@@ -78,7 +78,12 @@ export function DevRoleSwitcher({ expanded = false }: { expanded?: boolean }) {
 
   async function switchSupportWorkspace(workspaceId: string) {
     if (!workspaceId || workspaceId === support?.active?.workspace_id) return;
-    const reason = window.prompt("Why are you opening this workspace in read-only support mode?");
+    const writable = support?.accessMode === "test_write";
+    const reason = window.prompt(
+      writable
+        ? "Why are you opening this workspace in full-access Founder testing mode? Changes will affect integration data."
+        : "Why are you opening this workspace in read-only support mode?",
+    );
     if (!reason) return;
 
     setBusy("support");
@@ -111,11 +116,20 @@ export function DevRoleSwitcher({ expanded = false }: { expanded?: boolean }) {
   }
 
   if (support?.active) {
+    const writable = support.active.access_mode === "test_write";
     return (
-      <div className={`${styles.switcher} ${styles.support} ${expanded ? styles.expanded : ""}`} data-support-access>
+      <div className={`${styles.switcher} ${styles.support} ${expanded ? styles.expanded : ""}`} data-support-access={support.active.access_mode}>
         <div className={styles.copy}>
-          <span className={styles.label}><Eye size={13} /> Founder support · Read only</span>
-          {expanded ? <small>Access expires {new Date(support.active.expires_at).toLocaleTimeString()}. All entry and exit events are audited.</small> : null}
+          <span className={styles.label}>
+            {writable ? <ShieldCheck size={13} /> : <Eye size={13} />}
+            {writable ? "Founder testing · Full access" : "Founder support · Read only"}
+          </span>
+          {expanded ? (
+            <small>
+              Access expires {new Date(support.active.expires_at).toLocaleTimeString()}.
+              {writable ? " Changes affect integration data and remain audited." : " All entry and exit events are audited."}
+            </small>
+          ) : null}
         </div>
         <div className={styles.actions}>
           {busy === "support" ? <Loader2 className={styles.spin} size={15} /> : <Building2 size={15} />}
@@ -145,7 +159,11 @@ export function DevRoleSwitcher({ expanded = false }: { expanded?: boolean }) {
     <div className={`${styles.switcher} ${expanded ? styles.expanded : ""}`} data-dev-access>
       <div className={styles.copy}>
         <span className={styles.label}>Preview access</span>
-        {expanded ? <small>Open Founder Admin, any created workspace in audited read-only mode, or the seeded client identity.</small> : null}
+        {expanded ? (
+          <small>
+            Open Founder Admin, an integration workspace in audited {support?.accessMode === "test_write" ? "full-access testing" : "read-only support"} mode, or the seeded client identity.
+          </small>
+        ) : null}
       </div>
       <div className={styles.actions}>
         <button
