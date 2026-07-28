@@ -47,9 +47,7 @@ export async function POST(request: Request) {
 
     if (!name || slug.length < 3 || ownerName.length < 2 || loginId.length < 3 || !planId || passwordError) {
       return Response.json(
-        {
-          error: passwordError ?? "Business name, slug, owner name, login ID and plan are required.",
-        },
+        { error: passwordError ?? "Business name, slug, owner name, login ID and plan are required." },
         { status: 400 },
       );
     }
@@ -93,7 +91,6 @@ export async function POST(request: Request) {
         workspace_id: workspaceId,
         access_profile: "owner",
         provisioning_method: "manual",
-        must_change_password: true,
       },
       app_metadata: {
         provisioning_method: "manual",
@@ -105,7 +102,12 @@ export async function POST(request: Request) {
     createdAuthUser = createUser.data.user;
 
     const setupResults = await Promise.all([
-      admin.from("profiles").upsert({ id: createdAuthUser.id, full_name: ownerName }, { onConflict: "id" }),
+      admin.from("profiles").upsert({
+        id: createdAuthUser.id,
+        full_name: ownerName,
+        is_active: true,
+        must_change_password: true,
+      }, { onConflict: "id" }),
       admin.from("workspace_memberships").upsert({
         workspace_id: workspaceId,
         user_id: createdAuthUser.id,
@@ -171,6 +173,7 @@ export async function POST(request: Request) {
         plan_id: planId,
         selected_features: selectedFeatures,
         email_delivery_used: false,
+        password_change_required: true,
       },
     });
     if (auditError) throw auditError;
