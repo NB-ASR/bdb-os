@@ -37,7 +37,7 @@ type SupportWorkspace = {
   workspace_id: string;
   workspace_name: string;
   workspace_slug: string;
-  access_mode: string;
+  access_mode: "read_only" | "test_write";
 };
 
 type EffectiveFeature = {
@@ -54,6 +54,7 @@ export async function GET() {
     let workspaces = (linkedResult.data ?? []) as LinkedWorkspace[];
     let current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
     let supportAccess = false;
+    let supportMode: SupportWorkspace["access_mode"] | null = null;
 
     if (!current) {
       const supportResult = await supabase.rpc("get_my_support_session");
@@ -61,6 +62,7 @@ export async function GET() {
       const support = ((supportResult.data ?? []) as SupportWorkspace[])[0];
       if (support) {
         supportAccess = true;
+        supportMode = support.access_mode;
         current = {
           workspace_id: support.workspace_id,
           workspace_name: support.workspace_name,
@@ -89,7 +91,15 @@ export async function GET() {
     }
 
     let features: Record<string, boolean> = {};
-    if (current) {
+    if (current && supportMode === "test_write") {
+      const featureResult = await admin
+        .from("features")
+        .select("key")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (featureResult.error) throw featureResult.error;
+      features = Object.fromEntries((featureResult.data ?? []).map((feature) => [feature.key, true]));
+    } else if (current) {
       const featureResult = await supabase.rpc("get_effective_features", {
         target_workspace_id: current.workspace_id,
       });
@@ -104,6 +114,7 @@ export async function GET() {
       currentWorkspaceId: current?.workspace_id ?? null,
       features,
       supportAccess,
+      supportAccessMode: supportMode,
     });
     if (current) {
       response.headers.append(
