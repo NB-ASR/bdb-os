@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
@@ -21,6 +22,8 @@ export type WorkspaceCommandContext = {
   workspaceId: string;
   role: string;
   accessProfile: string;
+  accessMode: "member" | "support_read_only";
+  isSupportSession: boolean;
 };
 
 export function commandJson(body: unknown, init?: ResponseInit) {
@@ -36,6 +39,26 @@ export async function parseCommandBody<T extends Record<string, unknown>>(reques
     throw new CommandError("INVALID_JSON", "A valid JSON object is required.", 400);
   }
   return body as T;
+}
+
+async function activeReadOnlySupportSession(userId: string, workspaceId: string) {
+  const admin = createAdminClient();
+  if (!admin) return null;
+
+  const { data, error } = await admin
+    .from("platform_support_sessions")
+    .select("id,access_mode,workspaces!inner(status)")
+    .eq("admin_user_id", userId)
+    .eq("workspace_id", workspaceId)
+    .eq("access_mode", "read_only")
+    .is("ended_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .in("workspaces.status", ["trial", "active"])
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
 }
 
 export async function requireWorkspaceCommand(
@@ -56,25 +79,43 @@ export async function requireWorkspaceCommand(
     throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
   }
 
-  // Use the authenticated client rather than the service role. The existing RLS
-  // policy enforces active-profile, active-workspace and approved Business Group
-  // context. A client-supplied workspace ID must never bypass that boundary.
-  const { data, error } = await supabase
-    .from("workspace_memberships")
-    .select("role,access_profile,status,workspaces!inner(status)")
-    .eq("workspace_id", workspaceId)
-    .eq("user_id", userData.user.id)
-    .eq("status", "active")
-    .maybeSingle();
-  if (error) throw error;
+  const userId = userData.user.id;
+  const [membershipResult, supportSession] = await Promise.all([
+    // Use the authenticated client rather than the service role. Existing RLS
+    // enforces active-profile, workspace and approved Business Group context.
+    supabase
+      .from("workspace_memberships")
+      .select("role,access_profile,status,workspaces!inner(status)")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+    activeReadOnlySupportSession(userId, workspaceId),
+  ]);
+  if (membershipResult.error) throw membershipResult.error;
 
-  const membership = data as unknown as {
+  const membership = membershipResult.data as unknown as {
     role: string;
     access_profile: string;
     status: string;
     workspaces: { status: string };
   } | null;
-  if (!membership || !["trial", "active"].includes(membership.workspaces.status)) {
+  const memberAccess = Boolean(
+    membership && ["trial", "active"].includes(membership.workspaces.status),
+  );
+
+  // Founder support access is deliberately read-only even when the Founder also
+  // has an operational membership. Trusted database commands retain the same
+  // guard, so this server boundary and the database fail closed together.
+  if (supportSession && request.method !== "GET") {
+    throw new CommandError(
+      "SUPPORT_READ_ONLY",
+      "Founder support access is read-only. Switch to an operational workspace account to make changes.",
+      403,
+    );
+  }
+
+  if (!memberAccess && !(supportSession && request.method === "GET")) {
     throw new CommandError("WORKSPACE_FORBIDDEN", "This workspace is not available.", 403);
   }
 
@@ -86,10 +127,12 @@ export async function requireWorkspaceCommand(
   return {
     commandId: randomUUID(),
     idempotencyKey: rawIdempotencyKey,
-    userId: userData.user.id,
+    userId,
     workspaceId,
-    role: membership.role,
-    accessProfile: membership.access_profile,
+    role: supportSession ? "support" : membership?.role ?? "",
+    accessProfile: supportSession ? "support_read_only" : membership?.access_profile ?? "",
+    accessMode: supportSession ? "support_read_only" : "member",
+    isSupportSession: Boolean(supportSession),
   };
 }
 
