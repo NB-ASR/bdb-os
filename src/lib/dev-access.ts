@@ -1,4 +1,5 @@
 export type DevAccessView = "admin" | "workspace";
+export type SupportAccessMode = "read_only" | "test_write";
 
 export const DEV_ACCESS_COOKIE = "bdb-dev-view";
 export const DEFAULT_DEV_ACCESS_GIT_REF = "integration/vanita-workspace";
@@ -57,6 +58,10 @@ export function evaluateDevAccess(env: NodeJS.ProcessEnv = process.env): DevAcce
   }
 
   return { enabled: true, reason: null, allowedGitRef, expectedSupabaseRef, actualSupabaseRef };
+}
+
+export function supportAccessMode(env: NodeJS.ProcessEnv = process.env): SupportAccessMode {
+  return evaluateDevAccess(env).enabled ? "test_write" : "read_only";
 }
 
 export function devIdentityEmail(
