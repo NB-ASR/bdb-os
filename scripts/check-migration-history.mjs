@@ -34,5 +34,6 @@ for (const [file, message] of [
   ["20260728090000_service_catalogue_foundation.sql", "Service catalogue foundation migration is missing."],
   ["20260728100000_sales_transaction_foundation.sql", "Sales transaction foundation migration is missing."],
   ["20260728100500_sales_reference_uniqueness.sql", "Sale reference hardening migration is missing."],
+  ["20260728160000_purchasing_create_products_from_invoice.sql", "Invoice-driven Product creation migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
