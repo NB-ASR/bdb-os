@@ -1,21 +1,27 @@
 import { cookies } from "next/headers";
 import { adminErrorResponse, requirePlatformAdmin } from "@/lib/admin-auth";
+import { supportAccessMode, type SupportAccessMode } from "@/lib/dev-access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const NO_STORE_HEADERS = { "Cache-Control": "no-store, max-age=0" };
-const SESSION_MINUTES = 30;
+const READ_ONLY_SESSION_MINUTES = 30;
+const TEST_WRITE_SESSION_MINUTES = 20;
 
 type SupportSession = {
   id: string;
   workspace_id: string;
   reason: string;
-  access_mode: string;
+  access_mode: SupportAccessMode;
   started_at: string;
   expires_at: string;
 };
+
+function sessionMinutes(mode: SupportAccessMode) {
+  return mode === "test_write" ? TEST_WRITE_SESSION_MINUTES : READ_ONLY_SESSION_MINUTES;
+}
 
 function response(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status, headers: NO_STORE_HEADERS });
@@ -40,6 +46,7 @@ export async function GET() {
     const identity = await requirePlatformAdmin();
     const admin = createAdminClient();
     if (!admin) throw new Error("NOT_CONFIGURED");
+    const issuedAccessMode = supportAccessMode();
 
     const [workspaceResult, session] = await Promise.all([
       admin
@@ -60,8 +67,8 @@ export async function GET() {
 
     return response({
       enabled: true,
-      accessMode: "read_only",
-      sessionMinutes: SESSION_MINUTES,
+      accessMode: issuedAccessMode,
+      sessionMinutes: sessionMinutes(issuedAccessMode),
       active,
       workspaces: workspaceResult.data ?? [],
     });
@@ -93,8 +100,10 @@ export async function POST(request: Request) {
     if (workspaceError) throw workspaceError;
     if (!workspace) return response({ error: "This workspace is not available for support access." }, 404);
 
+    const accessMode = supportAccessMode();
+    const durationMinutes = sessionMinutes(accessMode);
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + SESSION_MINUTES * 60 * 1000);
+    const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000);
 
     const { error: endError } = await admin
       .from("platform_support_sessions")
@@ -109,9 +118,14 @@ export async function POST(request: Request) {
         admin_user_id: identity.userId,
         workspace_id: workspace.id,
         reason,
-        access_mode: "read_only",
+        access_mode: accessMode,
         expires_at: expiresAt.toISOString(),
-        metadata: { source: "founder_admin" },
+        metadata: {
+          source: "founder_admin",
+          testing_mode: accessMode === "test_write",
+          git_ref: process.env.VERCEL_GIT_COMMIT_REF ?? null,
+          vercel_environment: process.env.VERCEL_ENV ?? null,
+        },
       })
       .select("id,workspace_id,reason,access_mode,started_at,expires_at")
       .single();
@@ -131,9 +145,10 @@ export async function POST(request: Request) {
       entity_id: session.id,
       metadata: {
         reason,
-        access_mode: "read_only",
+        access_mode: accessMode,
         workspace_name: workspace.name,
         expires_at: expiresAt.toISOString(),
+        testing_mode: accessMode === "test_write",
       },
     });
     if (auditError) throw auditError;
@@ -144,7 +159,7 @@ export async function POST(request: Request) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: SESSION_MINUTES * 60,
+      maxAge: durationMinutes * 60,
     });
 
     return response({
@@ -181,7 +196,11 @@ export async function DELETE() {
         action: "admin.support_session_ended",
         entity_type: "platform_support_session",
         entity_id: session.id,
-        metadata: { started_at: session.started_at, ended_at: now },
+        metadata: {
+          access_mode: session.access_mode,
+          started_at: session.started_at,
+          ended_at: now,
+        },
       });
       if (auditError) throw auditError;
     }
