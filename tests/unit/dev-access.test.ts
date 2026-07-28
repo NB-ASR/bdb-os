@@ -4,6 +4,7 @@ import {
   evaluateDevAccess,
   extractSupabaseProjectRef,
   matchesDevIdentity,
+  supportAccessMode,
 } from "../../src/lib/dev-access.ts";
 
 const baseEnvironment: NodeJS.ProcessEnv = {
@@ -30,6 +31,14 @@ test("enables development access only for the approved preview branch and databa
   assert.equal(evaluateDevAccess({ ...baseEnvironment, VERCEL_GIT_COMMIT_REF: "main" }).enabled, false);
   assert.equal(evaluateDevAccess({ ...baseEnvironment, NEXT_PUBLIC_SUPABASE_URL: "https://productionref.supabase.co" }).enabled, false);
   assert.equal(evaluateDevAccess({ ...baseEnvironment, BDB_DEV_ACCESS_ENABLED: "false" }).enabled, false);
+});
+
+test("issues writable Founder support only inside the guarded development harness", () => {
+  assert.equal(supportAccessMode(baseEnvironment), "test_write");
+  assert.equal(supportAccessMode({ ...baseEnvironment, VERCEL_ENV: "production" }), "read_only");
+  assert.equal(supportAccessMode({ ...baseEnvironment, VERCEL_GIT_COMMIT_REF: "main" }), "read_only");
+  assert.equal(supportAccessMode({ ...baseEnvironment, NEXT_PUBLIC_SUPABASE_URL: "https://productionref.supabase.co" }), "read_only");
+  assert.equal(supportAccessMode({ ...baseEnvironment, BDB_DEV_ACCESS_ENABLED: "false" }), "read_only");
 });
 
 test("matches only the configured seeded identity", () => {
