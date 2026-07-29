@@ -31,6 +31,11 @@ select ok(
 select ok(position('inventory_movements' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Product Sale completion posts Inventory movements');
 select ok(position('settlement_status' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Sale completion preserves settlement boundary');
 select ok(position('sale_command_receipts' in pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))>0,'Sale completion stores idempotency receipts');
-select ok(to_regclass('public.payments') is null,'Sales does not introduce a duplicate Payment ledger');
+select ok(
+  to_regclass('public.payments') is not null
+  and position('insert into public.payments' in lower(pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))) = 0
+  and position('payment_allocations' in lower(pg_get_functiondef('public.complete_sale(uuid,uuid,text,uuid,uuid,jsonb,text,text,uuid,uuid,numeric,timestamptz,text)'::regprocedure))) = 0,
+  'Sales coexists with Accounts but never records or allocates Payments'
+);
 select * from finish();
 rollback;
