@@ -5,7 +5,9 @@ export type InventoryCommandAction =
   | "restore-location"
   | "post-movement"
   | "transfer-stock"
-  | "reverse-movement";
+  | "reverse-movement"
+  | "post-appointment-consumption"
+  | "reverse-appointment-consumption";
 
 export type InventoryQueuedCommand = {
   id: string;
