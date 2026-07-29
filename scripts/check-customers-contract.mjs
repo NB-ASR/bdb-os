@@ -5,6 +5,7 @@ const migrationFiles = [
   "supabase/migrations/20260729090000_customer_foundation_schema.sql",
   "supabase/migrations/20260729090500_customer_foundation_commands.sql",
   "supabase/migrations/20260729091000_customer_vanita_import.sql",
+  "supabase/migrations/20260729091500_customer_code_collision_hardening.sql",
 ].map((path) => readFile(path, "utf8"));
 const migrationText = (await Promise.all(migrationFiles)).join("\n");
 const api = await readFile("src/app/api/customers/route.ts", "utf8");
@@ -34,6 +35,8 @@ for (const statement of [
   "grant select on table public.customers to authenticated",
   "customer imported",
   "vanita customers imported",
+  "right(replace(p_customer_id::text",
+  "right(replace(new_customer_id::text",
 ]) {
   assert.ok(migrationText.toLowerCase().includes(statement.toLowerCase()), `Missing Customer migration contract: ${statement}`);
 }
@@ -63,10 +66,12 @@ assert.match(page, /Saved offline/);
 assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(page, /archive/);
 assert.match(page, /restore/);
+assert.match(page, /slice\(-16\)/);
 assert.doesNotMatch(page, /addCustomer/);
 
 assert.match(databaseTest, /Customer commands are idempotent/i);
 assert.match(databaseTest, /Customer imports preserve provenance/i);
 assert.match(databaseTest, /browser clients cannot insert Customers directly/i);
+assert.match(databaseTest, /final 64 UUID bits/i);
 
 console.log("Customer foundation, offline queue and Vanita migration contracts are internally consistent.");
