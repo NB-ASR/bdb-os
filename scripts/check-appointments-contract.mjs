@@ -5,10 +5,15 @@ const statusMigration = await readFile(
   "supabase/migrations/20260729110000_appointment_status_values.sql",
   "utf8",
 );
-const migration = await readFile(
+const foundationMigration = await readFile(
   "supabase/migrations/20260729110500_appointment_foundation.sql",
   "utf8",
 );
+const readHardeningMigration = await readFile(
+  "supabase/migrations/20260729111000_appointment_read_hardening.sql",
+  "utf8",
+);
+const migration = `${foundationMigration}\n${readHardeningMigration}`;
 const api = await readFile("src/app/api/appointments/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/appointment-queue.ts", "utf8");
 const page = await readFile("src/app/calendar/page.tsx", "utf8");
@@ -31,6 +36,7 @@ for (const statement of [
   "Appointment conflicts with another booking for this staff member",
   "private.actor_has_workspace_permission",
   "revoke insert, update, delete on table public.bookings from anon, authenticated",
+  "revoke all on table public.bookings from anon",
 ]) {
   assert.ok(migration.toLowerCase().includes(statement.toLowerCase()), `Missing Appointment migration contract: ${statement}`);
 }
@@ -64,6 +70,7 @@ assert.match(page, /No Sale, invoice, Payment or Inventory movement is created/)
 assert.doesNotMatch(page, /buildPreviewAppointments/);
 assert.doesNotMatch(page, /representative design data only/i);
 
+assert.match(databaseTest, /anonymous users cannot read Appointments/i);
 assert.match(databaseTest, /browser clients cannot insert Appointments directly/i);
 assert.match(databaseTest, /effective staff time overlap/i);
 assert.match(databaseTest, /does not post Sales, invoices, Payments or Inventory/i);
