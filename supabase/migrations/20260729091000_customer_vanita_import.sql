@@ -164,13 +164,13 @@ begin
       new_customer_id := gen_random_uuid();
       effective_code := coalesce(
         case when source_code is not null and char_length(source_code) <= 64 then source_code end,
-        'CUS-' || upper(substr(replace(new_customer_id::text, '-', ''), 1, 8))
+        'CUS-' || upper(right(replace(new_customer_id::text, '-', ''), 16))
       );
       if exists (
         select 1 from public.customers
         where workspace_id = p_workspace_id and lower(trim(code)) = lower(trim(effective_code))
       ) then
-        effective_code := 'CUS-' || upper(substr(replace(new_customer_id::text, '-', ''), 1, 8));
+        effective_code := 'CUS-' || upper(right(replace(new_customer_id::text, '-', ''), 16));
       end if;
 
       insert into public.customers (
