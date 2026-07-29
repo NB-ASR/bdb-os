@@ -107,7 +107,7 @@ begin
 
     effective_code := coalesce(
       nullif(trim(p_code), ''),
-      'CUS-' || upper(substr(replace(p_customer_id::text, '-', ''), 1, 8))
+      'CUS-' || upper(right(replace(p_customer_id::text, '-', ''), 16))
     );
 
     insert into public.customers (
