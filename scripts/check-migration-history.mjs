@@ -36,5 +36,12 @@ for (const [file, message] of [
   ["20260728100500_sales_reference_uniqueness.sql", "Sale reference hardening migration is missing."],
   ["20260728160000_purchasing_create_products_from_invoice.sql", "Invoice-driven Product creation migration is missing."],
   ["20260728170000_founder_test_write_support.sql", "Founder test-write support migration is missing."],
+  ["20260729090000_customer_foundation_schema.sql", "Customer foundation schema migration is missing."],
+  ["20260729090500_customer_foundation_commands.sql", "Customer lifecycle command migration is missing."],
+  ["20260729091000_customer_vanita_import.sql", "Vanita Customer import migration is missing."],
+  ["20260729091500_customer_code_collision_hardening.sql", "Customer reference hardening migration is missing."],
+  ["20260729092000_customer_reference_indexes.sql", "Customer reference indexes migration is missing."],
+  ["20260729110000_appointment_status_values.sql", "Appointment status migration is missing."],
+  ["20260729110500_appointment_foundation.sql", "Appointment foundation migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
