@@ -47,5 +47,6 @@ for (const [file, message] of [
   ["20260729111500_appointment_reference_indexes.sql", "Appointment reference index migration is missing."],
   ["20260729123000_calendar_availability_foundation.sql", "Calendar availability foundation migration is missing."],
   ["20260729123500_appointment_room_conflict_hardening.sql", "Appointment room conflict hardening migration is missing."],
+  ["20260729124000_calendar_availability_reference_indexes.sql", "Calendar availability index hardening migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
