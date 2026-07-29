@@ -69,6 +69,7 @@ const workspaceNavigation: NavigationEntry[] = [
     icon: CalendarDays,
     children: [
       { name: "Appointments", href: "/calendar", icon: CalendarDays, featureKey: "calendar" },
+      { name: "Availability", href: "/calendar/availability", icon: Clock3, featureKey: "calendar" },
       { name: "Timesheets", href: "/calendar/timesheets", icon: Clock3, featureKey: "timesheets" },
       { name: "Meetings", href: "/calendar/meetings", icon: UsersRound, featureKey: "meetings" },
     ],
