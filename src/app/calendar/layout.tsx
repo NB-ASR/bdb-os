@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Clock3, UserRoundCheck } from "lucide-react";
+import { CalendarDays, Clock3, ReceiptText, UserRoundCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 const items = [
   { href: "/calendar", label: "Appointments", icon: CalendarDays },
   { href: "/calendar/availability", label: "Availability", icon: Clock3 },
   { href: "/calendar/eligibility", label: "Service eligibility", icon: UserRoundCheck },
+  { href: "/sales/appointment-drafts", label: "Appointment Sales", icon: ReceiptText },
 ];
 
 export default function CalendarLayout({ children }: { children: ReactNode }) {
