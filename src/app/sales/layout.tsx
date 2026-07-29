@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReceiptText, ShoppingBag } from "lucide-react";
+import { BadgePoundSterling, ReceiptText, ShoppingBag } from "lucide-react";
 import type { ReactNode } from "react";
 
 const items = [
   { href: "/sales", label: "Sales register", icon: ShoppingBag },
   { href: "/sales/appointment-drafts", label: "Appointment drafts", icon: ReceiptText },
+  { href: "/accounts", label: "Invoices & Payments", icon: BadgePoundSterling },
 ];
 
 export default function SalesLayout({ children }: { children: ReactNode }) {
