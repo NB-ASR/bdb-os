@@ -44,9 +44,15 @@ alter table public.bookings
 update public.bookings booking
 set reference = 'APT-' || upper(right(replace(booking.id::text, '-', ''), 16)),
     customer_name_snapshot = customer.name,
-    timezone = coalesce(settings.timezone, 'Europe/London')
+    timezone = coalesce(
+      (
+        select settings.timezone
+        from public.workspace_settings settings
+        where settings.workspace_id = booking.workspace_id
+      ),
+      'Europe/London'
+    )
 from public.customers customer
-left join public.workspace_settings settings on settings.workspace_id = booking.workspace_id
 where customer.workspace_id = booking.workspace_id
   and customer.id = booking.customer_id;
 
@@ -85,8 +91,12 @@ create index bookings_workspace_service_time_idx
 create index bookings_workspace_staff_time_idx
   on public.bookings(workspace_id, staff_user_id, booking_date, booking_time)
   where staff_user_id is not null;
-create index bookings_created_by_idx on public.bookings(created_by) where created_by is not null;
-create index bookings_updated_by_idx on public.bookings(updated_by) where updated_by is not null;
+create index bookings_created_by_idx
+  on public.bookings(created_by)
+  where created_by is not null;
+create index bookings_updated_by_idx
+  on public.bookings(updated_by)
+  where updated_by is not null;
 
 alter table public.bookings
   add constraint bookings_staff_effective_time_exclusion
@@ -198,7 +208,9 @@ begin
   from public.appointment_command_receipts receipt
   where receipt.workspace_id = p_workspace_id
     and receipt.idempotency_key = trim(p_idempotency_key);
-  if previous_result is not null then return previous_result; end if;
+  if previous_result is not null then
+    return previous_result;
+  end if;
 
   permission_action := case when p_action = 'create' then 'create' else 'edit' end;
   if not private.appointment_actor_can_write(p_workspace_id, p_actor_user_id, permission_action) then
@@ -212,9 +224,13 @@ begin
   else
     select * into current_record
     from public.bookings
-    where workspace_id = p_workspace_id and id = p_booking_id
+    where workspace_id = p_workspace_id
+      and id = p_booking_id
     for update;
-    if current_record.id is null then raise exception 'Appointment not found'; end if;
+
+    if current_record.id is null then
+      raise exception 'Appointment not found';
+    end if;
     if p_expected_version is null or current_record.version <> p_expected_version then
       raise exception 'Appointment changed on another device; refresh before saving';
     end if;
@@ -245,8 +261,12 @@ begin
 
     select * into customer_record
     from public.customers
-    where workspace_id = p_workspace_id and id = p_customer_id;
-    if customer_record.id is null then raise exception 'Appointment Customer not found'; end if;
+    where workspace_id = p_workspace_id
+      and id = p_customer_id;
+
+    if customer_record.id is null then
+      raise exception 'Appointment Customer not found';
+    end if;
     if customer_record.status <> 'active'
       and (p_action = 'create' or p_customer_id is distinct from current_record.customer_id) then
       raise exception 'Archived Customers cannot receive new Appointments';
@@ -254,8 +274,12 @@ begin
 
     select * into service_record
     from public.services
-    where workspace_id = p_workspace_id and id = p_service_id;
-    if service_record.id is null then raise exception 'Appointment Service not found'; end if;
+    where workspace_id = p_workspace_id
+      and id = p_service_id;
+
+    if service_record.id is null then
+      raise exception 'Appointment Service not found';
+    end if;
     if service_record.status <> 'active'
       and (p_action = 'create' or p_service_id is distinct from current_record.service_id) then
       raise exception 'Archived Services cannot be booked';
@@ -269,7 +293,10 @@ begin
       and membership.status = 'active'
       and profile.is_active
     limit 1;
-    if staff_name_value is null then raise exception 'Appointment staff member is not active in this workspace'; end if;
+
+    if staff_name_value is null then
+      raise exception 'Appointment staff member is not active in this workspace';
+    end if;
 
     select settings.timezone into timezone_value
     from public.workspace_settings settings
@@ -362,7 +389,8 @@ begin
         notes = nullif(trim(p_notes), ''),
         updated_by = p_actor_user_id,
         version = version + 1
-    where workspace_id = p_workspace_id and id = p_booking_id
+    where workspace_id = p_workspace_id
+      and id = p_booking_id
     returning * into booking_record;
     activity_action := 'Appointment rescheduled';
     activity_tone := 'blue';
@@ -371,8 +399,11 @@ begin
       raise exception 'Only pending Appointments can be confirmed';
     end if;
     update public.bookings
-    set status = 'confirmed', updated_by = p_actor_user_id, version = version + 1
-    where workspace_id = p_workspace_id and id = p_booking_id
+    set status = 'confirmed',
+        updated_by = p_actor_user_id,
+        version = version + 1
+    where workspace_id = p_workspace_id
+      and id = p_booking_id
     returning * into booking_record;
     activity_action := 'Appointment confirmed';
     activity_tone := 'green';
@@ -380,7 +411,9 @@ begin
     if current_record.status::text not in ('pending', 'confirmed') then
       raise exception 'Only pending or confirmed Appointments can be cancelled';
     end if;
-    if p_cancellation_reason is null or char_length(trim(p_cancellation_reason)) < 2 or char_length(trim(p_cancellation_reason)) > 500 then
+    if p_cancellation_reason is null
+      or char_length(trim(p_cancellation_reason)) < 2
+      or char_length(trim(p_cancellation_reason)) > 500 then
       raise exception 'Appointment cancellation reason is required';
     end if;
     update public.bookings
@@ -389,7 +422,8 @@ begin
         cancelled_at = now(),
         updated_by = p_actor_user_id,
         version = version + 1
-    where workspace_id = p_workspace_id and id = p_booking_id
+    where workspace_id = p_workspace_id
+      and id = p_booking_id
     returning * into booking_record;
     activity_action := 'Appointment cancelled';
     activity_tone := 'gold';
@@ -402,13 +436,17 @@ begin
         completed_at = now(),
         updated_by = p_actor_user_id,
         version = version + 1
-    where workspace_id = p_workspace_id and id = p_booking_id
+    where workspace_id = p_workspace_id
+      and id = p_booking_id
     returning * into booking_record;
     activity_action := 'Appointment completed';
     activity_tone := 'green';
   end if;
 
-  command_result := jsonb_build_object('action', p_action, 'appointment', to_jsonb(booking_record));
+  command_result := jsonb_build_object(
+    'action', p_action,
+    'appointment', to_jsonb(booking_record)
+  );
 
   insert into public.appointment_command_receipts (
     workspace_id, idempotency_key, booking_id, action, result
