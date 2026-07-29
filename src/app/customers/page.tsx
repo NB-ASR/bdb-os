@@ -143,7 +143,7 @@ function formValues(customer: CustomerRow): CustomerForm {
 function customerFromPayload(payload: Record<string, unknown>): CustomerRow {
   return {
     id: String(payload.id),
-    code: String(payload.code || `CUS-${String(payload.id).replaceAll("-", "").slice(0, 8).toUpperCase()}`),
+    code: String(payload.code || `CUS-${String(payload.id).replaceAll("-", "").slice(-16).toUpperCase()}`),
     name: String(payload.name),
     company: String(payload.company ?? ""),
     email: payload.email ? String(payload.email) : null,
@@ -578,7 +578,14 @@ export default function CustomersPage() {
         <div className="toolbar">
           <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 240 }}>
             <Search size={17} />
-            <input className="filter-input" style={{ width: "100%" }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, code, company, email or phone…" aria-label="Search Customers" />
+            <input
+              className="filter-input"
+              style={{ width: "100%" }}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search name, code, company, email or phone…"
+              aria-label="Search Customers"
+            />
           </label>
           <div className="filter-tabs" role="group" aria-label="Filter Customers">
             {(["active", "archived", "imported", "all"] as CustomerFilter[]).map((item) => (
@@ -592,27 +599,65 @@ export default function CustomersPage() {
 
         <div className="table-scroll">
           <table>
-            <thead><tr><th>Customer</th><th>Code</th><th>Contact</th><th>Address</th><th>Source</th><th>Status</th><th aria-label="Actions" /></tr></thead>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Code</th>
+                <th>Contact</th>
+                <th>Address</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
             <tbody>
               {visibleCustomers.map((customer) => (
                 <tr key={customer.id}>
-                  <td><div style={{ display: "flex", alignItems: "center", gap: 10 }}><span className="result-icon"><UserRound size={17} /></span><span className="cell-stack"><strong>{customer.name}</strong><span>{customer.company || "Individual Customer"}</span>{customer.pending ? <small style={{ color: "var(--gold-light)" }}>Pending sync</small> : null}</span></div></td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span className="result-icon"><UserRound size={17} /></span>
+                      <span className="cell-stack">
+                        <strong>{customer.name}</strong>
+                        <span>{customer.company || "Individual Customer"}</span>
+                        {customer.pending ? <small style={{ color: "var(--gold-light)" }}>Pending sync</small> : null}
+                      </span>
+                    </div>
+                  </td>
                   <td><code>{customer.code}</code></td>
-                  <td><span className="cell-stack"><span><Mail size={13} style={{ display: "inline", marginRight: 5 }} />{customer.email || "No email"}</span><span><Phone size={13} style={{ display: "inline", marginRight: 5 }} />{customer.phone || "No phone"}</span></span></td>
+                  <td>
+                    <span className="cell-stack">
+                      <span><Mail size={13} style={{ display: "inline", marginRight: 5 }} />{customer.email || "No email"}</span>
+                      <span><Phone size={13} style={{ display: "inline", marginRight: 5 }} />{customer.phone || "No phone"}</span>
+                    </span>
+                  </td>
                   <td>{customer.address || <span className="muted">—</span>}</td>
                   <td>{customer.legacy_source ? <Badge tone="blue">Vanita import</Badge> : <Badge tone="neutral">BDB OS</Badge>}</td>
                   <td><Badge tone={customer.status === "active" ? "green" : "neutral"}>{customer.status === "active" ? "Active" : "Archived"}</Badge></td>
-                  <td><div className="table-actions"><Button type="button" variant="quiet" disabled={supportMode || customer.pending} onClick={() => openEdit(customer)}>Edit</Button><Button type="button" variant="quiet" disabled={supportMode || customer.pending || saving} onClick={() => void changeStatus(customer)}>{customer.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}</Button></div></td>
+                  <td>
+                    <div className="table-actions">
+                      <Button type="button" variant="quiet" disabled={supportMode || customer.pending} onClick={() => openEdit(customer)}>Edit</Button>
+                      <Button type="button" variant="quiet" disabled={supportMode || customer.pending || saving} onClick={() => void changeStatus(customer)}>
+                        {customer.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        {visibleCustomers.length === 0 ? <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a reviewed Vanita JSON snapshot.</p></div> : null}
+        {visibleCustomers.length === 0 ? (
+          <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a reviewed Vanita JSON snapshot.</p></div>
+        ) : null}
       </Card>
 
-      <Dialog open={formOpen} onClose={() => { if (!saving) { setFormOpen(false); setDuplicateReview(false); } }} title={editing ? "Edit Customer" : "Add Customer"} description="Email is optional. Exact email or phone matches require an explicit duplicate decision.">
+      <Dialog
+        open={formOpen}
+        onClose={() => { if (!saving) { setFormOpen(false); setDuplicateReview(false); } }}
+        title={editing ? "Edit Customer" : "Add Customer"}
+        description="Email is optional. Exact email or phone matches require an explicit duplicate decision."
+      >
         <form onSubmit={(event) => void saveCustomer(event)}>
           <div className="form-grid">
             <div className="field"><label htmlFor="customer-name">Customer name</label><input id="customer-name" required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
@@ -625,7 +670,15 @@ export default function CustomersPage() {
             <div className="field field-full"><label htmlFor="customer-notes">Internal notes</label><textarea id="customer-notes" maxLength={4000} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
           </div>
 
-          {duplicateReview ? <div className="review-callout" style={{ marginTop: 16 }}><TriangleAlert size={18} /><div><strong>Possible duplicate Customer</strong><p>Review the existing directory first. Save anyway only when these are genuinely separate people or organisations sharing contact details.</p></div></div> : null}
+          {duplicateReview ? (
+            <div className="review-callout" style={{ marginTop: 16 }}>
+              <TriangleAlert size={18} />
+              <div>
+                <strong>Possible duplicate Customer</strong>
+                <p>Review the existing directory first. Save anyway only when these are genuinely separate people or organisations sharing contact details.</p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="dialog-actions">
             <Button type="button" variant="quiet" disabled={saving} onClick={() => { setFormOpen(false); setDuplicateReview(false); }}>Cancel</Button>
