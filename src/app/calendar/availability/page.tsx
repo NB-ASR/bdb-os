@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   Archive,
@@ -62,7 +69,12 @@ type AvailabilityBundle = {
   leave: StaffLeave[];
   rooms: Room[];
 };
-type DayDraft = { isWorking: boolean; startTime: string; endTime: string; version: number | null };
+type DayDraft = {
+  isWorking: boolean;
+  startTime: string;
+  endTime: string;
+  version: number | null;
+};
 
 const weekdays = [
   { value: 1, label: "Monday" },
@@ -97,8 +109,23 @@ function dayName(value: number) {
   return weekdays.find((day) => day.value === value)?.label ?? `Day ${value}`;
 }
 
+function makeHoursDraft(data: AvailabilityBundle, staffId: string): Record<number, DayDraft> {
+  return Object.fromEntries(weekdays.map((day) => {
+    const existing = data.workingHours.find(
+      (item) => item.staff_user_id === staffId && item.weekday === day.value,
+    );
+    return [day.value, {
+      isWorking: existing?.is_working ?? false,
+      startTime: existing ? timeValue(existing.start_time) : "09:00",
+      endTime: existing ? timeValue(existing.end_time) : "17:00",
+      version: existing?.version ?? null,
+    } satisfies DayDraft];
+  }));
+}
+
 export default function CalendarAvailabilityPage() {
   const router = useRouter();
+  const selectedStaffRef = useRef("");
   const [bundle, setBundle] = useState<AvailabilityBundle>(emptyBundle);
   const [selectedStaffId, setSelectedStaffId] = useState("");
   const [hours, setHours] = useState<Record<number, DayDraft>>({});
@@ -137,41 +164,39 @@ export default function CalendarAvailabilityPage() {
     [bundle.leave, selectedStaffId],
   );
 
-  const buildHoursDraft = useCallback((data: AvailabilityBundle, staffId: string) => {
-    setHours(Object.fromEntries(weekdays.map((day) => {
-      const existing = data.workingHours.find((item) => item.staff_user_id === staffId && item.weekday === day.value);
-      return [day.value, {
-        isWorking: existing?.is_working ?? false,
-        startTime: existing ? timeValue(existing.start_time) : "09:00",
-        endTime: existing ? timeValue(existing.end_time) : "17:00",
-        version: existing?.version ?? null,
-      } satisfies DayDraft];
-    })));
-  }, []);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
       const context = await contextResponse.json().catch(() => ({}));
-      if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current workspace could not be resolved.");
-      const response = await fetch(`/api/calendar/availability?workspaceId=${encodeURIComponent(String(context.currentWorkspaceId))}`, { cache: "no-store" });
+      if (!contextResponse.ok || !context.currentWorkspaceId) {
+        throw new Error(context.error ?? "The current workspace could not be resolved.");
+      }
+      const response = await fetch(
+        `/api/calendar/availability?workspaceId=${encodeURIComponent(String(context.currentWorkspaceId))}`,
+        { cache: "no-store" },
+      );
       const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "Calendar availability could not be loaded.");
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error ?? "Calendar availability could not be loaded.");
+      }
+
       const next = result.result as AvailabilityBundle;
-      setBundle(next);
-      const nextStaffId = selectedStaffId && next.staff.some((staff) => staff.user_id === selectedStaffId)
-        ? selectedStaffId
+      const previousStaffId = selectedStaffRef.current;
+      const nextStaffId = previousStaffId && next.staff.some((staff) => staff.user_id === previousStaffId)
+        ? previousStaffId
         : next.staff[0]?.user_id ?? "";
+      selectedStaffRef.current = nextStaffId;
+      setBundle(next);
       setSelectedStaffId(nextStaffId);
-      buildHoursDraft(next, nextStaffId);
+      setHours(makeHoursDraft(next, nextStaffId));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Calendar availability could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, [buildHoursDraft, selectedStaffId]);
+  }, []);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -184,24 +209,57 @@ export default function CalendarAvailabilityPage() {
     };
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
+
+  function resetBreak() {
+    setBreakId(null);
+    setBreakVersion(null);
+    setBreakWeekday(1);
+    setBreakStart("12:00");
+    setBreakEnd("13:00");
+    setBreakLabel("Lunch break");
+  }
+
+  function resetLeave() {
+    setLeaveId(null);
+    setLeaveVersion(null);
+    setLeaveStart("");
+    setLeaveEnd("");
+    setLeaveReason("");
+  }
+
+  function resetRoom() {
+    setRoomId(null);
+    setRoomVersion(null);
+    setRoomCode("");
+    setRoomName("");
+    setRoomDescription("");
+  }
 
   function chooseStaff(staffId: string) {
+    selectedStaffRef.current = staffId;
     setSelectedStaffId(staffId);
-    buildHoursDraft(bundle, staffId);
+    setHours(makeHoursDraft(bundle, staffId));
     resetBreak();
     resetLeave();
   }
 
   async function command(entityType: string, action: string, payload: Record<string, unknown>) {
-    if (!online) throw new Error("Availability configuration is online-only because existing Appointments must be checked atomically.");
+    if (!online) {
+      throw new Error("Availability configuration is online-only because existing Appointments must be checked atomically.");
+    }
     const response = await fetch("/api/calendar/availability", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({ workspaceId: bundle.workspaceId, entityType, action, ...payload }),
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error ?? "Calendar availability could not be saved.");
+    if (!response.ok || !result.ok) {
+      throw new Error(result.error ?? "Calendar availability could not be saved.");
+    }
     return result.result as Record<string, unknown>;
   }
 
@@ -227,15 +285,6 @@ export default function CalendarAvailabilityPage() {
     } finally {
       setBusy("");
     }
-  }
-
-  function resetBreak() {
-    setBreakId(null);
-    setBreakVersion(null);
-    setBreakWeekday(1);
-    setBreakStart("12:00");
-    setBreakEnd("13:00");
-    setBreakLabel("Lunch break");
   }
 
   async function saveBreak(event: FormEvent) {
@@ -287,14 +336,6 @@ export default function CalendarAvailabilityPage() {
     setBreakLabel(item.label);
   }
 
-  function resetLeave() {
-    setLeaveId(null);
-    setLeaveVersion(null);
-    setLeaveStart("");
-    setLeaveEnd("");
-    setLeaveReason("");
-  }
-
   async function saveLeave(event: FormEvent) {
     event.preventDefault();
     if (!selectedStaffId) return;
@@ -340,14 +381,6 @@ export default function CalendarAvailabilityPage() {
     setLeaveStart(localInput(item.starts_at));
     setLeaveEnd(localInput(item.ends_at));
     setLeaveReason(item.reason);
-  }
-
-  function resetRoom() {
-    setRoomId(null);
-    setRoomVersion(null);
-    setRoomCode("");
-    setRoomName("");
-    setRoomDescription("");
   }
 
   async function saveRoom(event: FormEvent) {
@@ -413,7 +446,9 @@ export default function CalendarAvailabilityPage() {
         action={(
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <Button variant="secondary" onClick={() => router.push("/calendar")}>Back to Calendar</Button>
-            <Button variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw className={loading ? "spin" : ""} size={16} /> Refresh</Button>
+            <Button variant="secondary" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={loading ? "spin" : ""} size={16} /> Refresh
+            </Button>
           </div>
         )}
       />
@@ -426,8 +461,12 @@ export default function CalendarAvailabilityPage() {
         </div>
       </div>
 
-      {!online ? <Card className="settings-note"><strong>Online connection required</strong><p>Availability changes are not queued offline because existing Appointments must be checked before a schedule or room is changed.</p></Card> : null}
-      {!bundle.canManage ? <Card className="settings-note"><strong>Read-only availability</strong><p>Owner, Manager, an approved custom profile or guarded Founder test-write access is required to change Calendar availability.</p></Card> : null}
+      {!online ? (
+        <Card className="settings-note"><strong>Online connection required</strong><p>Availability changes are not queued offline because existing Appointments must be checked before a schedule or room is changed.</p></Card>
+      ) : null}
+      {!bundle.canManage ? (
+        <Card className="settings-note"><strong>Read-only availability</strong><p>Owner, Manager, an approved custom profile or guarded Founder test-write access is required to change Calendar availability.</p></Card>
+      ) : null}
       {error ? <Card className="settings-note"><strong>Action needed</strong><p>{error}</p></Card> : null}
       {notice ? <div className="toast"><CheckCircle2 size={17} /> {notice}</div> : null}
 
@@ -457,10 +496,19 @@ export default function CalendarAvailabilityPage() {
               return (
                 <div key={day.value} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1fr) auto 110px 110px auto", gap: 10, alignItems: "center", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
                   <strong>{day.label}</strong>
-                  <label style={{ display: "flex", gap: 7, alignItems: "center" }}><input type="checkbox" checked={draft.isWorking} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, isWorking: event.target.checked } }))} disabled={disabled} /> Working</label>
+                  <label style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.isWorking}
+                      onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, isWorking: event.target.checked } }))}
+                      disabled={disabled}
+                    /> Working
+                  </label>
                   <input type="time" value={draft.startTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, startTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
                   <input type="time" value={draft.endTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, endTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
-                  <Button variant="secondary" onClick={() => void saveHours(day.value)} disabled={disabled || busy === `hours-${day.value}`}>{busy === `hours-${day.value}` ? "Saving…" : "Save"}</Button>
+                  <Button variant="secondary" onClick={() => void saveHours(day.value)} disabled={disabled || busy === `hours-${day.value}`}>
+                    {busy === `hours-${day.value}` ? "Saving…" : "Save"}
+                  </Button>
                 </div>
               );
             })}
@@ -487,7 +535,10 @@ export default function CalendarAvailabilityPage() {
             {selectedBreaks.filter((item) => item.status === "active").map((item) => (
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.label}</strong><small style={{ display: "block" }}>{dayName(item.weekday)} · {timeValue(item.start_time)}–{timeValue(item.end_time)}</small></div>
-                <div style={{ display: "flex", gap: 6 }}><Button variant="quiet" onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button><Button variant="quiet" onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button></div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button variant="quiet" onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button variant="quiet" onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button>
+                </div>
               </div>
             ))}
             {!selectedBreaks.some((item) => item.status === "active") ? <p className="muted small">No active recurring breaks.</p> : null}
@@ -509,7 +560,10 @@ export default function CalendarAvailabilityPage() {
             {selectedLeave.filter((item) => item.status === "active").map((item) => (
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.reason}</strong><small style={{ display: "block" }}>{localInput(item.starts_at).replace("T", " ")} → {localInput(item.ends_at).replace("T", " ")}</small></div>
-                <div style={{ display: "flex", gap: 6 }}><Button variant="quiet" onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button><Button variant="quiet" onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button></div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <Button variant="quiet" onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button variant="quiet" onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button>
+                </div>
               </div>
             ))}
             {!selectedLeave.some((item) => item.status === "active") ? <p className="muted small">No active leave recorded.</p> : null}
@@ -533,7 +587,13 @@ export default function CalendarAvailabilityPage() {
             {bundle.rooms.map((room) => (
               <div key={room.id} style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}><DoorOpen size={18} /><div><strong>{room.name}</strong><small style={{ display: "block" }}>{String(room.code)} · {room.description || "No description"}</small></div></div>
-                <div style={{ display: "flex", gap: 7, alignItems: "center" }}><Badge tone={room.status === "active" ? "green" : "neutral"}>{room.status}</Badge><Button variant="quiet" onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button><Button variant="quiet" onClick={() => void changeRoomStatus(room)} disabled={disabled || busy === `room-${room.id}`}>{room.status === "active" ? <Archive size={15} /> : <RotateCcw size={15} />}</Button></div>
+                <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                  <Badge tone={room.status === "active" ? "green" : "neutral"}>{room.status}</Badge>
+                  <Button variant="quiet" onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button variant="quiet" onClick={() => void changeRoomStatus(room)} disabled={disabled || busy === `room-${room.id}`}>
+                    {room.status === "active" ? <Archive size={15} /> : <RotateCcw size={15} />}
+                  </Button>
+                </div>
               </div>
             ))}
             {!bundle.rooms.length ? <p className="muted small">No rooms configured. Appointments may remain unassigned.</p> : null}
