@@ -16,9 +16,9 @@ assert.match(invoiceSchema, /create table public\.invoice_lines/i, "Invoice line
 assert.match(invoiceSchema, /invoices_workspace_active_sale_idx/i, "A completed Sale must have at most one active Invoice.");
 assert.match(invoiceSchema, /Issued Invoice lines are immutable/i, "Issued Invoice lines must be immutable.");
 assert.match(invoiceSchema, /references public\.sales\(workspace_id, id\)/i, "Invoices must reference canonical Sales.");
-assert.match(invoiceSchema, /references public\.customers\(workspace_id, id\)/i, "Invoices must reference canonical Customers.");
 
 assert.match(paymentSchema, /create table public\.payments/i, "Payment ledger is missing.");
+assert.match(paymentSchema, /references public\.customers\(workspace_id, id\)/i, "Payments must reference canonical Customers.");
 assert.match(paymentSchema, /create table public\.payment_allocations/i, "Payment allocation ledger is missing.");
 assert.match(paymentSchema, /amount_delta numeric/i, "Allocations must use signed immutable deltas.");
 assert.match(paymentSchema, /payment_allocations_enforce_immutability/i, "Allocations must be append-only.");
