@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, Clock3, ReceiptText, UserRoundCheck } from "lucide-react";
+import { CalendarDays, ClipboardMinus, Clock3, ReceiptText, UserRoundCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 const items = [
@@ -10,6 +10,7 @@ const items = [
   { href: "/calendar/availability", label: "Availability", icon: Clock3 },
   { href: "/calendar/eligibility", label: "Service eligibility", icon: UserRoundCheck },
   { href: "/sales/appointment-drafts", label: "Appointment Sales", icon: ReceiptText },
+  { href: "/inventory/appointment-consumption", label: "Product usage", icon: ClipboardMinus },
 ];
 
 export default function CalendarLayout({ children }: { children: ReactNode }) {
