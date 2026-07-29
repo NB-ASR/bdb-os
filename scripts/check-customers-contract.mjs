@@ -71,6 +71,7 @@ assert.match(page, /Saved offline/);
 assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(page, /archive/);
 assert.match(page, /restore/);
+assert.match(page, /slice\(-16\)/);
 assert.doesNotMatch(page, /addCustomer/);
 
 assert.match(databaseTest, /Customer commands are idempotent/i);
