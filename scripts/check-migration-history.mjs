@@ -30,7 +30,7 @@ for (const [file, message] of [
   ["20260727161000_supplier_document_capture_review.sql", "Supplier document capture and review migration is missing."],
   ["20260727161500_supplier_document_reference_indexes.sql", "Supplier document reference index migration is missing."],
   ["20260727190000_inventory_movement_ledger.sql", "Inventory movement ledger migration is missing."],
-  ["20260727190500_inventory_reference_indexes.sql", "Inventory reference index migration is missing."],
+  ["20260727190500_inventory_reference_indexes.sql", "Inventory reference indexes migration is missing."],
   ["20260728090000_service_catalogue_foundation.sql", "Service catalogue foundation migration is missing."],
   ["20260728100000_sales_transaction_foundation.sql", "Sales transaction foundation migration is missing."],
   ["20260728100500_sales_reference_uniqueness.sql", "Sale reference hardening migration is missing."],
@@ -49,5 +49,6 @@ for (const [file, message] of [
   ["20260729123500_appointment_room_conflict_hardening.sql", "Appointment room conflict hardening migration is missing."],
   ["20260729124000_calendar_availability_reference_indexes.sql", "Calendar availability index hardening migration is missing."],
   ["20260729124500_calendar_availability_anonymous_read_hardening.sql", "Calendar availability anonymous-read hardening migration is missing."],
+  ["20260729130000_calendar_staff_service_eligibility.sql", "Calendar staff-to-Service eligibility migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
