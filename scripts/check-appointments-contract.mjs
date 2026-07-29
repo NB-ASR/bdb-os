@@ -13,7 +13,11 @@ const readHardeningMigration = await readFile(
   "supabase/migrations/20260729111000_appointment_read_hardening.sql",
   "utf8",
 );
-const migration = `${foundationMigration}\n${readHardeningMigration}`;
+const indexMigration = await readFile(
+  "supabase/migrations/20260729111500_appointment_reference_indexes.sql",
+  "utf8",
+);
+const migration = `${foundationMigration}\n${readHardeningMigration}\n${indexMigration}`;
 const api = await readFile("src/app/api/appointments/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/appointment-queue.ts", "utf8");
 const page = await readFile("src/app/calendar/page.tsx", "utf8");
@@ -37,6 +41,8 @@ for (const statement of [
   "private.actor_has_workspace_permission",
   "revoke insert, update, delete on table public.bookings from anon, authenticated",
   "revoke all on table public.bookings from anon",
+  "drop index if exists public.bookings_workspace_date_time_idx",
+  "create index if not exists bookings_staff_user_idx",
 ]) {
   assert.ok(migration.toLowerCase().includes(statement.toLowerCase()), `Missing Appointment migration contract: ${statement}`);
 }
