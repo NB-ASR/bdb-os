@@ -1,6 +1,6 @@
 begin;
 
-select plan(36);
+select plan(37);
 
 select has_table('public', 'calendar_rooms', 'Calendar rooms table exists');
 select has_table('public', 'calendar_staff_working_hours', 'Staff working hours table exists');
@@ -42,6 +42,7 @@ select ok(position('outside the staff member working hours' in pg_get_functionde
 select ok(position('overlaps a staff break' in pg_get_functiondef('private.enforce_booking_availability()'::regprocedure)) > 0, 'Appointment trigger checks breaks');
 select ok(position('overlaps staff leave' in pg_get_functiondef('private.enforce_booking_availability()'::regprocedure)) > 0, 'Appointment trigger checks leave');
 select ok(position('active configured room' in pg_get_functiondef('private.enforce_booking_availability()'::regprocedure)) > 0, 'Appointment trigger resolves active rooms');
+select ok(position('conflicts with another booking for this room' in pg_get_functiondef('private.enforce_booking_availability()'::regprocedure)) > 0, 'Appointment trigger reports room conflicts distinctly');
 select ok(position('calendar_availability_command_receipts' in pg_get_functiondef('public.apply_calendar_availability_command(uuid,text,text,text,uuid,uuid,uuid,integer,uuid,smallint,time without time zone,time without time zone,timestamp without time zone,timestamp without time zone,text,text,text,text,boolean)'::regprocedure)) > 0, 'availability command stores idempotency receipts');
 select ok(position('activity_items' in pg_get_functiondef('public.apply_calendar_availability_command(uuid,text,text,text,uuid,uuid,uuid,integer,uuid,smallint,time without time zone,time without time zone,timestamp without time zone,timestamp without time zone,text,text,text,text,boolean)'::regprocedure)) > 0, 'availability command writes Activity history');
 select ok(exists(select 1 from pg_policies where schemaname='public' and tablename='calendar_rooms' and cmd='SELECT'), 'rooms have an RLS read policy');
