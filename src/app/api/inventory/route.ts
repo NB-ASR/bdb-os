@@ -11,7 +11,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 const MANUAL_MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "opening_balance",
   "internal_consumption",
@@ -20,6 +20,11 @@ const MANUAL_MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "write_off",
 ]);
 
+// Correct UUID matcher kept separate from the compact field validation helpers below.
+const UUID_VALUE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+void UUID_PATTERN;
+
 type InventoryCommandBody = Record<string, unknown> & {
   workspaceId?: unknown;
   action?: unknown;
@@ -27,7 +32,7 @@ type InventoryCommandBody = Record<string, unknown> & {
 
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
-  if (!UUID_PATTERN.test(result)) {
+  if (!UUID_VALUE_PATTERN.test(result)) {
     throw new CommandError("INVALID_INVENTORY_INPUT", `${field} is invalid.`);
   }
   return result;
@@ -94,13 +99,34 @@ function objectValue(value: unknown) {
 
 function friendlyInventoryError(error: { message: string; code?: string | null }) {
   const message = error.message.toLowerCase();
-  if (message.includes("write access denied") || message.includes("posting access denied")) {
+  if (message.includes("access denied") || message.includes("posting access denied")) {
     return new CommandError("INVENTORY_FORBIDDEN", "You do not have permission to change Inventory.", 403);
+  }
+  if (message.includes("resale products must leave inventory through a completed sale")) {
+    return new CommandError(
+      "APPOINTMENT_CONSUMPTION_RESALE_REQUIRES_SALE",
+      "Resale Products must be added to a completed Sale rather than recorded as internal consumption.",
+      409,
+    );
+  }
+  if (message.includes("only completed service appointments")) {
+    return new CommandError(
+      "APPOINTMENT_CONSUMPTION_APPOINTMENT_NOT_COMPLETED",
+      "Complete the Service Appointment before recording its Product consumption.",
+      409,
+    );
+  }
+  if (message.includes("appointment consumption") && message.includes("unavailable")) {
+    return new CommandError("APPOINTMENT_CONSUMPTION_REFERENCE_UNAVAILABLE", error.message, 409);
   }
   if (message.includes("changed on another device")) {
     return new CommandError("INVENTORY_CONFLICT", error.message, 409);
   }
-  if (message.includes("already been reversed") || message.includes("not ready") || message.includes("cannot be archived")) {
+  if (
+    message.includes("already been reversed")
+    || message.includes("not ready")
+    || message.includes("cannot be archived")
+  ) {
     return new CommandError("INVENTORY_STATE_CONFLICT", error.message, 409);
   }
   if (error.code === "23505" || message.includes("duplicate key")) {
@@ -215,6 +241,39 @@ export async function POST(request: Request) {
       return result.data as Record<string, unknown>;
     }
 
+    if (action === "post-appointment-consumption") {
+      const result = await admin.rpc("post_appointment_product_consumption", {
+        p_workspace_id: workspaceId,
+        p_movement_id: uuid(body.id, "Movement ID"),
+        p_appointment_id: uuid(body.appointmentId, "Appointment"),
+        p_product_id: uuid(body.productId, "Product"),
+        p_location_id: uuid(body.locationId, "Inventory location"),
+        p_quantity: numberValue(body.quantity, "Quantity", { minimum: 0.001, allowZero: false }),
+        p_idempotency_key: context.idempotencyKey,
+        p_command_id: context.commandId,
+        p_actor_user_id: context.userId,
+        p_occurred_at: occurredAt(body.occurredAt),
+        p_note: optionalText(body.note, 500),
+      });
+      if (result.error) throw friendlyInventoryError(result.error);
+      return result.data as Record<string, unknown>;
+    }
+
+    if (action === "reverse-appointment-consumption") {
+      const result = await admin.rpc("reverse_appointment_product_consumption", {
+        p_workspace_id: workspaceId,
+        p_reversal_id: uuid(body.id, "Reversal movement ID"),
+        p_movement_id: uuid(body.movementId, "Original movement"),
+        p_idempotency_key: context.idempotencyKey,
+        p_command_id: context.commandId,
+        p_actor_user_id: context.userId,
+        p_reason: text(body.reason, "Reversal reason", 5, 500),
+        p_occurred_at: occurredAt(body.occurredAt),
+      });
+      if (result.error) throw friendlyInventoryError(result.error);
+      return result.data as Record<string, unknown>;
+    }
+
     if (action === "post-movement" || action === "reverse-movement") {
       const reversing = action === "reverse-movement";
       const movementType = reversing
@@ -224,6 +283,13 @@ export async function POST(request: Request) {
         throw new CommandError(
           "INVALID_INVENTORY_INPUT",
           "Purchasing, Sales and Appointment movements must be posted from their owning records.",
+        );
+      }
+      const sourceType = optionalText(body.sourceType, 48);
+      if (!reversing && sourceType === "appointment_consumption") {
+        throw new CommandError(
+          "INVALID_INVENTORY_INPUT",
+          "Appointment consumption must be posted from the completed Appointment workflow.",
         );
       }
       const requestedQuantity = reversing
@@ -245,7 +311,7 @@ export async function POST(request: Request) {
         p_occurred_at: occurredAt(body.occurredAt),
         p_unit_cost: optionalNumber(body.unitCost, "Unit cost"),
         p_currency: body.currency ? text(body.currency, "Currency", 3, 3).toUpperCase() : null,
-        p_source_type: optionalText(body.sourceType, 48),
+        p_source_type: sourceType,
         p_source_id: optionalText(body.sourceId, 160),
         p_note: optionalText(body.note, 500),
         p_metadata: objectValue(body.metadata),
