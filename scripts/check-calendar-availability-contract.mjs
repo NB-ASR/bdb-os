@@ -52,7 +52,9 @@ assert.match(api, /IDEMPOTENCY_REQUIRED/);
 assert.match(api, /apply_calendar_availability_command/);
 assert.match(api, /can_approve/);
 assert.match(api, /support_test_write/);
-assert.match(api, /Calendar availability could not be saved/);
+assert.match(api, /CALENDAR_AVAILABILITY_FAILED/);
+assert.match(api, /CALENDAR_AVAILABILITY_CONFLICT/);
+assert.match(api, /CALENDAR_AVAILABILITY_FORBIDDEN/);
 
 assert.match(page, /Weekly working hours/);
 assert.match(page, /Recurring breaks/);
