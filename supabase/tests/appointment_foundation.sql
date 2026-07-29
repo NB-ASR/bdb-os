@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(33);
 
 select has_table('public', 'bookings', 'Appointments use the canonical bookings table');
 select has_table('public', 'appointment_command_receipts', 'Appointment command receipts table exists');
