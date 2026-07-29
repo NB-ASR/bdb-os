@@ -11,7 +11,7 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANUAL_MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "opening_balance",
   "internal_consumption",
@@ -20,11 +20,6 @@ const MANUAL_MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "write_off",
 ]);
 
-// Correct UUID matcher kept separate from the compact field validation helpers below.
-const UUID_VALUE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-void UUID_PATTERN;
-
 type InventoryCommandBody = Record<string, unknown> & {
   workspaceId?: unknown;
   action?: unknown;
@@ -32,7 +27,7 @@ type InventoryCommandBody = Record<string, unknown> & {
 
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
-  if (!UUID_VALUE_PATTERN.test(result)) {
+  if (!UUID_PATTERN.test(result)) {
     throw new CommandError("INVALID_INVENTORY_INPUT", `${field} is invalid.`);
   }
   return result;
