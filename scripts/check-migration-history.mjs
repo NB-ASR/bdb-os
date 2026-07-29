@@ -43,5 +43,6 @@ for (const [file, message] of [
   ["20260729092000_customer_reference_indexes.sql", "Customer reference indexes migration is missing."],
   ["20260729110000_appointment_status_values.sql", "Appointment status migration is missing."],
   ["20260729110500_appointment_foundation.sql", "Appointment foundation migration is missing."],
+  ["20260729111000_appointment_read_hardening.sql", "Appointment read hardening migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
