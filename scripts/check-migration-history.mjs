@@ -59,5 +59,6 @@ for (const [file, message] of [
   ["20260729162000_accounts_invoice_commands.sql", "Trusted Invoice command migration is missing."],
   ["20260729162500_accounts_payment_commands.sql", "Trusted Payment command migration is missing."],
   ["20260729163000_accounts_activity_tone_hardening.sql", "Accounts Activity tone hardening migration is missing."],
+  ["20260729163500_accounts_reference_index_hardening.sql", "Accounts reference index hardening migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
