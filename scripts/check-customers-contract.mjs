@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migration = await readFile(
-  "supabase/migrations/20260729090000_customer_foundation_and_vanita_migration.sql",
-  "utf8",
-);
+const migrationFiles = [
+  "supabase/migrations/20260729090000_customer_foundation_schema.sql",
+  "supabase/migrations/20260729090500_customer_foundation_commands.sql",
+  "supabase/migrations/20260729091000_customer_vanita_import.sql",
+].map((path) => readFile(path, "utf8"));
+const migrationText = (await Promise.all(migrationFiles)).join("\n");
 const api = await readFile("src/app/api/customers/route.ts", "utf8");
 const importApi = await readFile("src/app/api/customers/import/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/customer-queue.ts", "utf8");
@@ -33,7 +35,7 @@ for (const statement of [
   "customer imported",
   "vanita customers imported",
 ]) {
-  assert.ok(migration.toLowerCase().includes(statement.toLowerCase()), `Missing Customer migration contract: ${statement}`);
+  assert.ok(migrationText.toLowerCase().includes(statement.toLowerCase()), `Missing Customer migration contract: ${statement}`);
 }
 
 assert.match(api, /const ACTIONS = new Set\(\["create", "update", "archive", "restore"\]\)/);
