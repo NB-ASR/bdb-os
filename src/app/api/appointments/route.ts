@@ -94,6 +94,13 @@ function friendlyAppointmentError(error: { message: string; code?: string | null
   if (combined.includes("effective time must remain within one working day")) {
     return new CommandError("APPOINTMENT_DAY_BOUNDARY", "The Appointment and its buffers must remain within one local working day.", 409);
   }
+  if (combined.includes("not eligible for this service")) {
+    return new CommandError(
+      "APPOINTMENT_STAFF_SERVICE_INELIGIBLE",
+      "Choose a staff member who is assigned to perform this Service.",
+      409,
+    );
+  }
   if (combined.includes("changed on another device")) {
     return new CommandError("APPOINTMENT_VERSION_CONFLICT", "This Appointment changed on another device. Refresh before saving.", 409);
   }
