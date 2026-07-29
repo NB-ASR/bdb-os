@@ -1,6 +1,6 @@
 begin;
 
-select plan(30);
+select plan(31);
 
 select has_table('public', 'customers', 'Canonical Customers table exists');
 select has_table('public', 'customer_command_receipts', 'Customer command receipts exist');
@@ -47,6 +47,11 @@ select ok(exists(select 1 from pg_constraint where conrelid='public.customer_imp
 select ok(position('actor_has_workspace_permission' in lower(pg_get_functiondef('private.customer_actor_can_write(uuid,uuid,text)'::regprocedure))) > 0, 'Customer writes use the shared support-aware permission boundary');
 select ok(position('customer_command_receipts' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0, 'Customer lifecycle commands store idempotency receipts');
 select ok(position('potential duplicate customer requires review' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0, 'Customer commands require explicit duplicate review');
+select ok(
+  position('right(replace(p_customer_id::text' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0
+  and position('right(replace(new_customer_id::text' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0,
+  'Customer codes use the final 64 UUID bits to avoid prefix collisions'
+);
 select ok(
   position('customer_import_receipts' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0
   and position('legacy_source' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0,
