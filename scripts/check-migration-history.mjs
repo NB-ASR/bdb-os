@@ -52,5 +52,12 @@ for (const [file, message] of [
   ["20260729130000_calendar_staff_service_eligibility.sql", "Calendar staff-to-Service eligibility migration is missing."],
   ["20260729143000_appointment_sale_draft_conversion.sql", "Appointment-to-Sale draft migration is missing."],
   ["20260729150000_appointment_product_consumption.sql", "Appointment Product consumption migration is missing."],
+  ["20260729160000_invoice_status_void_value.sql", "Invoice void status migration is missing."],
+  ["20260729160500_accounts_invoice_schema.sql", "Accounts Invoice schema migration is missing."],
+  ["20260729161000_accounts_payment_allocation_schema.sql", "Payment allocation schema migration is missing."],
+  ["20260729161500_accounts_balance_views_security.sql", "Accounts balance views and security migration is missing."],
+  ["20260729162000_accounts_invoice_commands.sql", "Trusted Invoice command migration is missing."],
+  ["20260729162500_accounts_payment_commands.sql", "Trusted Payment command migration is missing."],
+  ["20260729163000_accounts_activity_tone_hardening.sql", "Accounts Activity tone hardening migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
