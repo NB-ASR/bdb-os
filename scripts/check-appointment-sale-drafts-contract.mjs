@@ -35,6 +35,8 @@ assert.match(page, /Online connection required/i, "Draft configuration must stat
 assert.match(page, /Complete Sale/i, "Draft review must expose explicit Sale completion.");
 assert.match(page, /does not record payment, issue an invoice, post Banking activity or move Inventory/i, "Commercial side-effect boundary is missing from the UI.");
 assert.match(page, /Idempotency-Key/i, "Draft UI commands must carry stable idempotency keys.");
+assert.match(page, /state\.settings\.currency/i, "Appointment price snapshots must use the workspace currency.");
+assert.doesNotMatch(page, /formatter\("EUR"\)/i, "Appointment drafts must not hardcode Vanita's currency.");
 assert.doesNotMatch(page, /localStorage/i, "Canonical Appointment Sale drafts must not be hidden in browser-only storage.");
 assert.match(salesLayout, /Appointment drafts/i, "Appointment drafts must be discoverable from Sales.");
 assert.match(calendarLayout, /Appointment Sales/i, "Appointment Sales must be discoverable from Calendar.");
