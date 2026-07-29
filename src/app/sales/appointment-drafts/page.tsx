@@ -14,6 +14,7 @@ import {
   Trash2,
   TriangleAlert,
 } from "lucide-react";
+import { useBdb } from "@/lib/store";
 import { Badge, Button, Card, Dialog, PageHeader, SectionHeading, StatCard } from "@/components/ui";
 import styles from "./appointment-drafts.module.css";
 
@@ -107,7 +108,7 @@ function draftTotals(draft: SaleDraft, form: ReviewForm) {
   const vat = Number(draft.vat_rate) === 0
     ? 0
     : roundMoney(total * Number(draft.vat_rate) / (100 + Number(draft.vat_rate)));
-  return { gross, discount, vat, total, net: roundMoney(total - vat) };
+  return { gross, discount, vat, total };
 }
 
 function formatter(currency: string) {
@@ -116,6 +117,7 @@ function formatter(currency: string) {
 
 export default function AppointmentSaleDraftsPage() {
   const router = useRouter();
+  const { state } = useBdb();
   const [bundle, setBundle] = useState<DraftBundle>(emptyBundle);
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
@@ -179,6 +181,7 @@ export default function AppointmentSaleDraftsPage() {
   const convertedDrafts = bundle.drafts.filter((draft) => draft.status === "converted");
   const disabled = !bundle.canManage || !online;
   const totals = reviewing ? draftTotals(reviewing, form) : null;
+  const workspaceCurrency = formatter(state.settings.currency);
 
   async function command(action: string, payload: Record<string, unknown>) {
     const response = await fetch("/api/sale-drafts", {
@@ -202,10 +205,7 @@ export default function AppointmentSaleDraftsPage() {
     setError("");
     setNotice("");
     try {
-      await command("create", {
-        id: crypto.randomUUID(),
-        appointmentId: appointment.id,
-      });
+      await command("create", { id: crypto.randomUUID(), appointmentId: appointment.id });
       setNotice(`${appointment.reference} is ready for Sales review.`);
       await load();
     } catch (saveError) {
@@ -223,7 +223,7 @@ export default function AppointmentSaleDraftsPage() {
   }
 
   async function saveReview() {
-    if (!reviewing || disabled) return null;
+    if (!reviewing || disabled || !form.occurredAt) return null;
     setBusy(reviewing.id);
     setError("");
     try {
@@ -397,7 +397,7 @@ export default function AppointmentSaleDraftsPage() {
                       <div className={styles.identityText}>
                         <strong>{appointment.customer_name_snapshot || "Customer"} · {appointment.title}</strong>
                         <span>{appointment.reference} · {appointment.service_code_snapshot || "Service"}</span>
-                        <small>{new Date(appointment.completed_at).toLocaleString("en-GB")} · {appointment.price_snapshot === null ? "Price review required" : formatter("EUR").format(Number(appointment.price_snapshot))}</small>
+                        <small>{new Date(appointment.completed_at).toLocaleString("en-GB")} · {appointment.price_snapshot === null ? "Price review required" : workspaceCurrency.format(Number(appointment.price_snapshot))}</small>
                       </div>
                     </div>
                     <div className={styles.rowActions}>
@@ -507,7 +507,7 @@ export default function AppointmentSaleDraftsPage() {
 
             <div className="dialog-actions">
               <Button variant="quiet" onClick={() => setReviewing(null)} disabled={busy === reviewing.id}>Close</Button>
-              <Button variant="secondary" onClick={() => void saveReview()} disabled={disabled || busy === reviewing.id}><FilePenLine size={16} /> Save review</Button>
+              <Button variant="secondary" onClick={() => void saveReview()} disabled={disabled || busy === reviewing.id || !form.occurredAt}><FilePenLine size={16} /> Save review</Button>
               <Button onClick={() => void completeSale()} disabled={disabled || busy === reviewing.id || !form.unitPrice || !form.occurredAt}>
                 <CircleDollarSign size={16} /> {busy === reviewing.id ? "Completing…" : "Complete Sale"}
               </Button>
