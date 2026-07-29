@@ -1,6 +1,6 @@
 begin;
 
-select plan(36);
+select plan(37);
 
 select has_column('public', 'inventory_movements', 'appointment_id', 'Inventory movements expose a canonical Appointment link');
 select ok(exists(
