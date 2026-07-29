@@ -73,7 +73,7 @@ function timeValue(value: unknown) {
 
 function friendlyAppointmentError(error: { message: string; code?: string | null; details?: string | null }) {
   const combined = `${error.message} ${error.details ?? ""}`.toLowerCase();
-  if (combined.includes("bookings_room_effective_time_exclusion")) {
+  if (combined.includes("bookings_room_effective_time_exclusion") || combined.includes("conflicts with another booking for this room")) {
     return new CommandError("APPOINTMENT_ROOM_CONFLICT", "That room already has an Appointment during the effective occupied time.", 409);
   }
   if (error.code === "23P01" || combined.includes("conflicts with another booking for this staff member")) {
