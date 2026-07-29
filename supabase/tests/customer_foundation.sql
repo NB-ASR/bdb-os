@@ -1,6 +1,6 @@
 begin;
 
-select plan(31);
+select plan(32);
 
 select has_table('public', 'customers', 'Canonical Customers table exists');
 select has_table('public', 'customer_command_receipts', 'Customer command receipts exist');
@@ -43,6 +43,21 @@ select ok(exists(select 1 from pg_indexes where schemaname='public' and tablenam
 select ok(exists(select 1 from pg_indexes where schemaname='public' and tablename='customers' and indexname='customers_workspace_legacy_identity_idx'), 'Customer legacy identities are unique per workspace');
 select ok(exists(select 1 from pg_constraint where conrelid='public.customer_command_receipts'::regclass and contype='p' and pg_get_constraintdef(oid)='PRIMARY KEY (workspace_id, idempotency_key)'), 'Customer commands are idempotent');
 select ok(exists(select 1 from pg_constraint where conrelid='public.customer_import_receipts'::regclass and contype='p' and pg_get_constraintdef(oid)='PRIMARY KEY (workspace_id, source, legacy_id)'), 'Customer imports preserve provenance without duplicate source identities');
+select ok(
+  not exists (
+    select 1
+    from (values
+      ('customers_created_by_idx'),
+      ('customers_updated_by_idx'),
+      ('customer_import_batches_created_by_idx'),
+      ('customer_import_receipts_batch_idx')
+    ) required(index_name)
+    where not exists (
+      select 1 from pg_indexes where schemaname='public' and indexname=required.index_name
+    )
+  ),
+  'Customer audit and import foreign keys have covering indexes'
+);
 
 select ok(position('actor_has_workspace_permission' in lower(pg_get_functiondef('private.customer_actor_can_write(uuid,uuid,text)'::regprocedure))) > 0, 'Customer writes use the shared support-aware permission boundary');
 select ok(position('customer_command_receipts' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0, 'Customer lifecycle commands store idempotency receipts');
