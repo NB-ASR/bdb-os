@@ -1,5 +1,5 @@
 .statusCard {
-  margin-top: 18px;
+  margin-bottom: 18px;
   padding: 20px;
 }
 
@@ -37,11 +37,65 @@
   font-size: 0.82rem;
 }
 
-.actions {
+.actions,
+.rowActions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.setup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 12px;
+  background: var(--gold-faint);
+}
+
+.setup > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--gold-light);
+}
+
+.setup span {
+  display: grid;
+  gap: 3px;
+}
+
+.setup small {
+  color: var(--muted);
+}
+
+.locationSelect {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 360px) 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.locationSelect > span {
+  color: var(--gold-light);
+  font-weight: 750;
+}
+
+.locationSelect select {
+  width: 100%;
+}
+
+.locationSelect small {
+  color: var(--muted);
 }
 
 .metrics {
@@ -80,10 +134,10 @@
 
 .documentStrip > div {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) auto;
+  grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px;
   border-top: 1px solid var(--border);
 }
 
@@ -95,10 +149,35 @@
   color: var(--muted);
 }
 
-.error {
+.error,
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+}
+
+.error {
+  border: 1px solid rgba(227, 161, 143, 0.24);
+  background: rgba(227, 161, 143, 0.07);
   color: #e3a18f;
-  font-size: 0.78rem;
+}
+
+.notice {
+  border: 1px solid rgba(112, 191, 136, 0.22);
+  background: rgba(112, 191, 136, 0.07);
+  color: #9bd7ad;
+}
+
+.empty {
+  margin: 14px 0 0;
+  padding: 13px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 @media (max-width: 850px) {
@@ -107,13 +186,19 @@
     align-items: flex-start;
   }
 
-  .header {
+  .header,
+  .setup {
     flex-wrap: wrap;
   }
 
-  .actions {
+  .actions,
+  .setup > button {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .locationSelect {
+    grid-template-columns: 1fr;
   }
 
   .metrics {
@@ -121,8 +206,12 @@
   }
 }
 
-@media (max-width: 620px) {
+@media (max-width: 700px) {
   .documentStrip > div {
     grid-template-columns: 1fr;
+  }
+
+  .rowActions {
+    justify-content: flex-start;
   }
 }
