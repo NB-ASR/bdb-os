@@ -9,6 +9,11 @@ const api = await readFile("src/app/api/inventory/route.ts", "utf8");
 const domain = await readFile("src/lib/modules/inventory.ts", "utf8");
 const queue = await readFile("src/lib/modules/inventory-queue.ts", "utf8");
 const workspace = await readFile("src/app/inventory/inventory-workspace.tsx", "utf8");
+const purchasingStatus = await readFile(
+  "src/app/documents/purchasing/purchasing-inventory-status.tsx",
+  "utf8",
+);
+const purchasingPage = await readFile("src/app/documents/purchasing/page.tsx", "utf8");
 const page = await readFile("src/app/inventory/page.tsx", "utf8");
 
 for (const statement of [
@@ -77,5 +82,14 @@ assert.match(workspace, /Reverse supplier-document posting/);
 assert.match(workspace, /Founder support · Read only/);
 assert.match(workspace, /Purchasing posting requires current cloud validation/);
 assert.match(workspace, /Conflicts stop synchronisation|Synchronisation stops on the first validation or conflict error/);
+
+assert.match(purchasingStatus, /Movement ledger connected/);
+assert.match(purchasingStatus, /Create Main stock/);
+assert.match(purchasingStatus, /post-purchasing-document/);
+assert.match(purchasingStatus, /inventory-default-location:/);
+assert.match(purchasingStatus, /inventory-post-document:/);
+assert.match(purchasingStatus, /purchase-receipt movements/);
+assert.match(purchasingStatus, /Supplier-return movements/);
+assert.match(purchasingPage, /PurchasingInventoryStatus[\s\S]*PurchasingWorkspace/);
 
 console.log("Inventory Product identity, append-only ledger, Purchasing posting, security and offline contracts are intact.");
