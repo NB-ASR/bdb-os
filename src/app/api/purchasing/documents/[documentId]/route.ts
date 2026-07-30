@@ -29,6 +29,30 @@ function version(value: unknown) {
   return result;
 }
 
+function normaliseReviewLines(value: unknown, action: string) {
+  if (!Array.isArray(value)) {
+    throw new CommandError("INVALID_SUPPLIER_DOCUMENT_LINES", "Reviewed supplier-document lines are required.");
+  }
+  return value.map((raw, index) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new CommandError("INVALID_SUPPLIER_DOCUMENT_LINES", `Supplier-document line ${index + 1} is invalid.`);
+    }
+    const line = { ...(raw as Record<string, unknown>) };
+    const lineId = uuid(line.id, `Supplier-document line ${index + 1} ID`);
+    const lineKind = String(line.lineKind ?? "product").trim();
+    if (!new Set(["product", "expense"]).has(lineKind)) {
+      throw new CommandError("INVALID_SUPPLIER_DOCUMENT_LINES", `Supplier-document line ${index + 1} kind is invalid.`);
+    }
+    line.id = lineId;
+    line.lineKind = lineKind;
+    if (action === "approve" && lineKind === "product" && !String(line.matchedProductId ?? "").trim()) {
+      line.matchedProductId = lineId;
+      line.matchedProductSupplierId = "";
+    }
+    return line;
+  });
+}
+
 function friendlyReviewError(error: { message: string; code?: string | null }) {
   const message = error.message.toLowerCase();
   if (message.includes("changed on another device")) {
@@ -163,9 +187,7 @@ export async function POST(
     if (!body.header || typeof body.header !== "object" || Array.isArray(body.header)) {
       throw new CommandError("INVALID_SUPPLIER_DOCUMENT_HEADER", "A reviewed document header is required.");
     }
-    if (!Array.isArray(body.lines)) {
-      throw new CommandError("INVALID_SUPPLIER_DOCUMENT_LINES", "Reviewed supplier-document lines are required.");
-    }
+    const reviewedLines = normaliseReviewLines(body.lines, action);
 
     const commandContext = await requireWorkspaceCommand(request, workspaceId);
     if (!commandContext.idempotencyKey) {
@@ -183,7 +205,7 @@ export async function POST(
       p_command_id: commandContext.commandId,
       p_expected_version: version(body.expectedVersion),
       p_header: body.header,
-      p_lines: body.lines,
+      p_lines: reviewedLines,
     });
     if (result.error) throw friendlyReviewError(result.error);
     return result.data as Record<string, unknown>;
