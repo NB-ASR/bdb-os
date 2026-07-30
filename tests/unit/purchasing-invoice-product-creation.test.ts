@@ -18,6 +18,13 @@ test("unmatched invoice lines default to deterministic new Product proposals", (
   assert.match(route, /proposed_new_product: true/);
 });
 
+test("approval normalizes older cached unmatched Product lines", () => {
+  assert.match(route, /function normaliseReviewLines/);
+  assert.match(route, /action === "approve"[\s\S]*lineKind === "product"/);
+  assert.match(route, /line\.matchedProductId = lineId/);
+  assert.match(route, /p_lines: reviewedLines/);
+});
+
 test("approval creates Products and Supplier relationships atomically", () => {
   assert.match(migration, /product_uuid <> line_uuid/);
   assert.match(migration, /insert into public\.products/);
