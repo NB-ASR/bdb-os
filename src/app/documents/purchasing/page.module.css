@@ -1,4 +1,10 @@
 .page :global(table[class*="documentTable"] th:nth-child(8)),
-.page :global(table[class*="documentTable"] td:nth-child(8)) {
+.page :global(table[class*="documentTable"] td:nth-child(8)),
+.page :global([class*="lowerGrid"] > :first-child),
+.page :global([class*="postingLockGrid"] > :first-child) {
   display: none;
+}
+
+.page :global([class*="lowerGrid"]) {
+  grid-template-columns: minmax(0, 1fr);
 }
