@@ -5,8 +5,8 @@ import styles from "./page.module.css";
 export default function PurchasingPage() {
   return (
     <div className={styles.page}>
-      <PurchasingWorkspace />
       <PurchasingInventoryStatus />
+      <PurchasingWorkspace />
     </div>
   );
 }
