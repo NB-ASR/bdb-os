@@ -99,8 +99,8 @@ begin
         pg_catalog.hashtextextended(p_workspace_id::text || ':' || normalized_supplier_name, 0)
       );
 
-      select count(*), min(supplier.id)
-      into matching_supplier_count, resolved_supplier_id
+      select count(*)
+      into matching_supplier_count
       from public.suppliers supplier
       where supplier.workspace_id = p_workspace_id
         and supplier.status = 'active'
@@ -111,7 +111,17 @@ begin
         raise exception 'Several Suppliers match the extracted name; choose the correct Supplier explicitly';
       end if;
 
-      if matching_supplier_count = 0 then
+      if matching_supplier_count = 1 then
+        select supplier.id
+        into resolved_supplier_id
+        from public.suppliers supplier
+        where supplier.workspace_id = p_workspace_id
+          and supplier.status = 'active'
+          and supplier.supplier_type = 'product'
+          and private.normalise_supplier_identity_name(supplier.name) = normalized_supplier_name
+        order by supplier.id::text
+        limit 1;
+      else
         supplier_code_base := upper(regexp_replace(extracted_supplier_name, '[^A-Za-z0-9]+', '', 'g'));
         supplier_code_base := left(coalesce(nullif(supplier_code_base, ''), 'SUPPLIER'), 56);
         supplier_code := supplier_code_base;
