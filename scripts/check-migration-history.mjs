@@ -62,5 +62,10 @@ for (const [file, message] of [
   ["20260729163500_accounts_reference_index_hardening.sql", "Accounts reference index hardening migration is missing."],
   ["20260731100000_purchasing_supplier_proposal.sql", "Purchasing Supplier proposal migration is missing."],
   ["20260731100500_purchasing_supplier_proposal_uuid_resolution.sql", "Purchasing Supplier proposal UUID hardening migration is missing."],
+  ["20260731110000_supplier_payables_schema.sql", "Supplier Payables schema migration is missing."],
+  ["20260731110500_supplier_payables_views_security.sql", "Supplier Payables views and security migration is missing."],
+  ["20260731111000_supplier_payables_posting_commands.sql", "Supplier Payables posting command migration is missing."],
+  ["20260731111500_supplier_payables_settlement_commands.sql", "Supplier Payables settlement command migration is missing."],
+  ["20260731112000_supplier_payables_cross_department_read.sql", "Supplier Payables cross-department read migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
