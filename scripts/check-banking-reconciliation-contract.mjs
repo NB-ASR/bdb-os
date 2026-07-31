@@ -89,7 +89,7 @@ assert.match(importApi, /2 MB/i, "The V1 import size boundary must be explicit."
 assert.match(csv, /5,000 transactions/i, "The V1 CSV row limit must be enforced.");
 assert.match(csv, /createHash\("sha256"\)/, "Statement files and rows must use SHA-256 identities.");
 assert.match(csv, /occurrence/, "Repeated identical rows must receive occurrence-aware fingerprints.");
-assert.match(queue, /stop/i, "The Banking queue must stop on command failure.");
+assert.match(queue, /for \(const command of queue\)[\s\S]*catch \(error\)[\s\S]*throw new Error\(message\)/, "The Banking queue must stop on the first command failure.");
 assert.match(queue, /Idempotency-Key/, "Queued Banking commands must retain stable idempotency identities.");
 
 assert.match(page, /Banking verifies Payments; it does not settle Invoices directly/i, "The Banking UI must state the settlement boundary.");
