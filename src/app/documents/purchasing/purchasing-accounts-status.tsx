@@ -66,7 +66,7 @@ export default function PurchasingAccountsStatus() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": `supplier-payable-post:${document.id}`,
+          "Idempotency-Key": crypto.randomUUID(),
         },
         body: JSON.stringify({
           workspaceId,
