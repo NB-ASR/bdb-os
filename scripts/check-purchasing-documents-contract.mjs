@@ -5,6 +5,10 @@ const migration = await readFile(
   "supabase/migrations/20260727161000_supplier_document_capture_review.sql",
   "utf8",
 );
+const supplierProposalMigration = await readFile(
+  "supabase/migrations/20260731100000_purchasing_supplier_proposal.sql",
+  "utf8",
+);
 const uploadApi = await readFile("src/app/api/purchasing/documents/route.ts", "utf8");
 const extractionApi = await readFile(
   "src/app/api/purchasing/documents/[documentId]/extract/route.ts",
@@ -45,6 +49,15 @@ assert.doesNotMatch(migration, /grant (insert|update|delete).*supplier_documents
 assert.match(migration, /grant execute on function public\.apply_supplier_document_upload/);
 assert.match(migration, /to service_role/);
 
+assert.match(supplierProposalMigration, /normalise_supplier_identity_name/);
+assert.match(supplierProposalMigration, /apply_supplier_document_review_with_supplier_proposal/);
+assert.match(supplierProposalMigration, /pg_advisory_xact_lock/);
+assert.match(supplierProposalMigration, /Supplier created from supplier document/);
+assert.match(supplierProposalMigration, /private\.supplier_actor_can_write/);
+assert.match(supplierProposalMigration, /return public\.apply_supplier_document_review/);
+assert.match(supplierProposalMigration, /grant execute on function public\.apply_supplier_document_review_with_supplier_proposal/);
+assert.doesNotMatch(supplierProposalMigration, /grant execute[\s\S]*to authenticated/i);
+
 assert.match(uploadApi, /createHash\("sha256"\)/);
 assert.match(uploadApi, /detectFileType/);
 assert.match(uploadApi, /workspace-documents/);
@@ -60,7 +73,10 @@ assert.match(extractionApi, /begin_supplier_document_extraction/);
 assert.match(extractionApi, /fail_supplier_document_extraction/);
 assert.match(extractionApi, /input_file|input_image/);
 
-assert.match(reviewApi, /apply_supplier_document_review/);
+assert.match(reviewApi, /normaliseSupplierName/);
+assert.match(reviewApi, /Create new Supplier/);
+assert.match(reviewApi, /proposed_new_supplier/);
+assert.match(reviewApi, /apply_supplier_document_review_with_supplier_proposal/);
 assert.match(reviewApi, /expectedVersion/);
 assert.match(reviewApi, /save_review/);
 assert.match(reviewApi, /approve/);
