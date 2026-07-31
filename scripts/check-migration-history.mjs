@@ -69,5 +69,8 @@ for (const [file, message] of [
   ["20260731112000_supplier_payables_cross_department_read.sql", "Supplier Payables cross-department read migration is missing."],
   ["20260731112500_supplier_payables_balance_hardening.sql", "Supplier Payables balance hardening migration is missing."],
   ["20260731113000_supplier_payables_read_policy_hardening.sql", "Supplier Payables read-policy hardening migration is missing."],
+  ["20260731120000_banking_reconciliation_schema.sql", "Banking reconciliation schema migration is missing."],
+  ["20260731120500_banking_reconciliation_views_security.sql", "Banking reconciliation views and security migration is missing."],
+  ["20260731121000_banking_reconciliation_commands.sql", "Trusted Banking reconciliation command migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
