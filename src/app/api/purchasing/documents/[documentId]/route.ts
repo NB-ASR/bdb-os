@@ -15,6 +15,17 @@ type ReviewBody = Record<string, unknown> & {
   lines?: unknown;
 };
 
+type SupplierOption = {
+  id: string;
+  code: string;
+  name: string;
+  supplier_type: string;
+  status: string;
+  document_currency: string;
+  payment_terms_days: number;
+  proposed_new_supplier?: boolean;
+};
+
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
   if (!UUID_PATTERN.test(result)) throw new CommandError("INVALID_PURCHASING_INPUT", `${field} is invalid.`);
@@ -27,6 +38,14 @@ function version(value: unknown) {
     throw new CommandError("INVALID_SUPPLIER_DOCUMENT_VERSION", "Refresh the supplier document before saving.");
   }
   return result;
+}
+
+function normaliseSupplierName(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 function normaliseReviewLines(value: unknown, action: string) {
@@ -58,11 +77,17 @@ function friendlyReviewError(error: { message: string; code?: string | null }) {
   if (message.includes("changed on another device")) {
     return new CommandError("SUPPLIER_DOCUMENT_CONFLICT", "This document changed on another device. Refresh before saving.", 409);
   }
+  if (message.includes("several suppliers match")) {
+    return new CommandError("SUPPLIER_DOCUMENT_SUPPLIER_AMBIGUOUS", "Several Suppliers match the extracted name. Select the correct existing Supplier before approval.", 409);
+  }
+  if (message.includes("extracted supplier name must be confirmed")) {
+    return new CommandError("SUPPLIER_DOCUMENT_SUPPLIER_UNRESOLVED", "Confirm the extracted Supplier name or select an existing Supplier before approval.", 409);
+  }
   if (message.includes("write access denied") || message.includes("creation access denied")) {
     return new CommandError("SUPPLIER_DOCUMENT_FORBIDDEN", "You do not have permission to approve this Purchasing document and create its catalogue records.", 403);
   }
   if (message.includes("workspace_number_idx") || error.code === "23505" || message.includes("duplicate key")) {
-    return new CommandError("SUPPLIER_DOCUMENT_NUMBER_DUPLICATE", "This Supplier already has a document with the same number and type, or one proposed Product conflicts with an existing SKU or barcode.", 409);
+    return new CommandError("SUPPLIER_DOCUMENT_NUMBER_DUPLICATE", "This Supplier already has a document with the same number and type, or one proposed catalogue record conflicts with an existing record.", 409);
   }
   if (message.includes("linked to an existing product") || message.includes("product match is invalid")) {
     return new CommandError("SUPPLIER_DOCUMENT_LINES_UNRESOLVED", "Choose the correct existing Product or leave Create new Product selected before approval.", 409);
@@ -134,6 +159,33 @@ export async function GET(
       .createSignedUrl(documentResult.data.file_path, 300);
     if (signedResult.error) throw signedResult.error;
 
+    const document = { ...documentResult.data };
+    const suppliers = [...((suppliersResult.data ?? []) as SupplierOption[])];
+    const extractedSupplierName = String(document.extracted_supplier_text ?? "").trim();
+    const normalizedExtractedSupplierName = normaliseSupplierName(extractedSupplierName);
+
+    if (!document.supplier_id && normalizedExtractedSupplierName) {
+      const exactMatches = suppliers.filter(
+        (supplier) => supplier.supplier_type === "product"
+          && normaliseSupplierName(supplier.name) === normalizedExtractedSupplierName,
+      );
+      if (exactMatches.length === 1) {
+        document.supplier_id = exactMatches[0].id;
+      } else if (exactMatches.length === 0 && extractedSupplierName.length >= 2 && extractedSupplierName.length <= 160) {
+        suppliers.unshift({
+          id: documentId,
+          code: "NEW",
+          name: `Create new Supplier · ${extractedSupplierName}`,
+          supplier_type: "product",
+          status: "active",
+          document_currency: document.currency,
+          payment_terms_days: 0,
+          proposed_new_supplier: true,
+        });
+        document.supplier_id = documentId;
+      }
+    }
+
     const products = [...(productsResult.data ?? [])];
     const productIds = new Set(products.map((product) => product.id));
     const lines = (linesResult.data ?? []).map((line) => {
@@ -161,9 +213,9 @@ export async function GET(
 
     return {
       workspaceId,
-      document: documentResult.data,
+      document,
       lines,
-      suppliers: suppliersResult.data ?? [],
+      suppliers,
       products,
       relationships: relationshipsResult.data ?? [],
       originalFileUrl: signedResult.data.signedUrl,
@@ -196,7 +248,7 @@ export async function POST(
     const admin = createAdminClient();
     if (!admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
-    const result = await admin.rpc("apply_supplier_document_review", {
+    const result = await admin.rpc("apply_supplier_document_review_with_supplier_proposal", {
       p_workspace_id: workspaceId,
       p_document_id: documentId,
       p_action: action,
