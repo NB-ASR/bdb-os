@@ -189,9 +189,20 @@ export async function GET(request: Request) {
     ].find((result) => result.error);
     if (failed?.error) throw failed.error;
 
+    const storedSettings = settingsResult.data ?? { currency: "EUR", timezone: "UTC" };
+    const transactionCurrencies = Array.from(new Set(
+      (transactionsResult.data ?? [])
+        .filter((transaction) => String((transaction as Record<string, unknown>).record_status ?? "posted") === "posted")
+        .map((transaction) => String((transaction as Record<string, unknown>).currency ?? ""))
+        .filter((value) => /^[A-Z]{3}$/.test(value)),
+    ));
+    const displayCurrency = transactionCurrencies.length > 1
+      ? "MULTI"
+      : transactionCurrencies[0] ?? storedSettings.currency;
+
     return {
       workspaceId,
-      settings: settingsResult.data ?? { currency: "EUR", timezone: "UTC" },
+      settings: { ...storedSettings, currency: displayCurrency },
       accounts: accountsResult.data ?? [],
       accountSummaries: summariesResult.data ?? [],
       statementImports: importsResult.data ?? [],
