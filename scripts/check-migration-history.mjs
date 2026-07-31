@@ -72,5 +72,6 @@ for (const [file, message] of [
   ["20260731120000_banking_reconciliation_schema.sql", "Banking reconciliation schema migration is missing."],
   ["20260731120500_banking_reconciliation_views_security.sql", "Banking reconciliation views and security migration is missing."],
   ["20260731121000_banking_reconciliation_commands.sql", "Trusted Banking reconciliation command migration is missing."],
+  ["20260731121500_banking_reference_indexes.sql", "Banking reference-index hardening migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
