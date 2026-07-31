@@ -9,7 +9,7 @@ set search_path = ''
 as $$
   select nullif(
     pg_catalog.regexp_replace(
-      pg_catalog.lower(pg_catalog.trim(coalesce(p_value, ''))),
+      pg_catalog.lower(pg_catalog.btrim(coalesce(p_value, ''))),
       '[^a-z0-9]+',
       '',
       'g'
