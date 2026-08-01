@@ -1,6 +1,6 @@
 begin;
 
-select plan(36);
+select plan(37);
 
 select has_table('public', 'customer_notes', 'Customer note ledger exists');
 select has_table('public', 'customer_note_command_receipts', 'Customer note command receipts exist');
@@ -64,6 +64,7 @@ select ok(coalesce((select reloptions @> array['security_invoker=true'] from pg_
 select ok(coalesce((select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.customer_360_operational_summary'::regclass), false), 'Customer operational summary preserves invoker RLS');
 select ok(coalesce((select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.customer_360_activity'::regclass), false), 'Customer activity preserves invoker RLS');
 select ok(has_function_privilege('authenticated', 'public.get_customer_360_access(uuid)', 'EXECUTE'), 'Authenticated users can resolve their Customer 360 section access');
+select ok(not (select prosecdef from pg_proc where oid = 'public.get_customer_360_access(uuid)'::regprocedure), 'Customer 360 access resolution is security invoker');
 
 select * from finish();
 rollback;
