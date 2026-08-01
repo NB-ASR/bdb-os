@@ -59,6 +59,18 @@ function timestamp(value: unknown) {
   return parsed.toISOString();
 }
 
+function navigationParameter(request: Request, name: string) {
+  const direct = new URL(request.url).searchParams.get(name);
+  if (direct) return direct;
+  const referer = request.headers.get("referer");
+  if (!referer) return null;
+  try {
+    return new URL(referer).searchParams.get(name);
+  } catch {
+    return null;
+  }
+}
+
 function friendlyError(error: { message: string; code?: string | null }) {
   const message = error.message.toLowerCase();
   if (message.includes("access denied") || message.includes("customer access denied")) {
@@ -92,8 +104,8 @@ export async function GET(request: Request) {
   return runCommand(async () => {
     const url = new URL(request.url);
     const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
-    const requestedThreadId = optionalUuid(url.searchParams.get("threadId"), "Thread");
-    const customerId = optionalUuid(url.searchParams.get("customerId"), "Customer");
+    const requestedThreadId = optionalUuid(navigationParameter(request, "threadId"), "Thread");
+    const customerId = optionalUuid(navigationParameter(request, "customerId"), "Customer");
     await requireWorkspaceCommand(request, workspaceId);
 
     const supabase = await createClient();
