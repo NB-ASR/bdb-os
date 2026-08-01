@@ -14,6 +14,15 @@ const eslintConfig = defineConfig([
       "react-hooks/preserve-manual-memoization": "off",
     },
   },
+  {
+    files: ["src/app/customers/[customerId]/page.tsx"],
+    rules: {
+      // Customer 360 deliberately starts external note-queue replay after connectivity or queue changes.
+      "react-hooks/set-state-in-effect": "off",
+      // Queue replay depends on the current cached profile bundle and refresh callback as one controller boundary.
+      "react-hooks/preserve-manual-memoization": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
