@@ -142,6 +142,20 @@ function writeCache(value: CachedWorkspace) {
   window.localStorage.setItem(LAST_WORKSPACE_KEY, value.workspaceId);
 }
 
+function requestedThreadFromLocation() {
+  if (typeof window === "undefined") return undefined;
+  const value = new URL(window.location.href).searchParams.get("threadId")?.trim();
+  return value || undefined;
+}
+
+function updateThreadLocation(thread: CommunicationThread) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("threadId", thread.id);
+  url.searchParams.set("customerId", thread.customer_id);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+}
+
 function formatDateTime(value: string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en-GB", {
@@ -164,7 +178,10 @@ function messageStatus(message: CommunicationMessage) {
   if (message.draft_state === "review") return { label: "Draft review", tone: "gold" as const };
   if (message.draft_state === "dismissed") return { label: "Draft dismissed", tone: "neutral" as const };
   if (message.direction === "inbound" && message.unread) return { label: "Unread", tone: "blue" as const };
-  return { label: message.direction === "inbound" ? "Received" : "Recorded outbound", tone: message.direction === "inbound" ? "blue" as const : "green" as const };
+  return {
+    label: message.direction === "inbound" ? "Received" : "Recorded outbound",
+    tone: message.direction === "inbound" ? "blue" as const : "green" as const,
+  };
 }
 
 export default function CommunicationsPage() {
@@ -193,23 +210,6 @@ export default function CommunicationsPage() {
   const selected = threads.find((item) => item.id === selectedId) ?? threads[0];
   const selectedMessages = selected ? messagesByThread[selected.id] ?? [] : [];
 
-  const persistCache = useCallback((
-    targetWorkspaceId: string,
-    nextAccess: Record<string, boolean>,
-    nextThreads: CommunicationThread[],
-    nextCustomers: CustomerLabel[],
-    nextMessagesByThread: Record<string, CommunicationMessage[]>,
-  ) => {
-    writeCache({
-      workspaceId: targetWorkspaceId,
-      access: nextAccess,
-      threads: nextThreads,
-      customers: nextCustomers,
-      messagesByThread: nextMessagesByThread,
-      cachedAt: new Date().toISOString(),
-    });
-  }, []);
-
   const refreshQueue = useCallback(async (targetWorkspaceId: string) => {
     const queue = await listUnifiedCommunicationCommands(targetWorkspaceId);
     setQueueCount(queue.length);
@@ -221,45 +221,58 @@ export default function CommunicationsPage() {
     if (!contextResponse.ok || !context.currentWorkspaceId) {
       throw new Error(context.error ?? "The current workspace could not be resolved.");
     }
+
     const currentWorkspaceId = String(context.currentWorkspaceId);
     setWorkspaceId(currentWorkspaceId);
     setSupportReadOnly(Boolean(context.supportAccess) && context.supportAccessMode !== "test_write");
 
     const params = new URLSearchParams({ workspaceId: currentWorkspaceId });
-    const targetThreadId = requestedThreadId || selectedId;
-    if (targetThreadId) params.set("threadId", targetThreadId);
+    if (requestedThreadId) params.set("threadId", requestedThreadId);
     const response = await fetch(`/api/communications?${params.toString()}`, { cache: "no-store" });
     const json = await response.json().catch(() => ({}));
     if (!response.ok || !json.ok) throw new Error(json.error ?? "Communications could not be loaded.");
+
     const result = json.result as CommunicationBundle;
-    const nextMessagesByThread = {
-      ...messagesByThread,
-      ...(result.selectedThreadId ? { [result.selectedThreadId]: result.messages } : {}),
-    };
-    setAccess(result.access ?? {});
-    setThreads(result.threads ?? []);
-    setCustomers(result.customers ?? []);
-    setMessagesByThread(nextMessagesByThread);
+    const nextThreads = result.threads ?? [];
+    const nextCustomers = result.customers ?? [];
+    const nextAccess = result.access ?? {};
+
+    setAccess(nextAccess);
+    setThreads(nextThreads);
+    setCustomers(nextCustomers);
     setSelectedId(result.selectedThreadId ?? "");
-    persistCache(currentWorkspaceId, result.access ?? {}, result.threads ?? [], result.customers ?? [], nextMessagesByThread);
+    setMessagesByThread((current) => {
+      const next = {
+        ...current,
+        ...(result.selectedThreadId ? { [result.selectedThreadId]: result.messages ?? [] } : {}),
+      };
+      writeCache({
+        workspaceId: currentWorkspaceId,
+        access: nextAccess,
+        threads: nextThreads,
+        customers: nextCustomers,
+        messagesByThread: next,
+        cachedAt: new Date().toISOString(),
+      });
+      return next;
+    });
     await refreshQueue(currentWorkspaceId);
     return result;
-  }, [messagesByThread, persistCache, refreshQueue, selectedId]);
+  }, [refreshQueue]);
 
-  const selectThread = useCallback(async (threadId: string) => {
-    setSelectedId(threadId);
-    const cached = messagesByThread[threadId];
-    if (!online || mode === "demo") return;
-    if (!cached) {
-      setBusy(true);
-      setError("");
-      try {
-        await load(threadId);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "The conversation could not be loaded.");
-      } finally {
-        setBusy(false);
-      }
+  const selectThread = useCallback(async (thread: CommunicationThread) => {
+    setSelectedId(thread.id);
+    updateThreadLocation(thread);
+    if (!online || mode === "demo" || messagesByThread[thread.id]) return;
+
+    setBusy(true);
+    setError("");
+    try {
+      await load(thread.id);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "The conversation could not be loaded.");
+    } finally {
+      setBusy(false);
     }
   }, [load, messagesByThread, mode, online]);
 
@@ -277,17 +290,24 @@ export default function CommunicationsPage() {
   useEffect(() => {
     let active = true;
     async function initialise() {
+      const requestedThreadId = requestedThreadFromLocation();
       const lastWorkspace = window.localStorage.getItem(LAST_WORKSPACE_KEY) ?? "";
       const cached = lastWorkspace ? readCache(lastWorkspace) : null;
+
       if (cached && active) {
         setWorkspaceId(cached.workspaceId);
         setAccess(cached.access);
         setThreads(cached.threads);
         setCustomers(cached.customers);
         setMessagesByThread(cached.messagesByThread);
-        setSelectedId(cached.threads[0]?.id ?? "");
+        setSelectedId(
+          requestedThreadId && cached.threads.some((thread) => thread.id === requestedThreadId)
+            ? requestedThreadId
+            : cached.threads[0]?.id ?? "",
+        );
         await refreshQueue(cached.workspaceId);
       }
+
       try {
         if (mode === "demo") {
           if (!cached) setError("Unified Communications requires an active cloud workspace in this preview.");
@@ -298,13 +318,14 @@ export default function CommunicationsPage() {
           else setError("Unified Communications needs one successful online load before it can be used offline.");
           return;
         }
-        await load();
+        await load(requestedThreadId);
       } catch (loadError) {
         if (!cached) setError(loadError instanceof Error ? loadError.message : "Communications could not be loaded.");
       } finally {
         if (active) setLoaded(true);
       }
     }
+
     void initialise();
     return () => { active = false; };
   }, [load, mode, refreshQueue]);
@@ -312,6 +333,7 @@ export default function CommunicationsPage() {
   useEffect(() => {
     if (!online || !workspaceId || mode === "demo") return;
     let active = true;
+
     async function sync() {
       try {
         const completed = await flushUnifiedCommunicationQueue(workspaceId);
@@ -325,40 +347,47 @@ export default function CommunicationsPage() {
         if (active) setError(syncError instanceof Error ? syncError.message : "Communication synchronisation stopped.");
       }
     }
+
     void sync();
     return () => { active = false; };
   }, [load, mode, online, refreshQueue, selectedId, workspaceId]);
 
   useEffect(() => {
-    if (!selected || supportReadOnly) return;
-    const unreadMessages = selectedMessages.filter((message) => message.direction === "inbound" && message.unread && !message.pending);
+    if (!selected || !workspaceId || supportReadOnly) return;
+    const unreadMessages = selectedMessages.filter(
+      (message) => message.direction === "inbound" && message.unread && !message.pending,
+    );
     if (!unreadMessages.length) return;
+
     let active = true;
     async function markRead() {
+      const occurredAt = new Date().toISOString();
       for (const message of unreadMessages) {
-        const commandId = crypto.randomUUID();
         await enqueueUnifiedCommunicationCommand(
           workspaceId,
           selected.id,
           "mark_read",
-          { occurredAt: new Date().toISOString() },
+          { occurredAt },
           message.id,
-          commandId,
+          crypto.randomUUID(),
         );
-        if (online) {
-          await flushUnifiedCommunicationQueue(workspaceId);
-        }
       }
+      if (online) await flushUnifiedCommunicationQueue(workspaceId);
       if (!active) return;
+
+      const unreadIds = new Set(unreadMessages.map((message) => message.id));
       setMessagesByThread((current) => ({
         ...current,
-        [selected.id]: (current[selected.id] ?? []).map((message) => unreadMessages.some((item) => item.id === message.id)
-          ? { ...message, unread: false, read_at: new Date().toISOString() }
+        [selected.id]: (current[selected.id] ?? []).map((message) => unreadIds.has(message.id)
+          ? { ...message, unread: false, read_at: occurredAt }
           : message),
       }));
-      setThreads((current) => current.map((thread) => thread.id === selected.id ? { ...thread, unread_count: 0 } : thread));
+      setThreads((current) => current.map((thread) => thread.id === selected.id
+        ? { ...thread, unread_count: 0 }
+        : thread));
       await refreshQueue(workspaceId);
     }
+
     void markRead().catch((markError) => {
       if (active) setError(markError instanceof Error ? markError.message : "The message could not be marked read.");
     });
@@ -369,9 +398,18 @@ export default function CommunicationsPage() {
     () => threads.filter((thread) => showClosed || thread.status === "open"),
     [showClosed, threads],
   );
-  const unread = useMemo(() => threads.reduce((total, thread) => total + Number(thread.unread_count || 0), 0), [threads]);
-  const reviews = useMemo(() => threads.reduce((total, thread) => total + Number(thread.draft_review_count || 0), 0), [threads]);
-  const openThreads = useMemo(() => threads.filter((thread) => thread.status === "open").length, [threads]);
+  const unread = useMemo(
+    () => threads.reduce((total, thread) => total + Number(thread.unread_count || 0), 0),
+    [threads],
+  );
+  const reviews = useMemo(
+    () => threads.reduce((total, thread) => total + Number(thread.draft_review_count || 0), 0),
+    [threads],
+  );
+  const openThreads = useMemo(
+    () => threads.filter((thread) => thread.status === "open").length,
+    [threads],
+  );
 
   function openNew() {
     setCompose({ ...emptyCompose(), customerId: customers[0]?.id ?? "" });
@@ -396,12 +434,13 @@ export default function CommunicationsPage() {
   async function submitCommunication(event: FormEvent) {
     event.preventDefault();
     if (!workspaceId || !compose.customerId || !compose.subject.trim() || !compose.body.trim() || busy) return;
+
     const threadId = compose.threadId || crypto.randomUUID();
     const messageId = crypto.randomUUID();
-    const commandId = crypto.randomUUID();
     const occurredAt = new Date().toISOString();
     setBusy(true);
     setError("");
+
     try {
       await enqueueUnifiedCommunicationCommand(
         workspaceId,
@@ -418,7 +457,7 @@ export default function CommunicationsPage() {
           occurredAt,
         },
         messageId,
-        commandId,
+        crypto.randomUUID(),
       );
 
       const pendingMessage: CommunicationMessage = {
@@ -441,6 +480,7 @@ export default function CommunicationsPage() {
         updated_at: occurredAt,
         pending: true,
       };
+
       setMessagesByThread((current) => ({
         ...current,
         [threadId]: [...(current[threadId] ?? []), pendingMessage],
@@ -484,6 +524,7 @@ export default function CommunicationsPage() {
           pending: true,
         }, ...current];
       });
+
       setSelectedId(threadId);
       setComposeOpen(false);
       setCompose(emptyCompose());
@@ -506,6 +547,7 @@ export default function CommunicationsPage() {
   async function dismissDraft(event: FormEvent) {
     event.preventDefault();
     if (!dismissMessage || dismissReason.trim().length < 5 || busy) return;
+
     setBusy(true);
     setError("");
     try {
@@ -519,6 +561,13 @@ export default function CommunicationsPage() {
       if (online) {
         await flushUnifiedCommunicationQueue(workspaceId);
         await load(dismissMessage.thread_id);
+      } else {
+        setMessagesByThread((current) => ({
+          ...current,
+          [dismissMessage.thread_id]: (current[dismissMessage.thread_id] ?? []).map((message) => message.id === dismissMessage.id
+            ? { ...message, draft_state: "dismissed", pending: true }
+            : message),
+        }));
       }
       setDismissMessage(null);
       setDismissReason("");
@@ -534,6 +583,7 @@ export default function CommunicationsPage() {
   async function closeThread(event: FormEvent) {
     event.preventDefault();
     if (!selected || closeReason.trim().length < 5 || busy) return;
+
     setBusy(true);
     setError("");
     try {
@@ -547,7 +597,9 @@ export default function CommunicationsPage() {
         await flushUnifiedCommunicationQueue(workspaceId);
         await load(selected.id);
       } else {
-        setThreads((current) => current.map((thread) => thread.id === selected.id ? { ...thread, status: "closed", pending: true } : thread));
+        setThreads((current) => current.map((thread) => thread.id === selected.id
+          ? { ...thread, status: "closed", pending: true }
+          : thread));
       }
       setCloseOpen(false);
       setCloseReason("");
@@ -599,7 +651,7 @@ export default function CommunicationsPage() {
             <button
               key={thread.id}
               className={`message-row ${selected?.id === thread.id ? "selected" : ""}`}
-              onClick={() => void selectThread(thread.id)}
+              onClick={() => void selectThread(thread)}
             >
               <span className="message-channel">{channelCode[thread.channel]}</span>
               <span className="message-copy">
@@ -608,7 +660,11 @@ export default function CommunicationsPage() {
                 <small>{thread.latest_body}</small>
               </span>
               <span>
-                {thread.unread_count > 0 ? <Badge tone="blue">{thread.unread_count}</Badge> : thread.pending ? <Badge tone="gold">Pending</Badge> : <small className="muted">{formatTimeAgo(thread.last_message_at)}</small>}
+                {thread.unread_count > 0
+                  ? <Badge tone="blue">{thread.unread_count}</Badge>
+                  : thread.pending
+                    ? <Badge tone="gold">Pending</Badge>
+                    : <small className="muted">{formatTimeAgo(thread.last_message_at)}</small>}
               </span>
             </button>
           ))}
