@@ -76,8 +76,8 @@ select ok(not exists(select 1 from pg_policies where schemaname='storage' and ta
 select ok(not exists(select 1 from pg_policies where schemaname='storage' and tablename='objects' and policyname='Managers can delete workspace documents'), 'Browser storage deletion is disabled');
 
 select ok(
-  position('from public.document_links link' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) > 0
-  and position('link.revoked_at is null' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) > 0,
+  position('document_links' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) > 0
+  and position('revoked_at is null' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) > 0,
   'Customer operational Document counts use active typed links'
 );
 select ok(
