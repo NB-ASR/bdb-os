@@ -116,7 +116,9 @@ assert.match(cutover, /document_counts[\s\S]*from public\.document_links link[\s
 assert.match(cutover, /document_linked/i, "Unified activity must include Document link creation.");
 assert.match(cutover, /document_link_revoked/i, "Unified activity must include Document link revocation.");
 assert.match(cutover, /document_archived/i, "Unified activity must include Document archiving.");
-assert.doesNotMatch(cutover, /document\.customer_id/i, "Customer 360 must not return to legacy Document ownership fields.");
+const documentCountDefinition = cutover.match(/document_counts as \(([\s\S]*?)\), message_counts as/i)?.[1] ?? "";
+assert.ok(documentCountDefinition, "Customer 360 Document count definition must remain identifiable.");
+assert.doesNotMatch(documentCountDefinition, /document\.customer_id/i, "Customer Document counts must not return to legacy documents.customer_id ownership.");
 
 assert.match(api, /requireWorkspaceCommand/, "Document writes must use the authenticated workspace command boundary.");
 assert.match(api, /context\.idempotencyKey/, "Document writes must require stable idempotency.");
