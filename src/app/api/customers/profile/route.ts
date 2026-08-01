@@ -211,6 +211,13 @@ export async function GET(request: Request) {
       }
     }
 
+    const customerDocuments = ((documentsResult.data ?? []) as Array<Record<string, unknown>>).map((document) => ({
+      ...document,
+      // This is a presentation label derived from the validated typed Customer link.
+      // It is not the legacy documents.linked_to field.
+      linked_to: "Customer",
+    }));
+
     return {
       workspaceId,
       customer: customerResult.data,
@@ -224,7 +231,7 @@ export async function GET(request: Request) {
       sales: salesResult.data ?? [],
       invoices: invoicesResult.data ?? [],
       payments: paymentsResult.data ?? [],
-      documents: documentsResult.data ?? [],
+      documents: customerDocuments,
       messages: messagesResult.data ?? [],
     };
   });
