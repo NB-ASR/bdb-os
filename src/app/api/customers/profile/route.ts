@@ -32,6 +32,13 @@ function throwQueryError(results: QueryResult[]) {
   if (failed?.error) throw failed.error;
 }
 
+function latestTimestamp(...values: Array<unknown>) {
+  const valid = values
+    .map((value) => value ? new Date(String(value)).getTime() : Number.NaN)
+    .filter((value) => Number.isFinite(value));
+  return valid.length ? new Date(Math.max(...valid)).toISOString() : null;
+}
+
 export async function GET(request: Request) {
   return runCommand(async () => {
     const url = new URL(request.url);
@@ -85,6 +92,8 @@ export async function GET(request: Request) {
       operationalResult,
       financialResult,
       activityResult,
+      communicationSummaryResult,
+      communicationActivityResult,
       notesResult,
       appointmentsResult,
       salesResult,
@@ -112,8 +121,26 @@ export async function GET(request: Request) {
         .select("*")
         .eq("workspace_id", workspaceId)
         .eq("customer_id", customerId)
+        .neq("source_type", "communication")
         .order("occurred_at", { ascending: false })
         .limit(100),
+      access.communications
+        ? supabase
+          .from("customer_360_communication_summary")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .eq("customer_id", customerId)
+          .maybeSingle()
+        : emptyResult(null),
+      access.communications
+        ? supabase
+          .from("customer_360_communication_activity")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .eq("customer_id", customerId)
+          .order("occurred_at", { ascending: false })
+          .limit(100)
+        : emptyResult(),
       supabase
         .from("customer_note_status")
         .select("*")
@@ -170,9 +197,10 @@ export async function GET(request: Request) {
       access.communications
         ? supabase
           .from("messages")
-          .select("id,channel,subject,preview,occurred_at,unread,status,created_at,updated_at")
+          .select("id,thread_id,channel,direction,subject,preview,body,occurred_at,unread,status,draft_state,read_at,reply_to_message_id,created_at,updated_at")
           .eq("workspace_id", workspaceId)
           .eq("customer_id", customerId)
+          .neq("draft_state", "dismissed")
           .order("occurred_at", { ascending: false })
           .limit(50)
         : emptyResult(),
@@ -182,6 +210,8 @@ export async function GET(request: Request) {
       operationalResult,
       financialResult,
       activityResult,
+      communicationSummaryResult,
+      communicationActivityResult,
       notesResult,
       appointmentsResult,
       salesResult,
@@ -213,18 +243,35 @@ export async function GET(request: Request) {
 
     const customerDocuments = ((documentsResult.data ?? []) as Array<Record<string, unknown>>).map((document) => ({
       ...document,
-      // This is a presentation label derived from the validated typed Customer link.
-      // It is not the legacy documents.linked_to field.
       linked_to: "Customer",
     }));
+
+    const communicationSummary = communicationSummaryResult.data as Record<string, unknown> | null;
+    const operationalBase = (operationalResult.data ?? {}) as Record<string, unknown>;
+    const operational = {
+      ...operationalBase,
+      message_count: Number(communicationSummary?.message_count ?? 0),
+      unread_message_count: Number(communicationSummary?.unread_message_count ?? 0),
+      last_activity_at: latestTimestamp(
+        operationalBase.last_activity_at,
+        communicationSummary?.last_communication_at,
+      ),
+    };
+
+    const activity = [
+      ...((activityResult.data ?? []) as Array<Record<string, unknown>>),
+      ...((communicationActivityResult.data ?? []) as Array<Record<string, unknown>>),
+    ]
+      .sort((a, b) => String(b.occurred_at ?? "").localeCompare(String(a.occurred_at ?? "")))
+      .slice(0, 100);
 
     return {
       workspaceId,
       customer: customerResult.data,
       access,
-      operational: operationalResult.data ?? null,
+      operational,
       financial: financialResult.data ?? [],
-      activity: activityResult.data ?? [],
+      activity,
       notes: notesResult.data ?? [],
       actors,
       appointments: appointmentsResult.data ?? [],
