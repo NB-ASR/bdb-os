@@ -23,6 +23,13 @@ const eslintConfig = defineConfig([
       "react-hooks/preserve-manual-memoization": "off",
     },
   },
+  {
+    files: ["src/app/documents/page.tsx"],
+    rules: {
+      // General Documents deliberately starts external IndexedDB queue replay after connectivity or queue changes.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
