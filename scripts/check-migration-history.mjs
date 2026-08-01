@@ -73,5 +73,9 @@ for (const [file, message] of [
   ["20260731120500_banking_reconciliation_views_security.sql", "Banking reconciliation views and security migration is missing."],
   ["20260731121000_banking_reconciliation_commands.sql", "Trusted Banking reconciliation command migration is missing."],
   ["20260731121500_banking_reference_indexes.sql", "Banking reference-index hardening migration is missing."],
+  ["20260801090000_customer_360_notes_schema.sql", "Customer 360 notes schema migration is missing."],
+  ["20260801090500_customer_360_note_commands.sql", "Customer 360 note commands migration is missing."],
+  ["20260801091000_customer_360_views_security.sql", "Customer 360 views and security migration is missing."],
+  ["20260801091500_customer_360_reference_indexes.sql", "Customer 360 reference-index migration is missing."],
 ]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");
