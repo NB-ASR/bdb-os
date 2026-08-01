@@ -52,7 +52,7 @@ select ok(
 );
 
 select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'bookings_customer_activity_idx'), 'Customer Appointment activity index exists');
-select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'sales_customer_activity_idx'), 'Customer Sale activity index exists');
+select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'sales_workspace_customer_time_idx'), 'Customer 360 reuses the canonical Customer Sale activity index');
 select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'invoices_customer_activity_idx'), 'Customer Invoice activity index exists');
 select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'payments_customer_activity_idx'), 'Customer Payment activity index exists');
 select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'documents_customer_activity_idx'), 'Customer Document activity index exists');
