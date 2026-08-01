@@ -31,7 +31,7 @@ assert.match(architecture, /sole owner of stored business files/i, "Documents mu
 assert.match(architecture, /free-text `documents\.linked_to` field is legacy/i, "Free-text linkage must be explicitly deprecated.");
 assert.match(
   architecture,
-  /does not create, update or delete:[\s\S]*Customers[\s\S]*Appointments[\s\S]*Sales[\s\S]*Invoices[\s\S]*Customer Payments[\s\S]*Communications[\s\S]*Inventory movements[\s\S]*Bank transactions/i,
+  /(?:Document commands )?do(?:es)? not create, update or delete:[\s\S]*Customers[\s\S]*Appointments[\s\S]*Sales[\s\S]*Invoices[\s\S]*Customer Payments[\s\S]*Communications[\s\S]*Inventory movements[\s\S]*Bank transactions/i,
   "Document commands must preserve source-department ownership.",
 );
 assert.match(
