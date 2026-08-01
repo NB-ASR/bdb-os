@@ -69,7 +69,7 @@ select activity.workspace_id,
        activity.detail,
        activity.tone,
        activity.occurred_at,
-       ('/communications?threadId=' || activity.metadata ->> 'thread_id' || '&customerId=' || activity.metadata ->> 'customer_id')::text,
+       ('/communications?threadId=' || (activity.metadata ->> 'thread_id') || '&customerId=' || (activity.metadata ->> 'customer_id'))::text,
        activity.metadata
 from public.activity_items activity
 where activity.entity_type = 'communication_thread'
