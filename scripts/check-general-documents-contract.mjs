@@ -3,12 +3,28 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
 
-const [architecture, decision, foundation, commands, api] = await Promise.all([
+const [
+  architecture,
+  decision,
+  foundation,
+  commands,
+  cutover,
+  api,
+  targetsApi,
+  customerProfileApi,
+  page,
+  queue,
+] = await Promise.all([
   read("docs/architecture/general-documents-integration.md"),
   read("docs/decisions/2026-08-01-general-documents-ownership-and-links.md"),
   read("supabase/migrations/20260801110000_general_documents_foundation.sql"),
   read("supabase/migrations/20260801110500_general_document_commands.sql"),
+  read("supabase/migrations/20260801111000_general_documents_customer_360_cutover.sql"),
   read("src/app/api/documents/route.ts"),
+  read("src/app/api/documents/targets/route.ts"),
+  read("src/app/api/customers/profile/route.ts"),
+  read("src/app/documents/page.tsx"),
+  read("src/lib/modules/general-document-queue.ts"),
 ]);
 
 assert.match(architecture, /sole owner of stored business files/i, "Documents must remain the authoritative file owner.");
@@ -88,6 +104,20 @@ for (const table of [
   );
 }
 
+assert.match(cutover, /drop policy if exists "Documents permission insert"/i, "Legacy browser Document inserts must be removed.");
+assert.match(cutover, /drop policy if exists "Documents permission update"/i, "Legacy browser Document updates must be removed.");
+assert.match(cutover, /drop policy if exists "Documents permission delete"/i, "Legacy browser Document deletes must be removed.");
+assert.match(cutover, /revoke all on public\.documents from public, anon, authenticated/i, "Document table grants must be hardened.");
+assert.match(cutover, /grant select on public\.documents to authenticated/i, "Authenticated users must retain RLS-scoped Document reads.");
+assert.match(cutover, /drop policy if exists "Members can upload workspace documents" on storage\.objects/i, "Browser file uploads must be disabled after API cutover.");
+assert.match(cutover, /drop policy if exists "Managers can update workspace documents" on storage\.objects/i, "Browser file replacement must be disabled after API cutover.");
+assert.match(cutover, /drop policy if exists "Managers can delete workspace documents" on storage\.objects/i, "Browser file deletion must be disabled after API cutover.");
+assert.match(cutover, /document_counts[\s\S]*from public\.document_links link[\s\S]*link\.revoked_at is null/i, "Customer Document counts must use active typed links.");
+assert.match(cutover, /document_linked/i, "Unified activity must include Document link creation.");
+assert.match(cutover, /document_link_revoked/i, "Unified activity must include Document link revocation.");
+assert.match(cutover, /document_archived/i, "Unified activity must include Document archiving.");
+assert.doesNotMatch(cutover, /document\.customer_id/i, "Customer 360 must not return to legacy Document ownership fields.");
+
 assert.match(api, /requireWorkspaceCommand/, "Document writes must use the authenticated workspace command boundary.");
 assert.match(api, /context\.idempotencyKey/, "Document writes must require stable idempotency.");
 assert.match(api, /document_command_receipts/, "The upload route must check exact retry receipts before storage.");
@@ -98,5 +128,24 @@ assert.match(api, /revoke_general_document_link/, "Link removal must use the tru
 assert.match(api, /archive_general_document/, "Document removal must use the trusted archive command.");
 assert.match(api, /remove\(\[storagePath\]\)/, "Failed database creation must clean up the uploaded object.");
 assert.match(api, /general_document_index/, "Document reads must use the security-invoker index.");
+assert.match(targetsApi, /get_customer_360_access|has_workspace_permission/i, "Document link targets must remain permission-aware.");
+
+assert.match(customerProfileApi, /from\("document_links"\)/, "Customer 360 must resolve Documents through typed links.");
+assert.match(customerProfileApi, /eq\("link_type", "customer"\)/, "Customer 360 must use Customer typed links.");
+assert.match(customerProfileApi, /is\("revoked_at", null\)/, "Customer 360 must exclude revoked links from current Documents.");
+assert.match(customerProfileApi, /from\("general_document_index"\)/, "Customer 360 must load authoritative Document metadata.");
+assert.match(customerProfileApi, /linked_to: "Customer"/, "Legacy UI compatibility must be derived from the typed link, not stored free text.");
+assert.doesNotMatch(customerProfileApi, /from\("documents"\)[\s\S]*eq\("customer_id"/, "Customer 360 must not query legacy documents.customer_id.");
+
+assert.match(page, /general-document-queue/, "Documents must use the ordered offline command queue.");
+assert.match(page, /\/api\/documents/, "Documents workspace must use the trusted API.");
+assert.match(page, /LINK_TYPES/, "Documents workspace must expose controlled typed links.");
+assert.doesNotMatch(page, /addDocument/, "Documents workspace must not use the legacy shared-store write path.");
+assert.doesNotMatch(page, /placeholder="Invoice, appointment or business"/, "Documents workspace must not accept free-text linked records.");
+
+assert.match(queue, /indexedDB/, "Offline file bytes must use IndexedDB rather than localStorage.");
+assert.match(queue, /Idempotency-Key/, "Queued Document commands must preserve stable command identities.");
+assert.match(queue, /for \(const command of queue\)/, "Document commands must replay in order.");
+assert.match(queue, /throw error/, "Document synchronisation must stop on the first conflict.");
 
 console.log("General Documents architecture contract passed.");
