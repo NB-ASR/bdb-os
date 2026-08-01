@@ -104,8 +104,16 @@ export async function GET(request: Request) {
   return runCommand(async () => {
     const url = new URL(request.url);
     const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
-    const requestedThreadId = optionalUuid(navigationParameter(request, "threadId"), "Thread");
-    const customerId = optionalUuid(navigationParameter(request, "customerId"), "Customer");
+    const directThreadId = url.searchParams.get("threadId");
+    const requestedThreadId = optionalUuid(
+      directThreadId ?? navigationParameter(request, "threadId"),
+      "Thread",
+    );
+    const customerId = optionalUuid(
+      url.searchParams.get("customerId")
+        ?? (directThreadId ? null : navigationParameter(request, "customerId")),
+      "Customer",
+    );
     await requireWorkspaceCommand(request, workspaceId);
 
     const supabase = await createClient();
