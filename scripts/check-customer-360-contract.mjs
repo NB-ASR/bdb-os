@@ -3,12 +3,13 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
 
-const [schema, commands, views, indexes, accessHardening, profileApi, notesApi, queue, page, searchDialog] = await Promise.all([
+const [schema, commands, views, indexes, accessHardening, indexDeduplication, profileApi, notesApi, queue, page, searchDialog] = await Promise.all([
   read("supabase/migrations/20260801090000_customer_360_notes_schema.sql"),
   read("supabase/migrations/20260801090500_customer_360_note_commands.sql"),
   read("supabase/migrations/20260801091000_customer_360_views_security.sql"),
   read("supabase/migrations/20260801091500_customer_360_reference_indexes.sql"),
   read("supabase/migrations/20260801092500_customer_360_access_invoker_hardening.sql"),
+  read("supabase/migrations/20260801093000_customer_360_index_deduplication.sql"),
   read("src/app/api/customers/profile/route.ts"),
   read("src/app/api/customers/notes/route.ts"),
   read("src/lib/modules/customer-note-queue.ts"),
@@ -55,10 +56,11 @@ assert.match(views, /from public\.messages/i, "Customer activity must connect Co
 assert.match(views, /get_customer_360_access/i, "Customer 360 must expose source-department access decisions.");
 assert.match(views, /group by invoice\.workspace_id, invoice\.customer_id, invoice\.currency/i, "Financial summaries must remain separated by currency.");
 assert.match(accessHardening, /alter function public\.get_customer_360_access\(uuid\) security invoker/i, "Customer 360 access resolution must not elevate the caller.");
+assert.match(indexDeduplication, /drop index if exists public\.sales_customer_activity_idx/i, "Customer 360 must reuse the canonical Sale activity index.");
+assert.match(indexDeduplication, /sales_workspace_customer_time_idx/i, "The canonical Sale Customer index must remain documented.");
 
 for (const index of [
   "bookings_customer_activity_idx",
-  "sales_customer_activity_idx",
   "invoices_customer_activity_idx",
   "payments_customer_activity_idx",
   "documents_customer_activity_idx",
