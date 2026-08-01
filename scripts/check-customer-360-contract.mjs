@@ -3,15 +3,17 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
 
-const [schema, commands, views, indexes, profileApi, notesApi, queue, page] = await Promise.all([
+const [schema, commands, views, indexes, accessHardening, profileApi, notesApi, queue, page, searchDialog] = await Promise.all([
   read("supabase/migrations/20260801090000_customer_360_notes_schema.sql"),
   read("supabase/migrations/20260801090500_customer_360_note_commands.sql"),
   read("supabase/migrations/20260801091000_customer_360_views_security.sql"),
   read("supabase/migrations/20260801091500_customer_360_reference_indexes.sql"),
+  read("supabase/migrations/20260801092500_customer_360_access_invoker_hardening.sql"),
   read("src/app/api/customers/profile/route.ts"),
   read("src/app/api/customers/notes/route.ts"),
   read("src/lib/modules/customer-note-queue.ts"),
   read("src/app/customers/[customerId]/page.tsx"),
+  read("src/components/search-dialog.tsx"),
 ]);
 
 assert.match(schema, /create table if not exists public\.customer_notes/i, "Customer notes ledger must exist.");
@@ -52,6 +54,7 @@ assert.match(views, /from public\.documents/i, "Customer activity must connect D
 assert.match(views, /from public\.messages/i, "Customer activity must connect Communications.");
 assert.match(views, /get_customer_360_access/i, "Customer 360 must expose source-department access decisions.");
 assert.match(views, /group by invoice\.workspace_id, invoice\.customer_id, invoice\.currency/i, "Financial summaries must remain separated by currency.");
+assert.match(accessHardening, /alter function public\.get_customer_360_access\(uuid\) security invoker/i, "Customer 360 access resolution must not elevate the caller.");
 
 for (const index of [
   "bookings_customer_activity_idx",
@@ -82,5 +85,6 @@ assert.match(page, /Appointments/i, "Customer 360 must connect Calendar.");
 assert.match(page, /Invoices and Payments/i, "Customer 360 must connect Accounts.");
 assert.match(page, /Documents/i, "Customer 360 must connect Documents.");
 assert.match(page, /Communications/i, "Customer 360 must connect Communications.");
+assert.match(searchDialog, /href: `\/customers\/\$\{item\.id\}`/, "Global Customer search must open Customer 360 directly.");
 
 console.log("Customer 360 architecture contract passed.");
