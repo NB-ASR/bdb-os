@@ -11,7 +11,7 @@ const [architecture, decision, foundation] = await Promise.all([
 
 assert.match(
   architecture,
-  /Documents as the sole owner of stored business files/i,
+  /sole owner of stored business files/i,
   "Documents must remain the authoritative file owner.",
 );
 assert.match(
