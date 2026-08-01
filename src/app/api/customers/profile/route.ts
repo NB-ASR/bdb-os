@@ -67,6 +67,20 @@ export async function GET(request: Request) {
       ]),
     ) as Record<string, boolean>;
 
+    const documentLinksResult = access.documents
+      ? await supabase
+        .from("document_links")
+        .select("document_id")
+        .eq("workspace_id", workspaceId)
+        .eq("link_type", "customer")
+        .eq("target_id", customerId)
+        .is("revoked_at", null)
+      : { data: [], error: null };
+    if (documentLinksResult.error) throw documentLinksResult.error;
+    const documentIds = Array.from(new Set(
+      (documentLinksResult.data ?? []).map((link) => String(link.document_id)),
+    ));
+
     const [
       operationalResult,
       financialResult,
@@ -144,12 +158,12 @@ export async function GET(request: Request) {
           .order("received_at", { ascending: false })
           .limit(50)
         : emptyResult(),
-      access.documents
+      access.documents && documentIds.length
         ? supabase
-          .from("documents")
-          .select("id,name,document_type,size_label,storage_path,linked_to,uploaded_at,created_at")
+          .from("general_document_index")
+          .select("id,name,document_type,size_label,storage_path,category,status,uploaded_at,links")
           .eq("workspace_id", workspaceId)
-          .eq("customer_id", customerId)
+          .in("id", documentIds)
           .order("uploaded_at", { ascending: false })
           .limit(50)
         : emptyResult(),
