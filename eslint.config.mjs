@@ -15,7 +15,7 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    files: ["src/app/customers/[customerId]/page.tsx"],
+    files: ["src/app/customers/[[]customerId[]]/page.tsx"],
     rules: {
       // Customer 360 deliberately starts external note-queue replay after connectivity or queue changes.
       "react-hooks/set-state-in-effect": "off",
