@@ -29,7 +29,7 @@ const [
 
 assert.match(architecture, /Settings does not own Customers, Appointments, Sales, Invoices, Payments/i, "Settings ownership must not duplicate departments.");
 assert.match(architecture, /replacement recovery, not merge/i, "Restore must be replacement recovery.");
-assert.match(architecture, /same workspace/i, "Recovery identity boundary must be explicit.");
+assert.match(architecture, /(same-workspace|exact workspace)/i, "Recovery identity boundary must be explicit.");
 assert.match(architecture, /does not embed file bytes/i, "Storage byte exclusion must be explicit.");
 assert.match(decision, /restore is owner-only/i, "Destructive recovery must remain Owner-only.");
 assert.match(decision, /raw database dump is too broad/i, "The infrastructure backup boundary must be recorded.");
