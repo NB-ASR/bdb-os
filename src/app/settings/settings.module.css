@@ -1,0 +1,199 @@
+.loading {
+  min-height: 50vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+
+.statusRow span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--gold) 48%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--gold) 9%, var(--surface));
+  color: var(--text);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.tabs .activeTab {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+  background: color-mix(in srgb, var(--gold) 13%, var(--surface));
+  color: var(--gold);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.twoColumn,
+.recoveryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.recoveryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recoveryCard,
+.boundaryCard {
+  min-width: 0;
+}
+
+.recoveryFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.recoveryFacts span {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 86%, transparent);
+}
+
+.recoveryFacts strong,
+.recoveryFacts small {
+  display: block;
+}
+
+.recoveryFacts strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.recoveryFacts small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.restoreBlocker {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 18px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--red) 48%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+}
+
+.restoreBlocker svg {
+  flex: 0 0 auto;
+  color: var(--red);
+}
+
+.restoreBlocker strong {
+  color: var(--text);
+}
+
+.restoreBlocker p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.boundaryCard {
+  border-color: color-mix(in srgb, var(--gold) 34%, var(--border));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--gold) 12%, transparent), transparent 42%),
+    var(--surface);
+}
+
+.boundaryCard > svg {
+  color: var(--gold);
+}
+
+.boundaryCard h2 {
+  margin: 10px 0 8px;
+  font-size: 1.15rem;
+}
+
+.boundaryCard p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .twoColumn,
+  .recoveryGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tabs button {
+    justify-content: flex-start;
+  }
+
+  .recoveryFacts {
+    grid-template-columns: 1fr;
+  }
+}
