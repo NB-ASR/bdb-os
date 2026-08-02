@@ -30,7 +30,7 @@ const [
 ]);
 
 assert.match(architecture, /read-only orchestration surfaces/i, "Business Hub and Reports must remain read-only orchestration.");
-assert.match(architecture, /never combined across currencies/i, "Currency separation must be explicit.");
+assert.match(architecture, /different currencies are never combined/i, "Currency separation must be explicit.");
 assert.match(decision, /will not own copies of operational or financial records/i, "The ownership decision must reject duplicate Hub state.");
 
 assert.match(accessMetrics, /function public\.get_business_hub_access/i, "Permission-aware Business Hub access must exist.");
