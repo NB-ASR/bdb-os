@@ -62,12 +62,15 @@ export function PageHeader({
   title,
   description,
   action,
+  actions,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   action?: ReactNode;
+  actions?: ReactNode;
 }) {
+  const resolvedAction = action ?? actions;
   return (
     <div className="page-header">
       <div>
@@ -75,7 +78,7 @@ export function PageHeader({
         <h1>{title}</h1>
         <p className="page-description">{description}</p>
       </div>
-      {action ? <div className="page-action">{action}</div> : null}
+      {resolvedAction ? <div className="page-action">{resolvedAction}</div> : null}
     </div>
   );
 }
