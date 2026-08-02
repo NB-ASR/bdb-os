@@ -45,13 +45,13 @@ select ok(position('customer_360_activity' in lower(pg_get_viewdef('public.busin
   'Business Hub reuses Customer 360 activity');
 select ok(position('activity_items' in lower(pg_get_viewdef('public.business_hub_recent_activity'::regclass, true))) > 0,
   'Business Hub includes non-customer operational activity');
-select ok(position("status = 'completed'" in lower(pg_get_viewdef('public.business_report_monthly_sales'::regclass, true))) > 0,
+select ok(position($needle$status = 'completed'$needle$ in lower(pg_get_viewdef('public.business_report_monthly_sales'::regclass, true))) > 0,
   'Monthly Sales reporting includes only completed Sales');
-select ok(position("status = 'completed'" in lower(pg_get_viewdef('public.business_report_customer_sales'::regclass, true))) > 0,
+select ok(position($needle$status = 'completed'$needle$ in lower(pg_get_viewdef('public.business_report_customer_sales'::regclass, true))) > 0,
   'Customer Sales reporting includes only completed Sales');
 select ok(position('private.has_workspace_permission' in lower(pg_get_functiondef('public.get_business_hub_access(uuid)'::regprocedure))) > 0,
   'Business Hub access uses workspace permissions');
-select ok(position("'reports'" in lower(pg_get_functiondef('public.get_business_hub_access(uuid)'::regprocedure))) > 0,
+select ok(position($needle$'reports'$needle$ in lower(pg_get_functiondef('public.get_business_hub_access(uuid)'::regprocedure))) > 0,
   'Business Hub access includes Reports permission');
 select ok(position('attention_count' in lower(pg_get_viewdef('public.business_hub_operational_metrics'::regclass, true))) > 0,
   'Operational metrics expose one attention count');
