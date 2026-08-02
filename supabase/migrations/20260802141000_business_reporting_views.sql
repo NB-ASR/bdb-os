@@ -4,7 +4,7 @@ create or replace view public.business_report_monthly_sales
 with (security_invoker = true)
 as
 select sale.workspace_id,
-       date_trunc('month', coalesce(sale.completed_at, sale.occurred_at))::date as month,
+       date_trunc('month', coalesce(sale.completed_at, sale.occurred_at))::date as month_start,
        sale.currency,
        count(*)::integer as completed_sale_count,
        round(sum(sale.total_amount), 4)::numeric(16,4) as completed_sale_amount
