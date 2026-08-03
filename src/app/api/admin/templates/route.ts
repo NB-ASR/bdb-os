@@ -34,15 +34,17 @@ export async function GET() {
     const admin = createAdminClient();
     if (!admin) throw new Error("NOT_CONFIGURED");
 
-    const [templates, features, permissions, plans, modules, usage] = await Promise.all([
+    const [templates, templateFeatures, permissions, plans, planFeatures, modules, usage] = await Promise.all([
       admin.from("workspace_templates").select("*").order("is_default", { ascending: false }).order("name"),
       admin.from("workspace_template_features").select("template_id,feature_key,enabled"),
       admin.from("workspace_template_permissions").select("template_id,access_profile,feature_key,can_view,can_create,can_edit,can_delete,can_approve,can_export"),
       admin.from("plans").select("id,code,name,description,is_active,sort_order").eq("is_active", true).order("sort_order"),
+      admin.from("plan_features").select("plan_id,feature_key,enabled"),
       admin.from("features").select("key,name,description,category,route,is_active,sort_order").eq("is_active", true).order("sort_order"),
       admin.from("workspaces").select("workspace_template_id,workspace_template_version"),
     ]);
-    const failed = [templates, features, permissions, plans, modules, usage].find((result) => result.error);
+    const failed = [templates, templateFeatures, permissions, plans, planFeatures, modules, usage]
+      .find((result) => result.error);
     if (failed?.error) throw failed.error;
 
     const counts = new Map<string, number>();
@@ -56,9 +58,10 @@ export async function GET() {
         ...template,
         workspace_count: counts.get(template.id) ?? 0,
       })),
-      templateFeatures: features.data ?? [],
+      templateFeatures: templateFeatures.data ?? [],
       templatePermissions: permissions.data ?? [],
       plans: plans.data ?? [],
+      planFeatures: planFeatures.data ?? [],
       features: modules.data ?? [],
     });
   } catch (error) {
