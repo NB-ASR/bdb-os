@@ -5,10 +5,18 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Building2, Check, Copy, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
 
-type Plan = { id: string; name: string; description: string; is_active: boolean };
+type Template = {
+  id: string;
+  name: string;
+  description: string;
+  version: number;
+  is_active: boolean;
+  is_default: boolean;
+  plan_id: string;
+};
 type Feature = { key: string; name: string; description: string };
-type Entitlement = { plan_id: string; feature_key: string; enabled: boolean };
-type Dashboard = { plans: Plan[]; features: Feature[]; planFeatures: Entitlement[] };
+type TemplateFeature = { template_id: string; feature_key: string; enabled: boolean };
+type Dashboard = { templates: Template[]; features: Feature[]; templateFeatures: TemplateFeature[] };
 type ProvisionedAccount = {
   workspaceId: string;
   loginId: string;
@@ -16,12 +24,13 @@ type ProvisionedAccount = {
   activationMethod: string;
   emailSent: boolean;
   mustChangePassword: boolean;
+  templateId: string;
+  templateVersion: number;
 };
 
 export default function ManualProvisioningPage() {
   const [data, setData] = useState<Dashboard | null>(null);
-  const [planId, setPlanId] = useState("");
-  const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(new Set());
+  const [templateId, setTemplateId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<ProvisionedAccount | null>(null);
@@ -30,7 +39,7 @@ export default function ManualProvisioningPage() {
 
   useEffect(() => {
     void (async () => {
-      const response = await fetch("/api/admin", { cache: "no-store" });
+      const response = await fetch("/api/admin/templates", { cache: "no-store" });
       if (response.status === 428) { window.location.href = "/mfa"; return; }
       if (response.status === 401) { window.location.href = "/login?next=/admin/manual-provisioning"; return; }
       const payload = await response.json().catch(() => ({}));
@@ -39,27 +48,21 @@ export default function ManualProvisioningPage() {
         return;
       }
       const dashboard = payload as Dashboard;
-      const firstPlan = dashboard.plans.find((plan) => plan.is_active) ?? dashboard.plans[0];
+      const firstTemplate = dashboard.templates.find((template) => template.is_active && template.is_default)
+        ?? dashboard.templates.find((template) => template.is_active);
       setData(dashboard);
-      setPlanId(firstPlan?.id ?? "");
-      setSelectedFeatures(new Set(
-        dashboard.planFeatures
-          .filter((item) => item.plan_id === firstPlan?.id && item.enabled)
-          .map((item) => item.feature_key),
-      ));
+      setTemplateId(firstTemplate?.id ?? "");
     })();
   }, []);
 
-  const activePlans = useMemo(() => data?.plans.filter((plan) => plan.is_active) ?? [], [data]);
-
-  function selectPlan(nextPlanId: string) {
-    setPlanId(nextPlanId);
-    setSelectedFeatures(new Set(
-      data?.planFeatures
-        .filter((item) => item.plan_id === nextPlanId && item.enabled)
-        .map((item) => item.feature_key) ?? [],
-    ));
-  }
+  const activeTemplates = useMemo(() => data?.templates.filter((template) => template.is_active) ?? [], [data]);
+  const selectedTemplate = useMemo(
+    () => activeTemplates.find((template) => template.id === templateId) ?? null,
+    [activeTemplates, templateId],
+  );
+  const enabledFeatures = useMemo(() => data?.features.filter((feature) =>
+    data.templateFeatures.some((item) => item.template_id === templateId && item.feature_key === feature.key && item.enabled)) ?? [],
+  [data, templateId]);
 
   async function copy(label: string, value: string) {
     await navigator.clipboard.writeText(value);
@@ -84,8 +87,7 @@ export default function ManualProvisioningPage() {
         ownerName: form.get("ownerName"),
         loginId: form.get("loginId"),
         temporaryPassword: password,
-        planId,
-        features: [...selectedFeatures],
+        templateId,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -110,6 +112,7 @@ export default function ManualProvisioningPage() {
         <p className="admin-label">Founder control plane</p>
         <nav>
           <Link href="/admin"><ArrowLeft size={18} /> Founder Admin</Link>
+          <Link href="/admin/templates"><ShieldCheck size={18} /> Workspace templates</Link>
         </nav>
         <div className="admin-secure"><ShieldCheck size={17} /><span><strong>MFA protected</strong><small>Founder actions audited</small></span></div>
       </aside>
@@ -119,7 +122,7 @@ export default function ManualProvisioningPage() {
           <div>
             <p className="eyebrow">Pilot account provisioning</p>
             <h1>Create an active workspace manually</h1>
-            <p className="muted">Creates a confirmed owner account without sending or requiring a real owner email.</p>
+            <p className="muted">Creates a confirmed owner account and snapshots one approved workspace template.</p>
           </div>
         </header>
 
@@ -129,7 +132,7 @@ export default function ManualProvisioningPage() {
           <section className="admin-detail" style={{ maxWidth: 760 }}>
             <div className="support-access">
               <Check size={22} />
-              <div><strong>Workspace and owner activated</strong><p>No invitation email was created or sent.</p></div>
+              <div><strong>Workspace and owner activated</strong><p>Template version {result.templateVersion} was copied. No invitation email was created or sent.</p></div>
             </div>
             <div className="admin-detail-grid" style={{ marginTop: 18 }}>
               <div><small>Account status</small><strong>{result.accountStatus}</strong></div>
@@ -160,34 +163,23 @@ export default function ManualProvisioningPage() {
             <div className="form-grid" style={{ marginTop: 22 }}>
               <div className="field"><label>Business name</label><input name="name" required minLength={2} /></div>
               <div className="field"><label>Legal name (optional)</label><input name="legalName" /></div>
-              <div className="field"><label>Workspace slug</label><input name="slug" required minLength={3} pattern="[a-z0-9-]+" placeholder="vanita-spa" /></div>
-              <div className="field"><label>Starting plan</label><select value={planId} onChange={(event) => selectPlan(event.target.value)} required>{activePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
+              <div className="field"><label>Workspace slug</label><input name="slug" required minLength={3} pattern="[a-z0-9-]+" placeholder="client-business" /></div>
+              <div className="field"><label>Workspace template</label><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} required>{activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}</select></div>
               <div className="field"><label>Owner full name</label><input name="ownerName" required minLength={2} autoComplete="name" /></div>
-              <div className="field"><label>Owner login ID</label><input name="loginId" required minLength={3} pattern="[A-Za-z0-9._-]+" placeholder="giovanni" autoComplete="username" /><small>No real email address is required.</small></div>
+              <div className="field"><label>Owner login ID</label><input name="loginId" required minLength={3} pattern="[A-Za-z0-9._-]+" placeholder="owner" autoComplete="username" /><small>No real email address is required.</small></div>
               <div className="field"><label>Temporary password</label><input name="temporaryPassword" type="password" required minLength={12} autoComplete="new-password" /><small>At least 12 characters with uppercase, lowercase and a number.</small></div>
             </div>
 
-            <h3 style={{ marginTop: 24 }}>Enabled modules</h3>
-            <p className="muted small">These choices create the same workspace overrides used by normal Founder Admin provisioning.</p>
-            <div className="entitlement-grid" style={{ marginTop: 12 }}>
-              {data.features.map((feature) => {
-                const enabled = selectedFeatures.has(feature.key);
-                return (
-                  <button type="button" key={feature.key} className={enabled ? "enabled" : ""} onClick={() => setSelectedFeatures((current) => {
-                    const next = new Set(current);
-                    if (next.has(feature.key)) next.delete(feature.key); else next.add(feature.key);
-                    return next;
-                  })}>
-                    <span>{enabled && <Check size={14} />}</span>
-                    <div><strong>{feature.name}</strong><small>{feature.description}</small></div>
-                  </button>
-                );
-              })}
+            <div className="settings-note" style={{ marginTop: 22 }}>
+              <ShieldCheck size={20} />
+              <strong>{selectedTemplate?.name ?? "Workspace template"}</strong>
+              <p>{selectedTemplate?.description || "The selected template controls the initial plan, modules, settings, appearance and team access presets."}</p>
+              <small>{enabledFeatures.length} enabled modules: {enabledFeatures.map((feature) => feature.name).join(", ") || "none"}</small>
             </div>
 
             <div className="dialog-actions" style={{ marginTop: 24 }}>
               <Link className="button button-secondary" href="/admin">Cancel</Link>
-              <button className="button button-primary" disabled={loading || !planId}><Building2 size={16} /> {loading ? "Provisioning securely…" : "Create and activate owner"}</button>
+              <button className="button button-primary" disabled={loading || !templateId}><Building2 size={16} /> {loading ? "Provisioning securely…" : "Create and activate owner"}</button>
             </div>
           </form>
         ) : null}
