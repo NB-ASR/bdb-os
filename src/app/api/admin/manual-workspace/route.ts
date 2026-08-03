@@ -41,24 +41,23 @@ export async function POST(request: Request) {
     const ownerName = String(body.ownerName ?? "").trim();
     const loginId = normaliseManualLoginId(body.loginId);
     const temporaryPassword = String(body.temporaryPassword ?? "");
-    const planId = String(body.planId ?? "");
-    const selectedFeatures = Array.isArray(body.features) ? body.features.map(String) : null;
+    const templateId = String(body.templateId ?? "");
     const passwordError = validateTemporaryPassword(temporaryPassword);
 
-    if (!name || slug.length < 3 || ownerName.length < 2 || loginId.length < 3 || !planId || passwordError) {
+    if (!name || slug.length < 3 || ownerName.length < 2 || loginId.length < 3 || !templateId || passwordError) {
       return Response.json(
-        { error: passwordError ?? "Business name, slug, owner name, login ID and plan are required." },
+        { error: passwordError ?? "Business name, slug, owner name, login ID and workspace template are required." },
         { status: 400 },
       );
     }
 
-    const { data: plan } = await admin
-      .from("plans")
-      .select("id")
-      .eq("id", planId)
+    const { data: template } = await admin
+      .from("workspace_templates")
+      .select("id,code,name,version,plan_id")
+      .eq("id", templateId)
       .eq("is_active", true)
       .maybeSingle();
-    if (!plan) return Response.json({ error: "Choose an active plan." }, { status: 400 });
+    if (!template) return Response.json({ error: "Choose an active workspace template." }, { status: 400 });
 
     const loginEmail = manualOwnerEmail(slug, loginId);
     const existing = await findUserByEmail(admin, loginEmail);
@@ -78,7 +77,6 @@ export async function POST(request: Request) {
       legal_name: legalName,
       slug,
       status: "active",
-      plan_id: planId,
     });
     if (workspaceError) throw workspaceError;
 
@@ -91,6 +89,8 @@ export async function POST(request: Request) {
         workspace_id: workspaceId,
         access_profile: "owner",
         provisioning_method: "manual",
+        workspace_template_id: template.id,
+        workspace_template_version: template.version,
       },
       app_metadata: {
         provisioning_method: "manual",
@@ -100,6 +100,15 @@ export async function POST(request: Request) {
       throw createUser.error ?? new Error("Could not create the manual owner account.");
     }
     createdAuthUser = createUser.data.user;
+
+    const { error: templateError } = await admin.rpc("apply_workspace_template", {
+      target_workspace_id: workspaceId,
+      target_template_id: templateId,
+      target_actor_user_id: identity.userId,
+      target_owner_name: ownerName,
+      target_owner_email: loginEmail,
+    });
+    if (templateError) throw templateError;
 
     const setupResults = await Promise.all([
       admin.from("profiles").upsert({
@@ -119,44 +128,9 @@ export async function POST(request: Request) {
         invitation_last_sent_at: null,
         invitation_expires_at: null,
       }, { onConflict: "workspace_id,user_id" }),
-      admin.from("workspace_settings").insert({
-        workspace_id: workspaceId,
-        owner_name: ownerName,
-        email: loginEmail,
-      }),
-      admin.from("workspace_themes").insert({
-        workspace_id: workspaceId,
-        preset: "obsidian-gold",
-        mode: "dark",
-        accent_color: "#d3a84b",
-        font_family: "manrope",
-        text_scale: 1,
-        density: "comfortable",
-      }),
     ]);
     const setupFailure = setupResults.find((result) => result.error);
     if (setupFailure?.error) throw setupFailure.error;
-
-    if (selectedFeatures) {
-      const { data: allFeatures, error: featureError } = await admin
-        .from("features")
-        .select("key")
-        .eq("is_active", true);
-      if (featureError) throw featureError;
-      const selected = new Set(selectedFeatures);
-      const { error: overrideError } = await admin.from("workspace_feature_overrides").upsert(
-        (allFeatures ?? []).map((feature) => ({
-          workspace_id: workspaceId,
-          feature_key: feature.key,
-          enabled: selected.has(feature.key),
-          reason: "Selected during manual client provisioning",
-          starts_at: now,
-          created_by: identity.userId,
-        })),
-        { onConflict: "workspace_id,feature_key" },
-      );
-      if (overrideError) throw overrideError;
-    }
 
     const { error: auditError } = await admin.from("audit_logs").insert({
       actor_user_id: identity.userId,
@@ -170,8 +144,10 @@ export async function POST(request: Request) {
         slug,
         owner_name: ownerName,
         manual_login: loginEmail,
-        plan_id: planId,
-        selected_features: selectedFeatures,
+        template_id: template.id,
+        template_code: template.code,
+        template_version: template.version,
+        plan_id: template.plan_id,
         email_delivery_used: false,
         password_change_required: true,
       },
@@ -186,6 +162,8 @@ export async function POST(request: Request) {
       activationMethod: "manual",
       emailSent: false,
       mustChangePassword: true,
+      templateId: template.id,
+      templateVersion: template.version,
     });
   } catch (error) {
     const admin = createAdminClient();
