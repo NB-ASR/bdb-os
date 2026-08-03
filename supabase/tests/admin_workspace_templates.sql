@@ -218,7 +218,7 @@ from public.workspace_templates template
 where template.id=context.template_id;
 
 insert into public.workspaces(id, slug, name, status)
-select workspace_id, ('pgtap-template-' || left(workspace_id::text,8))::public.slug_text, 'pgTAP template workspace', 'trial'
+select workspace_id, 'pgtap-template-' || left(workspace_id::text,8), 'pgTAP template workspace', 'trial'
 from template_test_context;
 
 update template_test_context context
