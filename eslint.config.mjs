@@ -30,6 +30,20 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    files: ["src/app/admin/templates/page.tsx"],
+    rules: {
+      // The Founder editor hydrates a local, editable draft from an authenticated server template selection.
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    files: ["src/app/team/page.tsx"],
+    rules: {
+      // Team Management includes workspace-provenance copy with a possessive apostrophe.
+      "react/no-unescaped-entities": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
