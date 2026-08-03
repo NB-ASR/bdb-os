@@ -71,7 +71,7 @@ assert.match(templatesApi, /workspace_count/i, "Template API must expose usage c
 assert.match(templatesPage, /Workspace templates/i, "Founder template editor must exist.");
 assert.match(templatesPage, /Existing clients were not changed/i, "Editor must state version isolation after save.");
 assert.match(templatesPage, /type ProfileKey = "manager" \| "employee"/, "Editor must expose typed Manager and Employee matrices.");
-assert.match(templatesPage, /workspace_template_permissions/i, "Editor must consume the persisted permission matrix contract.");
+assert.match(templatesPage, /templatePermissions/, "Editor must consume the persisted permission matrix contract.");
 
 for (const api of [adminApi, manualApi]) {
   assert.match(api, /apply_workspace_template/, "Every provisioning API must use the trusted template command.");
