@@ -70,8 +70,8 @@ assert.match(templatesApi, /save_workspace_template/, "Template API must use the
 assert.match(templatesApi, /workspace_count/i, "Template API must expose usage context.");
 assert.match(templatesPage, /Workspace templates/i, "Founder template editor must exist.");
 assert.match(templatesPage, /Existing clients were not changed/i, "Editor must state version isolation after save.");
-assert.match(templatesPage, /Manager access preset/i, "Editor must expose Manager presets.");
-assert.match(templatesPage, /Employee access preset/i, "Editor must expose Employee presets.");
+assert.match(templatesPage, /type ProfileKey = "manager" \| "employee"/, "Editor must expose typed Manager and Employee matrices.");
+assert.match(templatesPage, /workspace_template_permissions/i, "Editor must consume the persisted permission matrix contract.");
 
 for (const api of [adminApi, manualApi]) {
   assert.match(api, /apply_workspace_template/, "Every provisioning API must use the trusted template command.");
