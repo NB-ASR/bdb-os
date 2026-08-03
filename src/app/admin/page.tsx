@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -23,7 +24,27 @@ import { BdbMonogram } from "@/components/brand";
 
 type Plan = { id: string; code: string; name: string; description: string; is_active: boolean };
 type Feature = { key: string; name: string; description: string; category: string; route: string | null };
-type Workspace = { id: string; name: string; legal_name: string | null; slug: string; status: string; plan_id: string | null; created_at: string };
+type Workspace = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  slug: string;
+  status: string;
+  plan_id: string | null;
+  workspace_template_id: string | null;
+  workspace_template_version: number | null;
+  created_at: string;
+};
+type WorkspaceTemplate = {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  plan_id: string;
+  version: number;
+  is_active: boolean;
+  is_default: boolean;
+};
 type Entitlement = { plan_id: string; feature_key: string; enabled: boolean };
 type Override = { workspace_id: string; feature_key: string; enabled: boolean; reason: string | null };
 type Subscription = { workspace_id: string; status: string; current_period_end: string | null };
@@ -48,6 +69,7 @@ type Dashboard = {
   features: Feature[];
   planFeatures: Entitlement[];
   overrides: Override[];
+  templates: WorkspaceTemplate[];
   subscriptions: Subscription[];
   contracts: Contract[];
   memberships: Membership[];
@@ -145,6 +167,7 @@ export default function AdminPage() {
     [data, selected],
   );
   const activePlan = data?.plans.find((plan) => plan.id === activeWorkspace?.plan_id);
+  const activeTemplate = data?.templates.find((template) => template.id === activeWorkspace?.workspace_template_id);
   const subscription = data?.subscriptions.find((item) => item.workspace_id === activeWorkspace?.id);
   const contract = data?.contracts.find((item) => item.workspace_id === activeWorkspace?.id);
   const owner = data?.memberships.find((membership) => membership.workspace_id === activeWorkspace?.id && membership.role === "owner");
@@ -169,6 +192,8 @@ export default function AdminPage() {
           <button className={tab === "clients" ? "active" : ""} onClick={() => setTab("clients")}><Building2 size={18} /> Clients</button>
           <button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")}><Layers3 size={18} /> Business Groups</button>
           <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}><SlidersHorizontal size={18} /> Plans & features</button>
+          <Link href="/admin/templates"><Layers3 size={18} /> Workspace templates</Link>
+          <Link href="/admin/manual-provisioning"><KeyRound size={18} /> Manual provisioning</Link>
           <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}><Activity size={18} /> Audit trail</button>
         </nav>
         <div className="admin-secure"><ShieldCheck size={17} /><span><strong>MFA protected</strong><small>Founder actions audited</small></span></div>
@@ -182,7 +207,7 @@ export default function AdminPage() {
           </div>
           <div className="admin-top-actions">
             <button className="icon-button" onClick={() => void load()} aria-label="Refresh"><RefreshCw size={16} /></button>
-            {tab === "clients" && <button className="button button-primary" onClick={() => setCreating(true)}><Plus size={16} /> New client</button>}
+            {tab === "clients" && <button className="button button-primary" onClick={() => setCreating(true)} disabled={!data.templates.some((template) => template.is_active)}><Plus size={16} /> New client</button>}
           </div>
         </header>
 
@@ -192,7 +217,7 @@ export default function AdminPage() {
         <div className="admin-stats">
           <div><span><Building2 size={17} /></span><small>Client businesses</small><strong>{data.workspaces.length}</strong></div>
           <div><span><UsersRound size={17} /></span><small>Active clients</small><strong>{data.workspaces.filter((item) => item.status === "active").length}</strong></div>
-          <div><span><Layers3 size={17} /></span><small>Business groups</small><strong>{data.groups.length}</strong></div>
+          <div><span><Layers3 size={17} /></span><small>Workspace templates</small><strong>{data.templates.filter((item) => item.is_active).length}</strong></div>
           <div><span><KeyRound size={17} /></span><small>Pending owners</small><strong>{data.memberships.filter((item) => item.role === "owner" && item.status === "invited").length}</strong></div>
         </div>
 
@@ -217,7 +242,8 @@ export default function AdminPage() {
                 </div>
 
                 <div className="admin-detail-grid">
-                  <div><small>Plan</small><select value={activeWorkspace.plan_id ?? ""} onChange={(event) => void mutate({ action: "workspace-plan", workspaceId: activeWorkspace.id, planId: event.target.value }, "plan", "Plan updated.")}>{data.plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
+                  <div><small>Provisioning template</small><strong>{activeTemplate ? `${activeTemplate.name} · v${activeWorkspace.workspace_template_version ?? activeTemplate.version}` : "Legacy/custom"}</strong></div>
+                  <div><small>Plan</small><select value={activeWorkspace.plan_id ?? ""} onChange={(event) => void mutate({ action: "workspace-plan", workspaceId: activeWorkspace.id, planId: event.target.value }, "plan", "Plan updated. Template provenance was retained.")}>{data.plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
                   <div><small>Subscription</small><strong>{subscription?.status ?? "Not started"}</strong></div>
                   <div><small>Minimum term</small><strong>{contract ? `${contract.minimum_term_months} months` : "Not agreed"}</strong></div>
                   <div><small>Monthly quote</small><strong>{contract?.monthly_amount ? `£${Number(contract.monthly_amount).toLocaleString()}` : "Custom quote"}</strong></div>
@@ -248,15 +274,15 @@ export default function AdminPage() {
                 </div>
 
                 <h3>Client modules</h3>
-                <p className="muted small">Overrides take priority over the {activePlan?.name ?? "selected"} plan and are enforced in the database.</p>
+                <p className="muted small">The template copied an explicit starting matrix. Founder overrides remain client-specific and never change the template.</p>
                 <div className="entitlement-grid">
                   {data.features.map((feature) => {
                     const override = data.overrides.find((item) => item.workspace_id === activeWorkspace.id && item.feature_key === feature.key);
                     const planEnabled = data.planFeatures.some((item) => item.plan_id === activeWorkspace.plan_id && item.feature_key === feature.key && item.enabled);
                     const enabled = override?.enabled ?? planEnabled;
                     return (
-                      <button key={feature.key} className={enabled ? "enabled" : ""} onClick={() => void mutate({ action: "feature-override", workspaceId: activeWorkspace.id, featureKey: feature.key, enabled: !enabled, reason: "Founder Admin override" }, `feature-${feature.key}`, `${feature.name} ${!enabled ? "enabled" : "disabled"}.`)}>
-                        <span>{enabled && <Check size={14} />}</span><div><strong>{feature.name}</strong><small>{override ? "Client override" : planEnabled ? `${activePlan?.name} default` : "Not included"}</small></div>{busy === `feature-${feature.key}` && <Loader2 className="spin" size={14} />}
+                      <button key={feature.key} className={enabled ? "enabled" : ""} onClick={() => void mutate({ action: "feature-override", workspaceId: activeWorkspace.id, featureKey: feature.key, enabled: !enabled, reason: "Founder Admin client override" }, `feature-${feature.key}`, `${feature.name} ${!enabled ? "enabled" : "disabled"}.`)}>
+                        <span>{enabled && <Check size={14} />}</span><div><strong>{feature.name}</strong><small>{override ? override.reason ?? "Client override" : planEnabled ? `${activePlan?.name} default` : "Not included"}</small></div>{busy === `feature-${feature.key}` && <Loader2 className="spin" size={14} />}
                       </button>
                     );
                   })}
@@ -301,7 +327,7 @@ export default function AdminPage() {
         {tab === "plans" && (
           <div className="admin-plan-grid">
             {data.plans.map((plan) => (
-              <article key={plan.id}><p className="eyebrow">Custom quote</p><h2>{plan.name}</h2><p>{plan.description}</p><div className="plan-feature-list">
+              <article key={plan.id}><p className="eyebrow">Commercial plan</p><h2>{plan.name}</h2><p>{plan.description}</p><div className="plan-feature-list">
                 {data.features.map((feature) => {
                   const enabled = data.planFeatures.some((item) => item.plan_id === plan.id && item.feature_key === feature.key && item.enabled);
                   return <button key={feature.key} className={enabled ? "enabled" : ""} onClick={() => void mutate({ action: "plan-feature", planId: plan.id, featureKey: feature.key, enabled: !enabled }, `plan-${plan.id}-${feature.key}`, `${plan.name} updated.`)}><span>{enabled && <Check size={13} />}</span>{feature.name}</button>;
@@ -320,36 +346,29 @@ export default function AdminPage() {
         )}
       </section>
 
-      {creating && <CreateWorkspace plans={data.plans} features={data.features} planFeatures={data.planFeatures} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setNotice("Client business created and owner invitation sent."); await load(); }} onError={setError} />}
+      {creating && <CreateWorkspace templates={data.templates.filter((template) => template.is_active)} plans={data.plans} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setNotice("Client business created from its workspace template and owner invitation sent."); await load(); }} onError={setError} />}
     </main>
   );
 }
 
 function CreateWorkspace({
+  templates,
   plans,
-  features,
-  planFeatures,
   onClose,
   onCreated,
   onError,
 }: {
+  templates: WorkspaceTemplate[];
   plans: Plan[];
-  features: Feature[];
-  planFeatures: Entitlement[];
   onClose: () => void;
   onCreated: () => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const defaultTemplate = templates.find((template) => template.is_default) ?? templates[0];
   const [loading, setLoading] = useState(false);
-  const [planId, setPlanId] = useState(plans[0]?.id ?? "");
-  const [selectedFeatures, setSelectedFeatures] = useState<Set<string>>(
-    new Set(planFeatures.filter((item) => item.plan_id === plans[0]?.id && item.enabled).map((item) => item.feature_key)),
-  );
-
-  function selectPlan(nextPlanId: string) {
-    setPlanId(nextPlanId);
-    setSelectedFeatures(new Set(planFeatures.filter((item) => item.plan_id === nextPlanId && item.enabled).map((item) => item.feature_key)));
-  }
+  const [templateId, setTemplateId] = useState(defaultTemplate?.id ?? "");
+  const selectedTemplate = templates.find((template) => template.id === templateId) ?? defaultTemplate;
+  const selectedPlan = plans.find((plan) => plan.id === selectedTemplate?.plan_id);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -366,8 +385,7 @@ function CreateWorkspace({
         slug: form.get("slug"),
         ownerName: form.get("ownerName"),
         ownerEmail: form.get("email"),
-        planId,
-        features: [...selectedFeatures],
+        templateId,
       }),
     });
     const result = await response.json().catch(() => ({}));
@@ -379,25 +397,23 @@ function CreateWorkspace({
   return (
     <div className="dialog-backdrop">
       <div className="dialog" style={{ maxWidth: 760 }}>
-        <div className="dialog-header"><div><p className="eyebrow">Founder provisioning</p><h2>Create client business</h2><p className="muted">Creates an isolated workspace and sends a seven-day activation invitation to its first Business Owner.</p></div><button className="icon-button" onClick={onClose}>×</button></div>
+        <div className="dialog-header"><div><p className="eyebrow">Founder provisioning</p><h2>Create client business</h2><p className="muted">Creates an isolated workspace, copies one approved template and sends a seven-day activation invitation to its first Business Owner.</p></div><button className="icon-button" onClick={onClose} aria-label="Close">×</button></div>
         <form onSubmit={submit}>
           <div className="form-grid">
             <div className="field"><label>Business name</label><input name="name" required minLength={2} /></div>
             <div className="field"><label>Legal name (optional)</label><input name="legalName" /></div>
             <div className="field"><label>Workspace slug</label><input name="slug" required pattern="[a-z0-9-]+" /></div>
-            <div className="field"><label>Starting plan</label><select value={planId} onChange={(event) => selectPlan(event.target.value)}>{plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}</select></div>
+            <div className="field"><label>Workspace template</label><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} required>{templates.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}</select></div>
             <div className="field"><label>Owner full name</label><input name="ownerName" required minLength={2} autoComplete="name" /></div>
             <div className="field"><label>Owner email</label><input name="email" type="email" required autoComplete="email" /></div>
           </div>
-          <h3 style={{ marginTop: 22 }}>Enabled modules</h3>
-          <p className="muted small">These choices create real workspace overrides. They can be changed later from Founder Admin.</p>
-          <div className="entitlement-grid" style={{ marginTop: 12 }}>
-            {features.map((feature) => {
-              const enabled = selectedFeatures.has(feature.key);
-              return <button type="button" key={feature.key} className={enabled ? "enabled" : ""} onClick={() => setSelectedFeatures((current) => { const next = new Set(current); if (next.has(feature.key)) next.delete(feature.key); else next.add(feature.key); return next; })}><span>{enabled && <Check size={14} />}</span><div><strong>{feature.name}</strong><small>{feature.description}</small></div></button>;
-            })}
+          <div className="settings-note" style={{ marginTop: 18 }}>
+            <ShieldCheck size={20} />
+            <strong>{selectedTemplate?.name ?? "No active template"}</strong>
+            <p>{selectedTemplate?.description || "The template controls the starting plan, modules, settings, appearance and team access presets."}</p>
+            <small>Commercial plan: {selectedPlan?.name ?? "Not configured"}</small>
           </div>
-          <div className="dialog-actions"><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={loading}><Building2 size={16} /> {loading ? "Creating securely…" : "Create and invite owner"}</button></div>
+          <div className="dialog-actions" style={{ marginTop: 22 }}><button type="button" className="button button-secondary" onClick={onClose}>Cancel</button><button className="button button-primary" disabled={loading || !templateId}><Building2 size={16} /> {loading ? "Creating securely…" : "Create workspace"}</button></div>
         </form>
       </div>
     </div>
