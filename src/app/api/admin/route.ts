@@ -37,6 +37,7 @@ async function dashboard(admin: AdminClient) {
     features,
     planFeatures,
     overrides,
+    templates,
     subscriptions,
     contracts,
     memberships,
@@ -50,6 +51,7 @@ async function dashboard(admin: AdminClient) {
     admin.from("features").select("*").order("sort_order"),
     admin.from("plan_features").select("*"),
     admin.from("workspace_feature_overrides").select("*"),
+    admin.from("workspace_templates").select("id,code,name,description,plan_id,version,is_active,is_default").order("is_default", { ascending: false }).order("name"),
     admin.from("subscriptions").select("*"),
     admin.from("contracts").select("*"),
     admin
@@ -66,6 +68,7 @@ async function dashboard(admin: AdminClient) {
     features,
     planFeatures,
     overrides,
+    templates,
     subscriptions,
     contracts,
     memberships,
@@ -83,6 +86,7 @@ async function dashboard(admin: AdminClient) {
     features: features.data ?? [],
     planFeatures: planFeatures.data ?? [],
     overrides: overrides.data ?? [],
+    templates: templates.data ?? [],
     subscriptions: subscriptions.data ?? [],
     contracts: contracts.data ?? [],
     memberships: (memberships.data ?? []).map((membership) => ({
@@ -157,19 +161,21 @@ export async function POST(request: Request) {
     const slug = cleanSlug(body.slug);
     const ownerName = String(body.ownerName ?? "").trim();
     const ownerEmail = String(body.ownerEmail ?? "").trim().toLowerCase();
-    const planId = String(body.planId ?? "");
-    const selectedFeatures = Array.isArray(body.features)
-      ? body.features.map(String)
-      : null;
-    if (!name || slug.length < 3 || ownerName.length < 2 || !validEmail(ownerEmail) || !planId) {
+    const templateId = String(body.templateId ?? "");
+    if (!name || slug.length < 3 || ownerName.length < 2 || !validEmail(ownerEmail) || !templateId) {
       return Response.json(
-        { error: "Business name, slug, owner name, owner email and plan are required." },
+        { error: "Business name, slug, owner name, owner email and workspace template are required." },
         { status: 400 },
       );
     }
 
-    const { data: plan } = await admin.from("plans").select("id").eq("id", planId).eq("is_active", true).maybeSingle();
-    if (!plan) return Response.json({ error: "Choose an active plan." }, { status: 400 });
+    const { data: template } = await admin
+      .from("workspace_templates")
+      .select("id,code,name,version,plan_id")
+      .eq("id", templateId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!template) return Response.json({ error: "Choose an active workspace template." }, { status: 400 });
 
     const workspaceId = crypto.randomUUID();
     let invitedUser: User | undefined;
@@ -181,7 +187,6 @@ export async function POST(request: Request) {
         legal_name: legalName,
         slug,
         status: "trial",
-        plan_id: planId,
       });
       if (workspaceError) throw workspaceError;
 
@@ -200,6 +205,15 @@ export async function POST(request: Request) {
         await sendExistingUserInvite(ownerEmail, redirectTo);
       }
 
+      const { error: templateError } = await admin.rpc("apply_workspace_template", {
+        target_workspace_id: workspaceId,
+        target_template_id: templateId,
+        target_actor_user_id: identity.userId,
+        target_owner_name: ownerName,
+        target_owner_email: ownerEmail,
+      });
+      if (templateError) throw templateError;
+
       const now = new Date();
       const expiry = invitationExpiresAt(now);
       const setupResults = await Promise.all([
@@ -214,41 +228,9 @@ export async function POST(request: Request) {
           invitation_last_sent_at: now.toISOString(),
           invitation_expires_at: expiry,
         }, { onConflict: "workspace_id,user_id" }),
-        admin.from("workspace_settings").insert({
-          workspace_id: workspaceId,
-          owner_name: ownerName,
-          email: ownerEmail,
-        }),
-        admin.from("workspace_themes").insert({
-          workspace_id: workspaceId,
-          preset: "obsidian-gold",
-          mode: "dark",
-          accent_color: "#d3a84b",
-          font_family: "manrope",
-          text_scale: 1,
-          density: "comfortable",
-        }),
       ]);
       const setupFailure = setupResults.find((result) => result.error);
       if (setupFailure?.error) throw setupFailure.error;
-
-      if (selectedFeatures) {
-        const { data: allFeatures, error: featureError } = await admin.from("features").select("key").eq("is_active", true);
-        if (featureError) throw featureError;
-        const selected = new Set(selectedFeatures);
-        const { error: overrideError } = await admin.from("workspace_feature_overrides").upsert(
-          (allFeatures ?? []).map((feature) => ({
-            workspace_id: workspaceId,
-            feature_key: feature.key,
-            enabled: selected.has(feature.key),
-            reason: "Selected during client provisioning",
-            starts_at: now.toISOString(),
-            created_by: identity.userId,
-          })),
-          { onConflict: "workspace_id,feature_key" },
-        );
-        if (overrideError) throw overrideError;
-      }
 
       await admin.from("audit_logs").insert({
         actor_user_id: identity.userId,
@@ -262,12 +244,20 @@ export async function POST(request: Request) {
           slug,
           owner_name: ownerName,
           owner_email: ownerEmail,
-          plan_id: planId,
-          selected_features: selectedFeatures,
+          template_id: template.id,
+          template_code: template.code,
+          template_version: template.version,
+          plan_id: template.plan_id,
           invitation_expires_at: expiry,
         },
       });
-      return Response.json({ ok: true, workspaceId, invitationExpiresAt: expiry });
+      return Response.json({
+        ok: true,
+        workspaceId,
+        templateId: template.id,
+        templateVersion: template.version,
+        invitationExpiresAt: expiry,
+      });
     } catch (error) {
       await admin.from("workspaces").delete().eq("id", workspaceId);
       if (createdAuthUser && invitedUser) await admin.auth.admin.deleteUser(invitedUser.id);
