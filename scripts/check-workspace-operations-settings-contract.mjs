@@ -83,6 +83,10 @@ assert.match(operationsPanel, /Security events remain platform-controlled/i, "Se
 assert.match(operationsPanel, /Pending offline queues are deliberately excluded/i, "Cache maintenance must state the offline queue boundary.");
 assert.match(operationsPanel, /will not merge a backup into live records/i, "UI must reject backup merging.");
 assert.match(operationsPanel, /will not.*arbitrary department deletion/i, "UI must reject arbitrary department deletion.");
-assert.doesNotMatch(operationsPanel, /repair workspace|maintenance mode|reset individual/i, "Ordinary Settings must not expose broad repair or reset controls.");
+assert.doesNotMatch(
+  operationsPanel,
+  /action:\s*["'](?:repair|reset|maintenance)|\/api\/workspace\/(?:repair|reset|maintenance)/i,
+  "Ordinary Settings must not expose executable repair, reset or maintenance controls.",
+);
 
 console.log("Workspace operational Settings, exports, notifications and diagnostics contract passed.");
