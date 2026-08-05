@@ -27,6 +27,18 @@ type Permission = {
   can_approve: boolean;
   can_export: boolean;
 };
+type ProfileDefault = {
+  access_profile: "manager" | "employee" | "custom";
+  feature_key: string;
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_approve: boolean;
+  can_export: boolean;
+  source_template_id: string | null;
+  source_template_version: number | null;
+};
 type Member = {
   user_id: string;
   role: string;
@@ -38,21 +50,44 @@ type Member = {
   invitation_last_sent_at: string | null;
   profiles?: { full_name?: string | null } | null;
 };
-type TeamData = { members: Member[]; permissions: Permission[]; features: Feature[]; canEdit: boolean };
+type TeamData = {
+  members: Member[];
+  permissions: Permission[];
+  profileDefaults: ProfileDefault[];
+  features: Feature[];
+  canEdit: boolean;
+};
 type PermissionDraft = Record<string, Record<ActionKey, boolean>>;
 
 function profileLabel(profile: Member["access_profile"]) {
   return profile === "owner" ? "Owner" : profile === "manager" ? "Manager" : profile === "custom" ? "Custom" : "Employee";
 }
 
-function preset(profile: Member["access_profile"], action: ActionKey) {
+function legacyPreset(profile: Member["access_profile"], action: ActionKey) {
   if (profile === "owner") return true;
   if (profile === "manager") return ["view", "create", "edit", "approve", "export"].includes(action);
   if (profile === "employee") return ["view", "create", "edit"].includes(action);
   return false;
 }
 
-function makeDraft(member: Member, features: Feature[], permissions: Permission[]): PermissionDraft {
+function preset(
+  profile: Member["access_profile"],
+  featureKey: string,
+  action: ActionKey,
+  profileDefaults: ProfileDefault[],
+) {
+  if (profile === "owner") return true;
+  const saved = profileDefaults.find((item) => item.access_profile === profile && item.feature_key === featureKey);
+  if (!saved) return legacyPreset(profile, action);
+  return Boolean(saved[`can_${action}` as keyof ProfileDefault]);
+}
+
+function makeDraft(
+  member: Member,
+  features: Feature[],
+  permissions: Permission[],
+  profileDefaults: ProfileDefault[],
+): PermissionDraft {
   return Object.fromEntries(
     features.map((feature) => {
       const explicit = permissions.find((item) => item.user_id === member.user_id && item.feature_key === feature.key);
@@ -61,7 +96,9 @@ function makeDraft(member: Member, features: Feature[], permissions: Permission[
         Object.fromEntries(
           actionKeys.map((action) => [
             action,
-            explicit ? Boolean(explicit[`can_${action}` as keyof Permission]) : preset(member.access_profile, action),
+            explicit
+              ? Boolean(explicit[`can_${action}` as keyof Permission])
+              : preset(member.access_profile, feature.key, action, profileDefaults),
           ]),
         ) as Record<ActionKey, boolean>,
       ];
@@ -110,7 +147,7 @@ export default function TeamPage() {
     const timer = window.setTimeout(() => {
       setDraftProfile(selected.access_profile);
       setDraftStatus(selected.status === "invited" ? "active" : selected.status);
-      setPermissionDraft(makeDraft(selected, data.features, data.permissions));
+      setPermissionDraft(makeDraft(selected, data.features, data.permissions, data.profileDefaults));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [selected, data]);
@@ -139,7 +176,10 @@ export default function TeamPage() {
     if (!data) return;
     setPermissionDraft(Object.fromEntries(data.features.map((feature) => [
       feature.key,
-      Object.fromEntries(actionKeys.map((action) => [action, preset(profile, action)])) as Record<ActionKey, boolean>,
+      Object.fromEntries(actionKeys.map((action) => [
+        action,
+        preset(profile, feature.key, action, data.profileDefaults),
+      ])) as Record<ActionKey, boolean>,
     ])));
   }
 
@@ -246,8 +286,8 @@ export default function TeamPage() {
             <div className="field" style={{ marginTop: 14 }}>
               <label>Starting access</label>
               <select name="accessProfile" defaultValue="employee" disabled={!data?.canEdit || busy === "invite"}>
-                <option value="employee">Employee · daily work</option>
-                <option value="manager">Manager · operations and approvals</option>
+                <option value="employee">Employee · workspace preset</option>
+                <option value="manager">Manager · workspace preset</option>
                 <option value="custom">Custom · choose every permission</option>
                 <option value="owner">Owner · full business administration</option>
               </select>
@@ -321,7 +361,7 @@ export default function TeamPage() {
               </tbody>
             </table>
           </div>
-          {draftProfile !== "custom" && <p className="muted small" style={{ marginTop: 14 }}>The matrix shows the standard {profileLabel(draftProfile)} preset. Choose Custom to edit individual permissions.</p>}
+          {draftProfile !== "custom" && <p className="muted small" style={{ marginTop: 14 }}>The matrix shows this workspace's {profileLabel(draftProfile)} preset copied during provisioning. Choose Custom to edit member-specific permissions.</p>}
           <div className="dialog-actions" style={{ marginTop: 20 }}>
             <Button variant="danger" type="button" onClick={() => void remove(selected)} disabled={!data.canEdit || busy === `remove-${selected.user_id}`}>
               <Trash2 size={16} /> Remove access
@@ -332,7 +372,7 @@ export default function TeamPage() {
             </Button>
           </div>
           <div className="settings-note" style={{ marginTop: 18 }}>
-            <ShieldCheck size={20} /><strong>Server enforced</strong><p>These controls update database permissions. Hiding a menu item alone never grants or removes access.</p>
+            <ShieldCheck size={20} /><strong>Server enforced</strong><p>Workspace presets and member exceptions are resolved by the database. Hiding a menu item alone never grants or removes access.</p>
           </div>
         </Card>
       )}

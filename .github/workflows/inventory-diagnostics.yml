@@ -1,0 +1,36 @@
+name: Inventory Test Diagnostics
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Capture test groups
+        shell: bash
+        run: |
+          set +e
+          : > inventory-test-diagnostics.txt
+          for group in unit db:static migrations vanita; do
+            echo "=== $group ===" >> inventory-test-diagnostics.txt
+            npm run "test:$group" >> inventory-test-diagnostics.txt 2>&1
+            echo "EXIT=$?" >> inventory-test-diagnostics.txt
+          done
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: inventory-test-diagnostics
+          path: inventory-test-diagnostics.txt
+          retention-days: 1

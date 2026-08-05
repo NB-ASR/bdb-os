@@ -35,16 +35,27 @@ async function context() {
   if (membershipError) throw membershipError;
   if (!membership) throw new Error("FORBIDDEN");
 
-  let canView = membership.access_profile === "owner" || membership.access_profile === "manager";
-  if (!canView && membership.access_profile === "custom") {
-    const { data: permission } = await admin
+  let canView = membership.access_profile === "owner";
+  if (!canView) {
+    const { data: explicit } = await admin
       .from("workspace_member_permissions")
       .select("can_view")
       .eq("workspace_id", workspaceId)
       .eq("user_id", userId)
       .eq("feature_key", "team_members")
       .maybeSingle();
-    canView = Boolean(permission?.can_view);
+    if (explicit) {
+      canView = Boolean(explicit.can_view);
+    } else {
+      const { data: profileDefault } = await admin
+        .from("workspace_access_profile_permissions")
+        .select("can_view")
+        .eq("workspace_id", workspaceId)
+        .eq("access_profile", membership.access_profile)
+        .eq("feature_key", "team_members")
+        .maybeSingle();
+      canView = Boolean(profileDefault?.can_view);
+    }
   }
   if (!canView) throw new Error("FORBIDDEN");
 
@@ -137,7 +148,7 @@ async function ensureCanChangeOwner(
 export async function GET() {
   try {
     const { admin, workspaceId, userId, canEdit } = await context();
-    const [membersResult, permissionsResult, featuresResult, users] = await Promise.all([
+    const [membersResult, permissionsResult, profileDefaultsResult, featuresResult, users] = await Promise.all([
       admin
         .from("workspace_memberships")
         .select("user_id,role,access_profile,status,joined_at,created_at,invitation_expires_at,invitation_last_sent_at,profiles(full_name)")
@@ -148,13 +159,18 @@ export async function GET() {
         .select("workspace_id,user_id,feature_key,can_view,can_create,can_edit,can_delete,can_approve,can_export")
         .eq("workspace_id", workspaceId),
       admin
+        .from("workspace_access_profile_permissions")
+        .select("access_profile,feature_key,can_view,can_create,can_edit,can_delete,can_approve,can_export,source_template_id,source_template_version")
+        .eq("workspace_id", workspaceId),
+      admin
         .from("features")
         .select("key,name,description,category,route,is_active")
         .eq("is_active", true)
         .order("sort_order"),
       listUsersById(admin),
     ]);
-    const failed = [membersResult, permissionsResult, featuresResult].find((result) => result.error);
+    const failed = [membersResult, permissionsResult, profileDefaultsResult, featuresResult]
+      .find((result) => result.error);
     if (failed?.error) throw failed.error;
 
     return Response.json({
@@ -162,6 +178,7 @@ export async function GET() {
       canEdit,
       features: featuresResult.data ?? [],
       permissions: permissionsResult.data ?? [],
+      profileDefaults: profileDefaultsResult.data ?? [],
       members: (membersResult.data ?? []).map((member) => ({
         ...member,
         email: users.get(member.user_id)?.email ?? "",
@@ -283,13 +300,18 @@ export async function POST(request: Request) {
     }
 
     if (accessProfile === "custom") {
-      const { data: features } = await admin.from("features").select("key").eq("is_active", true);
-      if (features?.length) {
+      const { data: defaults, error: defaultsError } = await admin
+        .from("workspace_access_profile_permissions")
+        .select("feature_key,can_view,can_create,can_edit,can_delete,can_approve,can_export")
+        .eq("workspace_id", workspaceId)
+        .eq("access_profile", "custom");
+      if (defaultsError) throw defaultsError;
+      if (defaults?.length) {
         const { error: permissionError } = await admin.from("workspace_member_permissions").insert(
-          features.map((feature) => ({
+          defaults.map((permission) => ({
             workspace_id: workspaceId,
             user_id: invitedUser.id,
-            feature_key: feature.key,
+            ...permission,
             created_by: userId,
           })),
         );

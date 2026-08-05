@@ -24,17 +24,58 @@ function failure(error: unknown) {
   return Response.json({ error: message, code }, { status });
 }
 
-type LinkedWorkspace = { workspace_id: string; is_active?: boolean };
+type LinkedWorkspace = {
+  workspace_id: string;
+  workspace_name?: string;
+  workspace_slug?: string;
+  membership_role?: string;
+  access_profile?: string;
+  is_active?: boolean;
+};
+
+type SupportWorkspace = {
+  workspace_id: string;
+  workspace_name: string;
+  workspace_slug: string;
+  access_mode: "read_only" | "test_write";
+};
+
+type EffectiveFeature = {
+  feature_key: string;
+  enabled: boolean;
+};
 
 export async function GET() {
   try {
     const { supabase, admin, userId } = await identity();
-    const { data, error } = await supabase.rpc("get_my_linked_workspaces");
-    if (error) throw error;
-    const workspaces = (data ?? []) as LinkedWorkspace[];
-    const current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
+    const linkedResult = await supabase.rpc("get_my_linked_workspaces");
+    if (linkedResult.error) throw linkedResult.error;
 
-    if (current) {
+    let workspaces = (linkedResult.data ?? []) as LinkedWorkspace[];
+    let current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
+    let supportAccess = false;
+    let supportMode: SupportWorkspace["access_mode"] | null = null;
+
+    if (!current) {
+      const supportResult = await supabase.rpc("get_my_support_session");
+      if (supportResult.error) throw supportResult.error;
+      const support = ((supportResult.data ?? []) as SupportWorkspace[])[0];
+      if (support) {
+        supportAccess = true;
+        supportMode = support.access_mode;
+        current = {
+          workspace_id: support.workspace_id,
+          workspace_name: support.workspace_name,
+          workspace_slug: support.workspace_slug,
+          membership_role: "support",
+          access_profile: support.access_mode,
+          is_active: true,
+        };
+        workspaces = [current];
+      }
+    }
+
+    if (current && !supportAccess) {
       const { data: profile } = await admin
         .from("profiles")
         .select("active_workspace_id")
@@ -49,7 +90,32 @@ export async function GET() {
       }
     }
 
-    const response = Response.json({ workspaces, currentWorkspaceId: current?.workspace_id ?? null });
+    let features: Record<string, boolean> = {};
+    if (current && supportMode === "test_write") {
+      const featureResult = await admin
+        .from("features")
+        .select("key")
+        .eq("is_active", true)
+        .order("sort_order");
+      if (featureResult.error) throw featureResult.error;
+      features = Object.fromEntries((featureResult.data ?? []).map((feature) => [feature.key, true]));
+    } else if (current) {
+      const featureResult = await supabase.rpc("get_effective_features", {
+        target_workspace_id: current.workspace_id,
+      });
+      if (featureResult.error) throw featureResult.error;
+      features = Object.fromEntries(
+        ((featureResult.data ?? []) as EffectiveFeature[]).map((feature) => [feature.feature_key, feature.enabled]),
+      );
+    }
+
+    const response = Response.json({
+      workspaces,
+      currentWorkspaceId: current?.workspace_id ?? null,
+      features,
+      supportAccess,
+      supportAccessMode: supportMode,
+    });
     if (current) {
       response.headers.append(
         "Set-Cookie",

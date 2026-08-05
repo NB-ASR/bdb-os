@@ -1,0 +1,283 @@
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.loadingCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 120px;
+  padding: 28px;
+}
+
+.spin {
+  animation: banking-spin 1s linear infinite;
+}
+
+.callout,
+.boundary,
+.error,
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(211, 168, 75, 0.24);
+  border-radius: 16px;
+  background: rgba(211, 168, 75, 0.07);
+}
+
+.callout > div,
+.boundary > div {
+  flex: 1;
+}
+
+.callout strong,
+.boundary strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.callout p,
+.boundary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.boundary {
+  border-color: rgba(98, 171, 255, 0.22);
+  background: rgba(98, 171, 255, 0.06);
+}
+
+.error {
+  align-items: center;
+  border-color: rgba(239, 105, 105, 0.28);
+  background: rgba(239, 105, 105, 0.08);
+  color: var(--red);
+}
+
+.notice {
+  align-items: center;
+  border-color: rgba(82, 190, 132, 0.28);
+  background: rgba(82, 190, 132, 0.08);
+  color: var(--green);
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 14px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.tabs button {
+  min-width: max-content;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tabs button:hover,
+.tabs .activeTab {
+  background: rgba(211, 168, 75, 0.12);
+  color: var(--text);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 12px;
+}
+
+.sectionHead h2 {
+  margin: 4px 0 0;
+}
+
+.subline {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.credit {
+  color: var(--green);
+}
+
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 14px;
+}
+
+.accountCard {
+  padding: 20px;
+}
+
+.accountCard h2 {
+  margin: 6px 0 8px;
+}
+
+.accountHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.accountHead > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(211, 168, 75, 0.24);
+  border-radius: 50%;
+  background: rgba(211, 168, 75, 0.08);
+  color: var(--gold);
+}
+
+.accountStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.accountStats > div {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.accountStats span {
+  display: block;
+  margin-bottom: 5px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountStats strong {
+  font-size: 13px;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 12px;
+}
+
+.templateCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+}
+
+.templateCard strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.templateCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.transactionCard {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+}
+
+.transactionCard h2 {
+  margin: 4px 0;
+  font-size: 17px;
+}
+
+.transactionCard > strong {
+  text-align: right;
+}
+
+.creditIcon,
+.debitIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 50%;
+}
+
+.creditIcon {
+  background: rgba(82, 190, 132, 0.12);
+  color: var(--green);
+}
+
+.debitIcon {
+  background: rgba(211, 168, 75, 0.12);
+  color: var(--gold);
+}
+
+@keyframes banking-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .headerActions {
+    justify-content: stretch;
+  }
+
+  .headerActions > * {
+    flex: 1;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .accountStats {
+    grid-template-columns: 1fr;
+  }
+
+  .transactionCard {
+    grid-template-columns: auto 1fr;
+  }
+
+  .transactionCard > strong {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+}

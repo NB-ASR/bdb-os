@@ -1,67 +1,81 @@
 import { readdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 
-const migrationFiles = (await readdir("supabase/migrations"))
-  .filter((name) => name.endsWith(".sql"))
-  .sort();
-
+const migrationFiles = (await readdir("supabase/migrations")).filter((name) => name.endsWith(".sql")).sort();
 const canonicalProductionHistory = [
-  "20260714021331_saas_foundation.sql",
-  "20260714021438_saas_hardening.sql",
-  "20260714021941_private_workspace_storage.sql",
-  "20260714091849_add_push_notifications.sql",
-  "20260714091955_add_appointment_reminder_schedule.sql",
-  "20260714092427_index_notification_foreign_keys.sql",
-  "20260716220003_v1_foundation.sql",
-  "20260716220034_v1_access_hardening.sql",
-  "20260716220053_team_access_core.sql",
-  "20260716220156_workspace_context_isolation.sql",
-  "20260717002647_theme_preset_alignment.sql",
-  "20260717002659_production_workspace.sql",
+  "20260714021331_saas_foundation.sql", "20260714021438_saas_hardening.sql",
+  "20260714021941_private_workspace_storage.sql", "20260714091849_add_push_notifications.sql",
+  "20260714091955_add_appointment_reminder_schedule.sql", "20260714092427_index_notification_foreign_keys.sql",
+  "20260716220003_v1_foundation.sql", "20260716220034_v1_access_hardening.sql",
+  "20260716220053_team_access_core.sql", "20260716220156_workspace_context_isolation.sql",
+  "20260717002647_theme_preset_alignment.sql", "20260717002659_production_workspace.sql",
   "20260717171602_add_workspace_membership_profile_fk.sql",
 ];
-
-assert.deepEqual(
-  migrationFiles.slice(0, canonicalProductionHistory.length),
-  canonicalProductionHistory,
-  "The repository migration prefix must match the versions already registered in production.",
-);
-
+assert.deepEqual(migrationFiles.slice(0, canonicalProductionHistory.length), canonicalProductionHistory, "The repository migration prefix must match the versions already registered in production.");
 const versions = migrationFiles.map((name) => name.split("_")[0]);
-assert.equal(
-  new Set(versions).size,
-  versions.length,
-  "Every migration version must be unique.",
-);
-
+assert.equal(new Set(versions).size, versions.length, "Every migration version must be unique.");
 const obsoleteVersions = new Set([
-  "20260714080000",
-  "20260714090000",
-  "20260714093000",
-  "20260714100000",
-  "20260714231500",
-  "20260715150000",
-  "20260715160000",
-  "20260715161000",
-  "20260715162000",
-  "20260717115900",
-  "20260717120000",
-  "20260717172000",
+  "20260714080000", "20260714090000", "20260714093000", "20260714100000", "20260714231500",
+  "20260715150000", "20260715160000", "20260715161000", "20260715162000", "20260717115900",
+  "20260717120000", "20260717172000",
 ]);
-
-assert.equal(
-  migrationFiles.some((name) => obsoleteVersions.has(name.split("_")[0])),
-  false,
-  "Obsolete parallel migration versions must not return.",
-);
-
-assert.ok(
-  migrationFiles.includes("20260718193000_quality_foundation_security.sql"),
-  "Quality Foundation security migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"),
-  "Invitation expiry migration is missing.",
-);
-
+assert.equal(migrationFiles.some((name) => obsoleteVersions.has(name.split("_")[0])), false, "Obsolete parallel migration versions must not return.");
+for (const [file, message] of [
+  ["20260718193000_quality_foundation_security.sql", "Quality Foundation security migration is missing."],
+  ["20260718193500_invitation_expiry_guard.sql", "Invitation expiry migration is missing."],
+  ["20260727152000_product_catalogue_foundation.sql", "Product catalogue foundation migration is missing."],
+  ["20260727152500_product_support_write_guard.sql", "Product support-session write guard migration is missing."],
+  ["20260727154000_supplier_directory_foundation.sql", "Supplier directory foundation migration is missing."],
+  ["20260727155000_product_supplier_relationship.sql", "Product Supplier relationship migration is missing."],
+  ["20260727161000_supplier_document_capture_review.sql", "Supplier document capture and review migration is missing."],
+  ["20260727161500_supplier_document_reference_indexes.sql", "Supplier document reference index migration is missing."],
+  ["20260727190000_inventory_movement_ledger.sql", "Inventory movement ledger migration is missing."],
+  ["20260727190500_inventory_reference_indexes.sql", "Inventory reference indexes migration is missing."],
+  ["20260728090000_service_catalogue_foundation.sql", "Service catalogue foundation migration is missing."],
+  ["20260728100000_sales_transaction_foundation.sql", "Sales transaction foundation migration is missing."],
+  ["20260728100500_sales_reference_uniqueness.sql", "Sale reference hardening migration is missing."],
+  ["20260728160000_purchasing_create_products_from_invoice.sql", "Invoice-driven Product creation migration is missing."],
+  ["20260728170000_founder_test_write_support.sql", "Founder test-write support migration is missing."],
+  ["20260729090000_customer_foundation_schema.sql", "Customer foundation schema migration is missing."],
+  ["20260729090500_customer_foundation_commands.sql", "Customer lifecycle command migration is missing."],
+  ["20260729091000_customer_vanita_import.sql", "Vanita Customer import migration is missing."],
+  ["20260729091500_customer_code_collision_hardening.sql", "Customer reference hardening migration is missing."],
+  ["20260729092000_customer_reference_indexes.sql", "Customer reference indexes migration is missing."],
+  ["20260729110000_appointment_status_values.sql", "Appointment status migration is missing."],
+  ["20260729110500_appointment_foundation.sql", "Appointment foundation migration is missing."],
+  ["20260729111000_appointment_read_hardening.sql", "Appointment read hardening migration is missing."],
+  ["20260729111500_appointment_reference_indexes.sql", "Appointment reference index migration is missing."],
+  ["20260729123000_calendar_availability_foundation.sql", "Calendar availability foundation migration is missing."],
+  ["20260729123500_appointment_room_conflict_hardening.sql", "Appointment room conflict hardening migration is missing."],
+  ["20260729124000_calendar_availability_reference_indexes.sql", "Calendar availability index hardening migration is missing."],
+  ["20260729124500_calendar_availability_anonymous_read_hardening.sql", "Calendar availability anonymous-read hardening migration is missing."],
+  ["20260729130000_calendar_staff_service_eligibility.sql", "Calendar staff-to-Service eligibility migration is missing."],
+  ["20260729143000_appointment_sale_draft_conversion.sql", "Appointment-to-Sale draft migration is missing."],
+  ["20260729150000_appointment_product_consumption.sql", "Appointment Product consumption migration is missing."],
+  ["20260729160000_invoice_status_void_value.sql", "Invoice void status migration is missing."],
+  ["20260729160500_accounts_invoice_schema.sql", "Accounts Invoice schema migration is missing."],
+  ["20260729161000_accounts_payment_allocation_schema.sql", "Payment allocation schema migration is missing."],
+  ["20260729161500_accounts_balance_views_security.sql", "Accounts balance views and security migration is missing."],
+  ["20260729162000_accounts_invoice_commands.sql", "Trusted Invoice command migration is missing."],
+  ["20260729162500_accounts_payment_commands.sql", "Trusted Payment command migration is missing."],
+  ["20260729163000_accounts_activity_tone_hardening.sql", "Accounts Activity tone hardening migration is missing."],
+  ["20260729163500_accounts_reference_index_hardening.sql", "Accounts reference index hardening migration is missing."],
+  ["20260731100000_purchasing_supplier_proposal.sql", "Purchasing Supplier proposal migration is missing."],
+  ["20260731100500_purchasing_supplier_proposal_uuid_resolution.sql", "Purchasing Supplier proposal UUID hardening migration is missing."],
+  ["20260731110000_supplier_payables_schema.sql", "Supplier Payables schema migration is missing."],
+  ["20260731110500_supplier_payables_views_security.sql", "Supplier Payables views and security migration is missing."],
+  ["20260731111000_supplier_payables_posting_commands.sql", "Supplier Payables posting command migration is missing."],
+  ["20260731111500_supplier_payables_settlement_commands.sql", "Supplier Payables settlement command migration is missing."],
+  ["20260731112000_supplier_payables_cross_department_read.sql", "Supplier Payables cross-department read migration is missing."],
+  ["20260731112500_supplier_payables_balance_hardening.sql", "Supplier Payables balance hardening migration is missing."],
+  ["20260731113000_supplier_payables_read_policy_hardening.sql", "Supplier Payables read-policy hardening migration is missing."],
+  ["20260731120000_banking_reconciliation_schema.sql", "Banking reconciliation schema migration is missing."],
+  ["20260731120500_banking_reconciliation_views_security.sql", "Banking reconciliation views and security migration is missing."],
+  ["20260731121000_banking_reconciliation_commands.sql", "Trusted Banking reconciliation command migration is missing."],
+  ["20260731121500_banking_reference_indexes.sql", "Banking reference-index hardening migration is missing."],
+  ["20260801090000_customer_360_notes_schema.sql", "Customer 360 notes schema migration is missing."],
+  ["20260801090500_customer_360_note_commands.sql", "Customer 360 note commands migration is missing."],
+  ["20260801091000_customer_360_views_security.sql", "Customer 360 views and security migration is missing."],
+  ["20260801091500_customer_360_reference_indexes.sql", "Customer 360 reference-index migration is missing."],
+]) assert.ok(migrationFiles.includes(file), message);
 console.log("Migration history matches the canonical production prefix.");

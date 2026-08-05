@@ -1,0 +1,146 @@
+.switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px;
+  border: 1px solid rgba(211, 168, 75, 0.28);
+  border-radius: 999px;
+  background: rgba(13, 14, 13, 0.92);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+}
+
+.support {
+  border-color: rgba(211, 168, 75, 0.52);
+  background: rgba(28, 24, 15, 0.96);
+}
+
+.expanded {
+  width: min(100%, 640px);
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-radius: 18px;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding-left: 8px;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #d3a84b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.copy small {
+  max-width: 340px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.actions select {
+  min-height: 34px;
+  max-width: 220px;
+  padding: 0 28px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.88);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.actions select:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.actions select option {
+  color: #111;
+}
+
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.68);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.actions button:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.actions button.active {
+  color: #0d0e0d;
+  background: #d3a84b;
+}
+
+.actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.error {
+  margin: 0 4px 0 0;
+  color: #ff9c9c;
+  font-size: 0.76rem;
+}
+
+.spin {
+  animation: dev-switch-spin 0.8s linear infinite;
+}
+
+@keyframes dev-switch-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .switcher {
+    gap: 4px;
+  }
+
+  .switcher:not(.expanded) .copy {
+    display: none;
+  }
+
+  .expanded {
+    flex-direction: column;
+  }
+
+  .expanded .actions button {
+    flex: 1;
+  }
+
+  .actions select {
+    max-width: 150px;
+  }
+}

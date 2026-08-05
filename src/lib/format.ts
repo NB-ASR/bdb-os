@@ -1,4 +1,5 @@
 export function formatMoney(value: number, currency = "GBP") {
+  if (currency === "MULTI") return "Multiple currencies";
   return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency,

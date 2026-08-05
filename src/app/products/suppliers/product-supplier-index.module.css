@@ -1,0 +1,125 @@
+.supportNotice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 14px 0 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 13px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.supportNotice div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.supportNotice span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.indexCard {
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.searchField {
+  min-width: 280px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.searchField:focus-within {
+  border-color: rgba(211, 168, 75, 0.55);
+  box-shadow: 0 0 0 3px rgba(211, 168, 75, 0.08);
+}
+
+.searchField input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.indexTable {
+  min-width: 860px;
+}
+
+.productIdentity {
+  min-width: 260px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.productIdentity > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(211, 168, 75, 0.22);
+  border-radius: 10px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.indexTable code {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: #c9c6bc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  padding: 44px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.emptyState svg {
+  margin-bottom: 12px;
+  color: var(--gold);
+}
+
+.emptyState h3 {
+  color: var(--text);
+}
+
+.emptyState p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 760px) {
+  .toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .searchField {
+    min-width: 100%;
+  }
+}

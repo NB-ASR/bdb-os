@@ -62,12 +62,15 @@ export function PageHeader({
   title,
   description,
   action,
+  actions,
 }: {
   eyebrow: string;
   title: string;
   description: string;
   action?: ReactNode;
+  actions?: ReactNode;
 }) {
+  const resolvedAction = action ?? actions;
   return (
     <div className="page-header">
       <div>
@@ -75,7 +78,7 @@ export function PageHeader({
         <h1>{title}</h1>
         <p className="page-description">{description}</p>
       </div>
-      {action ? <div className="page-action">{action}</div> : null}
+      {resolvedAction ? <div className="page-action">{resolvedAction}</div> : null}
     </div>
   );
 }
@@ -105,12 +108,14 @@ export function Dialog({
   onClose,
   title,
   description,
+  className = "",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
+  className?: string;
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -168,7 +173,7 @@ export function Dialog({
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <div
         ref={dialogRef}
-        className="dialog"
+        className={`dialog ${className}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

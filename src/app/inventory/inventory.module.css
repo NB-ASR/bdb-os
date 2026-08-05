@@ -1,0 +1,388 @@
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.supportNotice,
+.offlineNotice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 14px 0 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 13px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.offlineNotice {
+  border-color: rgba(103, 155, 185, 0.3);
+  background: rgba(70, 117, 143, 0.08);
+  color: #a9d1e8;
+}
+
+.supportNotice div,
+.offlineNotice div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.supportNotice span,
+.offlineNotice span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pendingList {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.pendingItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.pendingItem > div {
+  display: grid;
+  gap: 2px;
+}
+
+.pendingItem span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.inventoryCard,
+.movementCard {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border-bottom: 1px solid var(--border);
+}
+
+.searchField {
+  min-width: 250px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.searchField:focus-within {
+  border-color: rgba(211, 168, 75, 0.55);
+  box-shadow: 0 0 0 3px rgba(211, 168, 75, 0.08);
+}
+
+.searchField input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.filters {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.filters button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.filters button:hover,
+.filters button.activeFilter {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.filters button.activeFilter {
+  color: var(--gold-light);
+}
+
+.productIdentity {
+  display: grid;
+  min-width: 180px;
+  gap: 3px;
+}
+
+.productIdentity small {
+  color: var(--muted);
+}
+
+.negative {
+  color: #e3a18f;
+}
+
+.positive {
+  color: #a9d6ab;
+}
+
+.operationalGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.panelCard {
+  min-width: 0;
+  padding: 20px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px;
+}
+
+.panelCard .panelHeader {
+  padding: 0 0 16px;
+}
+
+.panelHeader h2 {
+  margin: 4px 0 0;
+  font-size: 1.05rem;
+}
+
+.locationList,
+.documentList {
+  display: grid;
+  gap: 9px;
+}
+
+.locationItem,
+.documentItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+.locationItem > div:first-child,
+.documentItem > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.locationItem span,
+.documentItem span {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.inventoryDialog.inventoryDialog {
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(92vh, 850px);
+  overflow-x: hidden;
+}
+
+.dialogBody {
+  padding: 4px 0 8px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.formGrid label,
+.reasonField {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.reasonField textarea {
+  width: 100%;
+  min-height: 41px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: 0;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.formGrid textarea,
+.reasonField textarea {
+  min-height: 94px;
+  resize: vertical;
+}
+
+.formGrid input:focus,
+.formGrid select:focus,
+.formGrid textarea:focus,
+.reasonField textarea:focus {
+  border-color: rgba(211, 168, 75, 0.52);
+  box-shadow: 0 0 0 3px rgba(211, 168, 75, 0.07);
+}
+
+.checkboxLabel {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  align-self: end;
+  min-height: 41px;
+  padding: 0 4px;
+}
+
+.checkboxLabel input {
+  width: 17px;
+  min-height: 17px;
+}
+
+.fullField {
+  grid-column: 1 / -1;
+}
+
+.boundaryNote,
+.warningPanel {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-top: 16px;
+  padding: 13px;
+  border: 1px solid rgba(211, 168, 75, 0.25);
+  border-radius: 11px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.boundaryNote div,
+.warningPanel div {
+  display: grid;
+  gap: 3px;
+}
+
+.boundaryNote span,
+.warningPanel span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.warningPanel {
+  margin: 0 0 15px;
+  border-color: rgba(197, 126, 105, 0.3);
+  background: rgba(129, 72, 57, 0.08);
+  color: #e3aa98;
+}
+
+.reasonField {
+  margin-top: 12px;
+}
+
+@media (max-width: 1050px) {
+  .toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .searchField {
+    min-width: 100%;
+  }
+
+  .operationalGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .headerActions,
+  .headerActions > button {
+    width: 100%;
+  }
+
+  .filters {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .filters button {
+    flex: 1 0 auto;
+  }
+
+  .locationItem,
+  .documentItem,
+  .pendingItem,
+  .panelHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .rowActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fullField {
+    grid-column: auto;
+  }
+
+  .inventoryDialog.inventoryDialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 18px;
+    border-radius: 14px;
+  }
+}

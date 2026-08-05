@@ -21,6 +21,8 @@ export type WorkspaceCommandContext = {
   workspaceId: string;
   role: string;
   accessProfile: string;
+  accessMode: "member" | "support_read_only" | "support_test_write";
+  isSupportSession: boolean;
 };
 
 export function commandJson(body: unknown, init?: ResponseInit) {
@@ -56,25 +58,53 @@ export async function requireWorkspaceCommand(
     throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
   }
 
-  // Use the authenticated client rather than the service role. The existing RLS
-  // policy enforces active-profile, active-workspace and approved Business Group
-  // context. A client-supplied workspace ID must never bypass that boundary.
-  const { data, error } = await supabase
-    .from("workspace_memberships")
-    .select("role,access_profile,status,workspaces!inner(status)")
-    .eq("workspace_id", workspaceId)
-    .eq("user_id", userData.user.id)
-    .eq("status", "active")
-    .maybeSingle();
-  if (error) throw error;
+  const userId = userData.user.id;
+  const [membershipResult, supportResult] = await Promise.all([
+    // Use the authenticated client rather than the service role. Existing RLS
+    // enforces active-profile, workspace and approved Business Group context.
+    supabase
+      .from("workspace_memberships")
+      .select("role,access_profile,status,workspaces!inner(status)")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+    // This SECURITY INVOKER RPC exposes only the signed-in platform admin's
+    // active, unexpired support session and remains subject to RLS.
+    supabase.rpc("get_my_support_session"),
+  ]);
+  if (membershipResult.error) throw membershipResult.error;
+  if (supportResult.error) throw supportResult.error;
 
-  const membership = data as unknown as {
+  const membership = membershipResult.data as unknown as {
     role: string;
     access_profile: string;
     status: string;
     workspaces: { status: string };
   } | null;
-  if (!membership || !["trial", "active"].includes(membership.workspaces.status)) {
+  const memberAccess = Boolean(
+    membership && ["trial", "active"].includes(membership.workspaces.status),
+  );
+  const supportSession = (
+    (supportResult.data ?? []) as Array<{
+      workspace_id: string;
+      access_mode: "read_only" | "test_write";
+    }>
+  ).find((session) => session.workspace_id === workspaceId) ?? null;
+  const supportWriteEnabled = supportSession?.access_mode === "test_write";
+
+  // Normal Founder support remains read-only. The separate test_write mode is
+  // issued only by the guarded integration-preview access harness and is also
+  // enforced by the database permission functions.
+  if (supportSession && request.method !== "GET" && !supportWriteEnabled) {
+    throw new CommandError(
+      "SUPPORT_READ_ONLY",
+      "Founder support access is read-only. Switch to an operational workspace account to make changes.",
+      403,
+    );
+  }
+
+  if (!memberAccess && !supportSession) {
     throw new CommandError("WORKSPACE_FORBIDDEN", "This workspace is not available.", 403);
   }
 
@@ -83,13 +113,17 @@ export async function requireWorkspaceCommand(
     throw new CommandError("INVALID_IDEMPOTENCY_KEY", "The idempotency key is too long.", 400);
   }
 
+  const supportAccessMode = supportWriteEnabled ? "support_test_write" : "support_read_only";
+
   return {
     commandId: randomUUID(),
     idempotencyKey: rawIdempotencyKey,
-    userId: userData.user.id,
+    userId,
     workspaceId,
-    role: membership.role,
-    accessProfile: membership.access_profile,
+    role: supportSession ? "support" : membership?.role ?? "",
+    accessProfile: supportSession ? supportAccessMode : membership?.access_profile ?? "",
+    accessMode: supportSession ? supportAccessMode : "member",
+    isSupportSession: Boolean(supportSession),
   };
 }
 
