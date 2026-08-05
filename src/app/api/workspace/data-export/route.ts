@@ -26,7 +26,10 @@ function safeFilename(value: string) {
 function csvValue(value: unknown) {
   if (value === null || value === undefined) return "";
   const text = typeof value === "object" ? JSON.stringify(value) : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  const neutralised = typeof value === "string" && /^[\u0000-\u0020]*[=+\-@]/.test(text)
+    ? `'${text}`
+    : text;
+  return `"${neutralised.replaceAll('"', '""')}"`;
 }
 
 function toCsv(rows: Array<Record<string, unknown>>) {
