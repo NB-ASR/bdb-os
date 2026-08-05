@@ -27,7 +27,7 @@ const [
 
 assert.match(architecture, /Settings does not own Customers, Appointments, Products, Services, Suppliers, Sales, Invoices, Payments/i, "Settings must not duplicate department ownership.");
 assert.match(architecture, /replacement recovery, not merge/i, "The recovery boundary must remain replacement-only.");
-assert.match(architecture, /arbitrary data-area deletion/i, "Uncontrolled data reset must be rejected explicitly.");
+assert.match(architecture, /(reset arbitrary data areas|arbitrary data[- ]area (reset|deletion))/i, "Uncontrolled data reset must be rejected explicitly.");
 assert.match(architecture, /pending offline commands/i, "Local maintenance must preserve pending offline work.");
 assert.match(decision, /literal port would introduce unsafe duplicate state/i, "The Vanita integration decision must reject literal state copying.");
 assert.match(decision, /signed-in RLS client for exports/i, "Data exports must preserve caller permissions.");
