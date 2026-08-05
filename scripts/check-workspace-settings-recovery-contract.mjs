@@ -12,6 +12,7 @@ const [
   backupApi,
   snapshotHelper,
   settingsPage,
+  coreSettingsPanels,
   settingsStyles,
   cache,
 ] = await Promise.all([
@@ -23,9 +24,12 @@ const [
   read("src/app/api/workspace/backup/route.ts"),
   read("src/lib/server/workspace-snapshot.ts"),
   read("src/app/settings/page.tsx"),
+  read("src/app/settings/core-settings-panels.tsx"),
   read("src/app/settings/settings.module.css"),
   read("src/lib/modules/workspace-settings-cache.ts"),
 ]);
+
+const settingsSurface = `${settingsPage}\n${coreSettingsPanels}`;
 
 assert.match(architecture, /Settings does not own Customers, Appointments, Sales, Invoices, Payments/i, "Settings ownership must not duplicate departments.");
 assert.match(architecture, /replacement recovery, not merge/i, "Restore must be replacement recovery.");
@@ -80,13 +84,13 @@ assert.match(snapshotHelper, /canonicalJson/i, "Snapshot hashing must be determi
 assert.match(snapshotHelper, /workspaceId !== workspaceId/i, "Snapshot helper must enforce same-workspace restore.");
 assert.match(snapshotHelper, /checksum is invalid/i, "Modified snapshots must be rejected.");
 
-assert.doesNotMatch(settingsPage, /useBdb/, "Settings must not mutate through the legacy shared store.");
+assert.doesNotMatch(settingsSurface, /useBdb/, "Settings must not mutate through the legacy shared store.");
 assert.match(settingsPage, /\/api\/workspace\/settings/, "Settings must use its authenticated API.");
-assert.match(settingsPage, /\/api\/workspace\/backup/, "Recovery must use its authenticated API.");
+assert.match(settingsSurface, /\/api\/workspace\/backup/, "Recovery must use its authenticated API.");
 assert.match(settingsPage, /Showing the last trusted Settings snapshot while offline/i, "Offline Settings must label cached data.");
-assert.match(settingsPage, /BDB OS will not merge a snapshot into live data/i, "The UI must state the non-merge boundary.");
-assert.match(settingsPage, /Owner only/i, "The UI must state recovery ownership.");
-assert.match(settingsPage, /Supabase infrastructure backups and point-in-time recovery remain a separate/i, "The UI must distinguish infrastructure recovery.");
+assert.match(settingsSurface, /BDB OS will not merge a snapshot into live data/i, "The UI must state the non-merge boundary.");
+assert.match(settingsSurface, /Owner only/i, "The UI must state recovery ownership.");
+assert.match(settingsSurface, /Supabase infrastructure backups and point-in-time recovery remain a separate/i, "The UI must distinguish infrastructure recovery.");
 assert.match(settingsStyles, /var\(--gold\)/i, "Settings must preserve dark-gold identity.");
 assert.match(settingsStyles, /recoveryGrid/i, "Recovery must have a deliberate responsive layout.");
 assert.match(cache, /localStorage/i, "Settings must preserve a last trusted offline snapshot.");
