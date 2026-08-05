@@ -8,6 +8,7 @@ const [
   decision,
   operationsMigration,
   restoreMigration,
+  anonymousRevocation,
   operationsApi,
   exportApi,
   pushApi,
@@ -18,6 +19,7 @@ const [
   read("docs/decisions/2026-08-05-safe-vanita-settings-integration.md"),
   read("supabase/migrations/20260805130000_workspace_operations_settings.sql"),
   read("supabase/migrations/20260805130500_restore_operational_settings.sql"),
+  read("supabase/migrations/20260805131000_revoke_anonymous_operational_settings.sql"),
   read("src/app/api/workspace/operations/route.ts"),
   read("src/app/api/workspace/data-export/route.ts"),
   read("src/app/api/push/subscribe/route.ts"),
@@ -48,6 +50,7 @@ assert.match(operationsMigration, /workspace_operational_settings'/i, "Operation
 assert.match(operationsMigration, /coalesce\(operations\.appointment_reminders_enabled, true\)/i, "Reminder delivery must honour the workspace setting.");
 assert.match(restoreMigration, /delete from public\.workspace_operational_settings/i, "Restore must replace the operational Settings row before insertion.");
 assert.match(restoreMigration, /empty operational workspace/i, "Restore must continue rejecting live-data merge.");
+assert.match(anonymousRevocation, /revoke all on public\.workspace_operational_settings from anon/i, "Anonymous table privileges must be revoked explicitly.");
 
 assert.match(operationsApi, /requireWorkspaceCommand/, "Operations API must use the authenticated workspace boundary.");
 assert.match(operationsApi, /get_workspace_settings_access/, "Operations API must resolve Settings access.");
