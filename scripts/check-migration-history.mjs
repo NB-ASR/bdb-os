@@ -63,5 +63,16 @@ assert.ok(
   migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"),
   "Invitation expiry migration is missing.",
 );
+for (const [file, message] of [
+  ["20260727152000_product_catalogue_foundation.sql", "Product catalogue foundation migration is missing."],
+  ["20260727154000_supplier_directory_foundation.sql", "Supplier directory foundation migration is missing."],
+  ["20260727155000_product_supplier_relationship.sql", "Product Supplier relationship migration is missing."],
+  ["20260727161000_supplier_document_capture_review.sql", "Supplier document capture and review migration is missing."],
+  ["20260727161500_supplier_document_reference_indexes.sql", "Supplier document reference indexes are missing."],
+  ["20260727190000_inventory_movement_ledger.sql", "Inventory movement ledger migration is missing."],
+  ["20260727190500_inventory_reference_indexes.sql", "Inventory reference indexes are missing."],
+]) {
+  assert.ok(migrationFiles.includes(file), message);
+}
 
 console.log("Migration history matches the canonical production prefix.");

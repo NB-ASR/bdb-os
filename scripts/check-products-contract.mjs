@@ -5,10 +5,6 @@ const migration = await readFile(
   "supabase/migrations/20260727152000_product_catalogue_foundation.sql",
   "utf8",
 );
-const supportGuard = await readFile(
-  "supabase/migrations/20260727152500_product_support_write_guard.sql",
-  "utf8",
-);
 const api = await readFile("src/app/api/products/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/product-queue.ts", "utf8");
 const page = await readFile("src/app/products/page.tsx", "utf8");
@@ -35,12 +31,7 @@ assert.match(migration, /status text not null default 'active'[\s\S]*'archived'/
 assert.match(migration, /p_expected_version[\s\S]*product_record\.version <> p_expected_version/i);
 assert.doesNotMatch(migration, /delete from public\.products/i);
 
-assert.match(supportGuard, /platform_support_sessions/i);
-assert.match(supportGuard, /admin_user_id = target_actor_user_id/i);
-assert.match(supportGuard, /workspace_id = target_workspace_id/i);
-assert.match(supportGuard, /ended_at is null/i);
-assert.match(supportGuard, /expires_at > now\(\)/i);
-assert.match(supportGuard, /select not exists/i);
+assert.doesNotMatch(migration, /platform_support_sessions/i);
 
 assert.match(api, /requireWorkspaceCommand/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);

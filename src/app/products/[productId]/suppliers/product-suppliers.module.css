@@ -5,7 +5,19 @@
   gap: 10px;
 }
 
-.catalogueCard {
+.queueActions,
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.queueActions {
+  margin-top: 10px;
+}
+
+.relationshipCard {
   overflow: hidden;
 }
 
@@ -17,31 +29,26 @@
   border-bottom: 1px solid var(--border);
 }
 
-.searchField {
-  min-width: 280px;
+.productContext {
+  min-width: 260px;
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 13px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--muted);
+  gap: 10px;
 }
 
-.searchField:focus-within {
-  border-color: rgba(211, 168, 75, 0.55);
-  box-shadow: 0 0 0 3px rgba(211, 168, 75, 0.08);
+.productContext > svg {
+  color: var(--gold-light);
 }
 
-.searchField input {
-  width: 100%;
-  min-height: 40px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
+.productContext div {
+  display: grid;
+  gap: 2px;
+}
+
+.productContext span {
+  color: var(--muted-2);
+  font-size: 0.74rem;
 }
 
 .filters {
@@ -55,7 +62,7 @@
 
 .filters button {
   min-height: 32px;
-  padding: 0 11px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -68,51 +75,49 @@
 .filters button:hover,
 .filters button.activeFilter {
   background: var(--surface-3);
-  color: var(--text);
-}
-
-.filters button.activeFilter {
   color: var(--gold-light);
 }
 
-.productTable {
-  min-width: 1320px;
+.relationshipTable {
+  min-width: 1080px;
 }
 
-.productIdentity {
-  min-width: 220px;
+.supplierIdentity {
+  min-width: 235px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.productIdentity > span {
-  width: 34px;
-  height: 34px;
+.supplierIdentity > span {
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
   border: 1px solid rgba(211, 168, 75, 0.22);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--gold-faint);
   color: var(--gold-light);
 }
 
-.productTable code {
+.supplierIdentity div {
+  display: grid;
+  gap: 2px;
+}
+
+.supplierIdentity small {
+  color: var(--muted-2);
+  font-size: 0.7rem;
+}
+
+.relationshipTable code {
   padding: 4px 7px;
   border-radius: 6px;
   background: var(--surface-2);
   color: #c9c6bc;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.72rem;
-}
-
-.barcodeCell {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-  color: var(--muted);
 }
 
 .emptyState {
@@ -133,6 +138,7 @@
 }
 
 .emptyState p {
+  max-width: 520px;
   margin-bottom: 0;
 }
 
@@ -147,18 +153,6 @@
   padding: 22px;
 }
 
-.cardIcon {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  margin-bottom: 24px;
-  border: 1px solid rgba(211, 168, 75, 0.28);
-  border-radius: 11px;
-  background: var(--gold-faint);
-  color: var(--gold-light);
-}
-
 .guidanceCard h2 {
   margin: 5px 0 8px;
 }
@@ -167,8 +161,8 @@
   margin-bottom: 0;
 }
 
-.productDialog {
-  width: min(920px, calc(100vw - 40px));
+.relationshipDialog {
+  width: min(880px, calc(100vw - 40px));
   max-width: none;
   overflow-x: hidden;
 }
@@ -200,26 +194,52 @@
   border: 1px solid var(--border);
   border-radius: 9px;
   background: #121211;
+  color: var(--text);
+}
+
+.formGrid input:disabled,
+.formGrid select:disabled {
   color: var(--muted);
+  opacity: 0.85;
 }
 
 .formGrid textarea {
   min-height: 86px;
   padding-top: 10px;
-  resize: none;
+  resize: vertical;
 }
 
 .wide {
   grid-column: 1 / -1;
 }
 
-.barcodeInput {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+.checkboxLabel {
+  grid-column: 1 / -1;
+  grid-template-columns: auto 1fr !important;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
 }
 
-.openingStockNote {
+.checkboxLabel input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+}
+
+.checkboxLabel span {
+  display: grid;
+  gap: 2px;
+}
+
+.checkboxLabel small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.boundaryNote {
   display: flex;
   align-items: flex-start;
   gap: 11px;
@@ -231,30 +251,31 @@
   color: var(--gold-light);
 }
 
-.openingStockNote div {
+.boundaryNote div {
   display: grid;
   gap: 2px;
 }
 
-.openingStockNote span {
+.boundaryNote span {
   color: var(--muted);
   font-size: 0.76rem;
 }
 
-@media (max-width: 1050px) {
+@media (max-width: 860px) {
   .toolbar {
     align-items: stretch;
     flex-wrap: wrap;
   }
 
-  .searchField {
+  .productContext {
     min-width: 100%;
   }
 }
 
 @media (max-width: 720px) {
   .headerActions,
-  .headerActions > button {
+  .headerActions > button,
+  .lowerGrid {
     width: 100%;
   }
 
@@ -263,25 +284,20 @@
     grid-template-columns: 1fr;
   }
 
-  .wide {
+  .wide,
+  .checkboxLabel {
     grid-column: 1;
   }
 
   .filters {
     width: 100%;
-    overflow-x: auto;
   }
 
   .filters button {
     flex: 1;
-    white-space: nowrap;
   }
 
-  .productDialog {
+  .relationshipDialog {
     width: min(100%, calc(100vw - 20px));
-  }
-
-  .barcodeInput {
-    grid-template-columns: 1fr;
   }
 }

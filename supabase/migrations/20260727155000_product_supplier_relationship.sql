@@ -372,6 +372,7 @@ grant execute on function public.apply_product_supplier_command(uuid, uuid, text
 
 revoke all on table public.product_suppliers, public.product_supplier_command_receipts from anon, authenticated;
 grant select on table public.product_suppliers to authenticated;
+grant all on table public.product_suppliers, public.product_supplier_command_receipts to service_role;
 
 alter table public.product_suppliers enable row level security;
 alter table public.product_supplier_command_receipts enable row level security;

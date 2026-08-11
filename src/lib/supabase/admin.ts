@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
+import { previewUsesProductionSupabase } from "@/lib/supabase/environment";
 
 export function createAdminClient() {
+  if (previewUsesProductionSupabase()) return null;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const secret = process.env.SUPABASE_SECRET_KEY;
   if (!url || !secret) return null;

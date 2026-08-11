@@ -118,7 +118,11 @@ function writeCache(workspaceId: string, products: readonly ProductRow[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     cacheKey(workspaceId),
-    JSON.stringify(products.map(({ pending: _pending, ...product }) => product)),
+    JSON.stringify(products.map((product) => {
+      const persisted = { ...product };
+      delete persisted.pending;
+      return persisted;
+    })),
   );
 }
 
@@ -191,7 +195,7 @@ function applyCommand(products: readonly ProductRow[], command: ProductQueuedCom
 }
 
 export default function ProductsPage() {
-  const { state, role, mode } = useBdb();
+  const { state, mode } = useBdb();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -205,8 +209,6 @@ export default function ProductsPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const supportMode = role === "platform-support";
-
   const currency = useMemo(
     () => new Intl.NumberFormat("en-GB", { style: "currency", currency: state.settings.currency }),
     [state.settings.currency],
@@ -387,7 +389,7 @@ export default function ProductsPage() {
 
   async function saveProduct(event: FormEvent) {
     event.preventDefault();
-    if (saving || supportMode) return;
+    if (saving) return;
     setSaving(true);
     const id = editing?.id ?? crypto.randomUUID();
     const saved = await submitCommand(editing ? "update" : "create", {
@@ -414,7 +416,7 @@ export default function ProductsPage() {
   }
 
   async function changeStatus(product: ProductRow) {
-    if (saving || supportMode || product.pending) return;
+    if (saving || product.pending) return;
     setSaving(true);
     await submitCommand(product.status === "active" ? "archive" : "restore", {
       id: product.id,
@@ -449,7 +451,7 @@ export default function ProductsPage() {
             <Button variant="secondary" disabled title="Bulk catalogue import follows the controlled single-record workflow">
               <Boxes size={17} /> Import catalogue
             </Button>
-            <Button onClick={openCreate} disabled={supportMode}>
+            <Button onClick={openCreate}>
               <PackagePlus size={17} /> Add product
             </Button>
           </div>
@@ -481,13 +483,6 @@ export default function ProductsPage() {
             <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
             <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
           </div>
-        </div>
-      ) : null}
-
-      {supportMode ? (
-        <div className={styles.supportNotice}>
-          <Package size={18} />
-          <div><strong>Founder support · Read only</strong><span>Product catalogue changes are blocked during the audited support session.</span></div>
         </div>
       ) : null}
 
@@ -560,8 +555,8 @@ export default function ProductsPage() {
                   <td><Badge tone={product.status === "active" ? "green" : "neutral"}>{product.status === "active" ? "Active" : "Archived"}</Badge></td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-                      <Button type="button" variant="quiet" disabled={supportMode || product.pending} onClick={() => openEdit(product)}>Edit</Button>
-                      <Button type="button" variant="quiet" disabled={supportMode || product.pending || saving} onClick={() => void changeStatus(product)}>
+                      <Button type="button" variant="quiet" disabled={product.pending} onClick={() => openEdit(product)}>Edit</Button>
+                      <Button type="button" variant="quiet" disabled={product.pending || saving} onClick={() => void changeStatus(product)}>
                         {product.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
                       </Button>
                     </div>
@@ -627,7 +622,7 @@ export default function ProductsPage() {
           </div>
           <div className="dialog-actions">
             <Button type="button" variant="quiet" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving || supportMode}>{saving ? "Saving…" : editing ? "Save changes" : "Create product"}</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create product"}</Button>
           </div>
         </form>
       </Dialog>

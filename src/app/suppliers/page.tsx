@@ -131,7 +131,11 @@ function writeCache(workspaceId: string, suppliers: readonly SupplierRow[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     cacheKey(workspaceId),
-    JSON.stringify(suppliers.map(({ pending: _pending, ...supplier }) => supplier)),
+    JSON.stringify(suppliers.map((supplier) => {
+      const persisted = { ...supplier };
+      delete persisted.pending;
+      return persisted;
+    })),
   );
 }
 
@@ -228,7 +232,7 @@ function paymentTermsLabel(days: number) {
 }
 
 export default function SuppliersPage() {
-  const { state, role, mode } = useBdb();
+  const { state, mode } = useBdb();
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -242,8 +246,6 @@ export default function SuppliersPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const supportMode = role === "platform-support";
-
   const loadCloud = useCallback(async () => {
     const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
     const context = await contextResponse.json().catch(() => ({}));
@@ -424,7 +426,7 @@ export default function SuppliersPage() {
 
   async function saveSupplier(event: FormEvent) {
     event.preventDefault();
-    if (saving || supportMode) return;
+    if (saving) return;
     setSaving(true);
     const id = editing?.id ?? crypto.randomUUID();
     const saved = await submitCommand(editing ? "update" : "create", {
@@ -454,7 +456,7 @@ export default function SuppliersPage() {
   }
 
   async function changeStatus(supplier: SupplierRow) {
-    if (saving || supportMode || supplier.pending) return;
+    if (saving || supplier.pending) return;
     setSaving(true);
     await submitCommand(supplier.status === "active" ? "archive" : "restore", {
       id: supplier.id,
@@ -490,7 +492,7 @@ export default function SuppliersPage() {
             <Button variant="secondary" disabled title="Bulk supplier import follows the controlled single-record workflow">
               <FileText size={17} /> Import suppliers
             </Button>
-            <Button onClick={openCreate} disabled={supportMode}>
+            <Button onClick={openCreate}>
               <Plus size={17} /> Add supplier
             </Button>
           </div>
@@ -522,13 +524,6 @@ export default function SuppliersPage() {
             <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
             <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
           </div>
-        </div>
-      ) : null}
-
-      {supportMode ? (
-        <div className={styles.supportNotice}>
-          <Truck size={18} />
-          <div><strong>Founder support · Read only</strong><span>Supplier-directory changes are blocked during the audited support session.</span></div>
         </div>
       ) : null}
 
@@ -608,8 +603,8 @@ export default function SuppliersPage() {
                   <td><Badge tone={supplier.status === "active" ? "green" : "neutral"}>{supplier.status === "active" ? "Active" : "Archived"}</Badge></td>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
-                      <Button type="button" variant="quiet" disabled={supportMode || supplier.pending} onClick={() => openEdit(supplier)}>Edit</Button>
-                      <Button type="button" variant="quiet" disabled={supportMode || supplier.pending || saving} onClick={() => void changeStatus(supplier)}>
+                      <Button type="button" variant="quiet" disabled={supplier.pending} onClick={() => openEdit(supplier)}>Edit</Button>
+                      <Button type="button" variant="quiet" disabled={supplier.pending || saving} onClick={() => void changeStatus(supplier)}>
                         {supplier.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
                       </Button>
                     </div>
@@ -677,7 +672,7 @@ export default function SuppliersPage() {
           </div>
           <div className="dialog-actions">
             <Button type="button" variant="quiet" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving || supportMode}>{saving ? "Saving…" : editing ? "Save changes" : "Create supplier"}</Button>
+            <Button type="submit" disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create supplier"}</Button>
           </div>
         </form>
       </Dialog>

@@ -18,7 +18,6 @@ for (const statement of [
   "supplier changed on another device",
   "private.has_workspace_permission(workspace_id, 'suppliers', 'view')",
   "grant select on table public.suppliers to authenticated",
-  "platform_support_sessions",
 ]) {
   assert.ok(migration.toLowerCase().includes(statement.toLowerCase()), `Missing Suppliers contract: ${statement}`);
 }
@@ -30,7 +29,7 @@ assert.match(migration, /primary key \(workspace_id, idempotency_key\)/i);
 assert.match(migration, /status text not null default 'active'[\s\S]*'archived'/i);
 assert.match(migration, /p_expected_version[\s\S]*supplier_record\.version <> p_expected_version/i);
 assert.doesNotMatch(migration, /delete from public\.suppliers/i);
-assert.match(migration, /select not exists[\s\S]*platform_support_sessions/i);
+assert.doesNotMatch(migration, /platform_support_sessions/i);
 
 assert.match(api, /requireWorkspaceCommand/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);
