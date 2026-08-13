@@ -56,6 +56,7 @@ const canonicalProductionHistory = [
   "20260813133446_vanita_release_customer_360.sql",
   "20260813133451_vanita_release_documents_and_communications.sql",
   "20260813133455_vanita_release_business_hub_workspace_and_admin.sql",
+  "20260813143945_unify_sales_service_permission_boundaries.sql",
 ];
 
 assert.deepEqual(
