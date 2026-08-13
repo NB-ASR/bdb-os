@@ -2,45 +2,105 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
   BookOpen,
+  Boxes,
   Building2,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   CircleDollarSign,
+  Clock3,
+  FileCheck2,
   FileText,
   Landmark,
   Loader2,
   Menu,
   MessageSquareText,
+  Package,
   Search,
   Settings,
+  ShoppingBag,
   Sparkles,
+  Truck,
   UsersRound,
   Wifi,
   WifiOff,
+  Wrench,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useBdb } from "@/lib/store";
 import { SearchDialog } from "./search-dialog";
 import { BdbMonogram, PoweredByBdb } from "./brand";
 import { MobileActions } from "./mobile-actions";
+import styles from "./app-shell.module.css";
 
-export const navigation = [
+type NavigationItem = {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  featureKey?: string;
+};
+
+type NavigationGroup = {
+  name: string;
+  icon: LucideIcon;
+  children: NavigationItem[];
+};
+
+type NavigationEntry = NavigationItem | NavigationGroup;
+
+function isNavigationGroup(entry: NavigationEntry): entry is NavigationGroup {
+  return "children" in entry;
+}
+
+const workspaceNavigation: NavigationEntry[] = [
   { name: "Overview", href: "/workspace", icon: Building2 },
   { name: "Accounts", href: "/accounts", icon: CircleDollarSign },
   { name: "Customers", href: "/customers", icon: UsersRound },
-  { name: "Calendar", href: "/calendar", icon: CalendarDays },
+  {
+    name: "Calendar",
+    icon: CalendarDays,
+    children: [
+      { name: "Appointments", href: "/calendar", icon: CalendarDays, featureKey: "calendar" },
+      { name: "Availability", href: "/calendar/availability", icon: Clock3, featureKey: "calendar" },
+      { name: "Timesheets", href: "/calendar/timesheets", icon: Clock3, featureKey: "timesheets" },
+      { name: "Meetings", href: "/calendar/meetings", icon: UsersRound, featureKey: "meetings" },
+    ],
+  },
+  {
+    name: "Catalogue & Stock",
+    icon: Boxes,
+    children: [
+      { name: "Inventory", href: "/inventory", icon: Boxes, featureKey: "inventory" },
+      { name: "Products", href: "/products", icon: Package, featureKey: "products" },
+      { name: "Services", href: "/services", icon: Wrench, featureKey: "services" },
+      { name: "Suppliers", href: "/suppliers", icon: Truck, featureKey: "suppliers" },
+    ],
+  },
+  { name: "Sales", href: "/sales", icon: ShoppingBag, featureKey: "sales" },
   { name: "Communications", href: "/communications", icon: MessageSquareText },
-  { name: "Documents", href: "/documents", icon: FileText },
+  {
+    name: "Documents",
+    icon: FileText,
+    children: [
+      { name: "Document Library", href: "/documents", icon: FileText, featureKey: "documents" },
+      { name: "Purchasing", href: "/documents/purchasing", icon: FileCheck2, featureKey: "purchasing" },
+    ],
+  },
   { name: "Banking", href: "/banking", icon: Landmark },
   { name: "Reports", href: "/reports", icon: BarChart3 },
   { name: "Automation", href: "/automation-hub", icon: Sparkles },
 ];
+
+export const navigation: NavigationItem[] = workspaceNavigation.flatMap((entry) => (
+  isNavigationGroup(entry) ? entry.children : [entry]
+));
 
 type LinkedWorkspace = {
   workspace_id: string;
@@ -53,7 +113,14 @@ type LinkedWorkspace = {
   is_active: boolean;
 };
 
+type WorkspaceContext = {
+  workspaces?: LinkedWorkspace[];
+  currentWorkspaceId?: string | null;
+  features?: Record<string, boolean>;
+};
+
 function BusinessSwitcher({ fallbackName }: { fallbackName: string }) {
+  const router = useRouter();
   const [workspaces, setWorkspaces] = useState<LinkedWorkspace[]>([]);
   const [current, setCurrent] = useState("");
   const [switching, setSwitching] = useState(false);
@@ -83,7 +150,8 @@ function BusinessSwitcher({ fallbackName }: { fallbackName: string }) {
       window.alert(result.error ?? "This business could not be opened.");
       return;
     }
-    window.location.assign("/workspace");
+    router.replace("/workspace");
+    router.refresh();
   }
 
   if (workspaces.length <= 1) {
@@ -117,6 +185,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [online, setOnline] = useState(true);
+  const [enabledFeatures, setEnabledFeatures] = useState<Record<string, boolean>>({});
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ Calendar: true, "Catalogue & Stock": true, Documents: true });
   const canManageTeam = ["owner", "admin", "manager"].includes(role);
   const connectionLabel = !online
     ? "Offline · view only"
@@ -140,6 +210,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         : "online";
 
   useEffect(() => {
+    let active = true;
+    void fetch("/api/workspace/context", { cache: "no-store" })
+      .then(async (response) => response.ok ? response.json() as Promise<WorkspaceContext> : null)
+      .then((result) => {
+        if (active && result?.features) setEnabledFeatures(result.features);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     update();
     window.addEventListener("online", update);
@@ -157,6 +238,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener("keydown", shortcut);
     };
   }, []);
+
+  function featureVisible(item: NavigationItem) {
+    return !item.featureKey || enabledFeatures[item.featureKey];
+  }
+
+  function renderNavigationLink(item: NavigationItem, nested = false) {
+    const active = pathname === item.href;
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        className={`${active ? "active" : ""} ${nested && active ? styles.activeChild : ""}`.trim()}
+        onClick={() => setMobileOpen(false)}
+      >
+        <Icon size={19} /><span>{item.name}</span>{active ? <ChevronRight size={16} /> : null}
+      </Link>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -177,15 +277,32 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Search size={18} /><span>Search</span><kbd>⌘K</kbd>
         </button>
 
-        <nav className="sidebar-nav" aria-label="Main navigation">
+        <nav className={`sidebar-nav ${styles.scrollNav}`} aria-label="Main navigation">
           <p className="nav-label">Workspace</p>
-          {navigation.map((item) => {
-            const active = pathname === item.href;
-            const Icon = item.icon;
+          {workspaceNavigation.map((entry) => {
+            if (!isNavigationGroup(entry)) {
+              return featureVisible(entry) ? renderNavigationLink(entry) : null;
+            }
+
+            const visibleChildren = entry.children.filter(featureVisible);
+            if (visibleChildren.length === 0) return null;
+            if (visibleChildren.length === 1) return renderNavigationLink(visibleChildren[0]);
+
+            const activeGroup = visibleChildren.some((item) => pathname === item.href);
+            const open = openGroups[entry.name] ?? activeGroup;
+            const GroupIcon = entry.icon;
             return (
-              <Link key={item.href} href={item.href} className={active ? "active" : ""} onClick={() => setMobileOpen(false)}>
-                <Icon size={19} /><span>{item.name}</span>{active ? <ChevronRight size={16} /> : null}
-              </Link>
+              <div className={styles.group} key={entry.name}>
+                <button
+                  type="button"
+                  className={`${styles.groupButton} ${activeGroup ? styles.groupButtonActive : ""} ${open ? styles.groupButtonOpen : ""}`.trim()}
+                  onClick={() => setOpenGroups((current) => ({ ...current, [entry.name]: !open }))}
+                  aria-expanded={open}
+                >
+                  <GroupIcon size={19} /><span>{entry.name}</span><ChevronDown size={16} />
+                </button>
+                {open ? <div className={styles.groupChildren}>{visibleChildren.map((item) => renderNavigationLink(item, true))}</div> : null}
+              </div>
             );
           })}
           <p className="nav-label nav-label-lower">Administration</p>

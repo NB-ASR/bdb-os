@@ -3,157 +3,309 @@
 import Link from "next/link";
 import {
   Activity,
-  ArrowUpRight,
-  BarChart3,
+  ArrowRight,
+  Boxes,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
-  Clock3,
   FileText,
   Landmark,
   MessageSquareText,
   Plus,
-  ReceiptText,
-  Sparkles,
+  RefreshCw,
+  ShoppingBag,
   UsersRound,
+  Wifi,
+  WifiOff,
+  type LucideIcon,
 } from "lucide-react";
-import { useBdb } from "@/lib/store";
-import { formatMoney, formatTimeAgo } from "@/lib/format";
-import { Badge, Button, Card, SectionHeading, StatCard } from "@/components/ui";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { Button } from "@/components/ui";
+import { formatTimeAgo } from "@/lib/format";
+import {
+  readBusinessInsightCache,
+  readLastBusinessInsightWorkspace,
+  writeBusinessInsightCache,
+} from "@/lib/modules/business-insight-cache";
+import styles from "./business-hub.module.css";
 
-const modules = [
-  { name: "Accounts", description: "Invoices, payments and reconciliation", href: "/accounts", icon: CircleDollarSign },
-  { name: "Customers", description: "Every relationship in one record", href: "/customers", icon: UsersRound },
-  { name: "Calendar", description: "Bookings, people and availability", href: "/calendar", icon: CalendarDays },
-  { name: "Communications", description: "One inbox across every channel", href: "/communications", icon: MessageSquareText },
-  { name: "Documents", description: "Files connected to business records", href: "/documents", icon: FileText },
-  { name: "Banking", description: "Cash position and transaction matching", href: "/banking", icon: Landmark },
-  { name: "Reports", description: "Useful detail when you need it", href: "/reports", icon: BarChart3 },
-  { name: "Automation", description: "Smart assistance with human approval", href: "/automation-hub", icon: Sparkles },
-];
+type AmountDetail = { currency: string; amount: number; count: number };
+
+type DepartmentSignal = {
+  key: string;
+  name: string;
+  href: string;
+  value: number;
+  label: string;
+  detail: string | AmountDetail[];
+  attention: number;
+};
+
+type AttentionItem = {
+  source_id: string;
+  department: string;
+  title: string;
+  detail: string;
+  route: string;
+  tone: string;
+  occurred_at: string;
+};
+
+type ActivityItem = {
+  source_id: string;
+  department: string;
+  title: string;
+  detail: string;
+  route: string;
+  occurred_at: string;
+  customer_name: string | null;
+};
+
+type CurrencyMetric = {
+  currency: string;
+  completed_sale_amount: number;
+  outstanding_invoice_amount: number;
+  received_payment_amount: number;
+  overdue_invoice_amount: number;
+  unreconciled_transaction_amount: number;
+  outstanding_supplier_payable_amount: number;
+};
+
+type HubBundle = {
+  workspaceId: string;
+  workspaceName: string;
+  generatedAt: string;
+  cached: boolean;
+  supportReadOnly: boolean;
+  operational: Record<string, number | string>;
+  departments: DepartmentSignal[];
+  currencies: CurrencyMetric[];
+  attention: AttentionItem[];
+  activity: ActivityItem[];
+  quickActions: Array<{ key: string; label: string; href: string }>;
+};
+
+const icons: Record<string, LucideIcon> = {
+  customers: UsersRound,
+  calendar: CalendarDays,
+  sales: ShoppingBag,
+  accounts: CircleDollarSign,
+  communications: MessageSquareText,
+  documents: FileText,
+  banking: Landmark,
+  inventory: Boxes,
+};
+
+function money(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
+
+function signalDetail(detail: DepartmentSignal["detail"]) {
+  if (typeof detail === "string") return detail;
+  if (detail.length === 0) return "No recorded monetary activity";
+  return detail.slice(0, 2).map((item) => money(item.amount, item.currency)).join(" · ");
+}
 
 export default function WorkspacePage() {
-  const { state } = useBdb();
-  const now = new Date();
-  const todayKey = now.toLocaleDateString("en-CA");
-  const dateLabel = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(now);
-  const paidInvoices = state.invoices.filter((item) => item.status === "paid");
-  const paid = paidInvoices.reduce((sum, item) => sum + item.amount, 0);
-  const openInvoices = state.invoices.filter((item) => ["sent", "overdue"].includes(item.status));
-  const outstanding = openInvoices.reduce((sum, item) => sum + item.amount, 0);
-  const overdue = state.invoices.filter((item) => item.status === "overdue");
-  const unread = state.messages.filter((item) => item.unread).length;
-  const today = state.bookings.filter((item) => item.date === todayKey);
-  const pendingBookings = today.filter((item) => item.status === "pending").length;
-  const nextBooking = [...state.bookings]
-    .filter((item) => new Date(`${item.date}T${item.time}`).getTime() >= now.getTime())
-    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0];
-  const currentMonth = now.toISOString().slice(0, 7);
-  const newCustomers = state.customers.filter((item) => item.createdAt.startsWith(currentMonth)).length;
-  const actionCount = overdue.length + unread + pendingBookings;
+  const [bundle, setBundle] = useState<HubBundle | null>(null);
+  const [online, setOnline] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [cachedAt, setCachedAt] = useState<string | null>(null);
 
-  const focusItems: Array<{ title: string; detail: string; href: string }> = [];
-  if (overdue.length > 0) {
-    focusItems.push({
-      title: `Review ${overdue.length} overdue invoice${overdue.length === 1 ? "" : "s"}`,
-      detail: `${formatMoney(overdue.reduce((sum, item) => sum + item.amount, 0), state.settings.currency)} is overdue and needs follow-up.`,
-      href: "/accounts",
-    });
+  const load = useCallback(async () => {
+    setError("");
+    const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
+    const context = await contextResponse.json().catch(() => ({}));
+    if (!contextResponse.ok || !context.currentWorkspaceId) {
+      throw new Error(context.error ?? "The current business could not be resolved.");
+    }
+    const workspaceId = String(context.currentWorkspaceId);
+    const response = await fetch(`/api/business-hub?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? "The Business Hub could not be loaded.");
+    const result = payload.result as HubBundle;
+    setBundle(result);
+    setCachedAt(null);
+    setNotice("");
+    writeBusinessInsightCache("hub", workspaceId, result);
+  }, []);
+
+  useEffect(() => {
+    const update = () => setOnline(window.navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function initialise() {
+      const lastWorkspace = readLastBusinessInsightWorkspace();
+      const cached = lastWorkspace ? readBusinessInsightCache<HubBundle>("hub", lastWorkspace) : null;
+      if (cached && active) {
+        setBundle({ ...cached.payload, cached: true });
+        setCachedAt(cached.cachedAt);
+      }
+      try {
+        if (!window.navigator.onLine) {
+          if (cached) setNotice("Showing the last trusted Business Hub snapshot while offline.");
+          else setError("The Business Hub needs one successful online load before it can reopen offline.");
+          return;
+        }
+        await load();
+      } catch (loadError) {
+        if (!cached && active) setError(loadError instanceof Error ? loadError.message : "The Business Hub could not be loaded.");
+        else if (active) setNotice("Showing the cached Business Hub because live records are unavailable.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void initialise();
+    return () => { active = false; };
+  }, [load]);
+
+  async function refresh() {
+    if (!online) {
+      setNotice("Reconnect to refresh authoritative Business Hub records.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await load();
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "The Business Hub could not be refreshed.");
+    } finally {
+      setLoading(false);
+    }
   }
-  if (unread > 0) {
-    focusItems.push({
-      title: `Read ${unread} new message${unread === 1 ? "" : "s"}`,
-      detail: "Open Communications to review the latest customer conversations.",
-      href: "/communications",
-    });
-  }
-  if (pendingBookings > 0) {
-    focusItems.push({
-      title: `Confirm ${pendingBookings} pending appointment${pendingBookings === 1 ? "" : "s"}`,
-      detail: "Review today's calendar and confirm the remaining bookings.",
-      href: "/calendar",
-    });
-  }
-  if (focusItems.length === 0) {
-    focusItems.push(state.customers.length === 0
-      ? { title: "Add your first customer", detail: "Customer records connect appointments, invoices, messages and documents.", href: "/customers" }
-      : { title: "Everything is in order", detail: "There are no urgent actions waiting in the workspace.", href: "/activity" });
-  }
+
+  const attentionCount = Number(bundle?.operational.attention_count ?? bundle?.attention.length ?? 0);
 
   return (
-    <>
-      <Card className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">{dateLabel}</p>
-          <h1>Welcome to {state.settings.businessName}.</h1>
-          <p className="page-description">A clear view of what needs attention, with every customer, appointment, invoice and document connected.</p>
-          <div className="hero-actions">
-            <Link href="/accounts"><Button><Plus size={17} /> New invoice</Button></Link>
-            <Link href="/customers"><Button variant="secondary"><UsersRound size={17} /> Add customer</Button></Link>
-          </div>
+    <main className={styles.shell}>
+      <div className={styles.statusBar}>
+        <div className={styles.statusText}>
+          {online && !bundle?.cached ? <Wifi size={16} /> : <WifiOff size={16} />}
+          <span>
+            <strong>{online && !bundle?.cached ? "Live business records" : "Cached business view"}</strong>
+            {cachedAt ? ` · saved ${formatTimeAgo(cachedAt)}` : bundle?.generatedAt ? ` · updated ${formatTimeAgo(bundle.generatedAt)}` : ""}
+          </span>
         </div>
-        <div className="hero-signal">
-          <p className="eyebrow">Today at a glance</p>
-          <div className="signal-row"><span className="muted">Appointments</span><strong>{today.length}</strong></div>
-          <div className="signal-row"><span className="muted">Unread messages</span><strong>{unread}</strong></div>
-          <div className="signal-row"><span className="muted">Actions</span><strong>{actionCount}</strong></div>
-        </div>
-      </Card>
-
-      <div className="stat-grid">
-        <StatCard label="Received" value={formatMoney(paid, state.settings.currency)} detail={`${paidInvoices.length} paid invoice${paidInvoices.length === 1 ? "" : "s"}`} icon={<ReceiptText size={19} />} />
-        <StatCard label="Outstanding" value={formatMoney(outstanding, state.settings.currency)} detail={openInvoices.length === 0 ? "No unpaid invoices" : `${openInvoices.length} invoice${openInvoices.length === 1 ? "" : "s"} open`} icon={<Clock3 size={19} />} />
-        <StatCard label="Customers" value={String(state.customers.length)} detail={newCustomers === 0 ? "No new customers this month" : `${newCustomers} new this month`} icon={<UsersRound size={19} />} />
-        <StatCard label="Next booking" value={nextBooking?.time ?? "Clear"} detail={nextBooking?.title ?? "No booking scheduled"} icon={<CalendarDays size={19} />} />
+        <Button variant="secondary" onClick={() => void refresh()} disabled={loading || !online}>
+          <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
+        </Button>
       </div>
 
-      <SectionHeading title="Business departments" description="Open a department to continue the work." />
-      <div className="module-grid">
-        {modules.map((module) => {
-          const Icon = module.icon;
+      {notice ? <div className={styles.statusBar}><span className={styles.statusText}>{notice}</span></div> : null}
+      {error ? <div className={`${styles.statusBar} ${styles.error}`}>{error}</div> : null}
+
+      <section className={styles.hubStage} aria-label="Business departments">
+        <div className={styles.orbit} aria-hidden="true" />
+        <div className={styles.center}>
+          <span className={styles.monogram}>BDB</span>
+          <h1>{bundle?.workspaceName ?? "Business Hub"}</h1>
+          <p>Connected operations</p>
+          <span className={styles.attentionCount}>
+            {attentionCount > 0 ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} need attention` : "Everything is in order"}
+          </span>
+        </div>
+        {(bundle?.departments ?? []).map((department, index, departments) => {
+          const Icon = icons[department.key] ?? Activity;
+          const angle = `${(index * 360) / Math.max(departments.length, 1)}deg`;
           return (
-            <Link key={module.href} href={module.href} className="card card-interactive module-card">
-              <span className="module-icon"><Icon size={21} /></span>
-              <h3>{module.name}</h3>
-              <p>{module.description}</p>
-              <ArrowUpRight className="module-arrow" size={17} />
+            <Link
+              key={department.key}
+              href={department.href}
+              className={styles.departmentNode}
+              style={{ "--angle": angle } as CSSProperties}
+            >
+              {department.attention > 0 ? <span className={styles.nodeAttention}>{department.attention}</span> : null}
+              <Icon size={20} />
+              <strong>{department.name}</strong>
+              <b>{department.value}</b>
+              <small>{department.label}<br />{signalDetail(department.detail)}</small>
             </Link>
           );
         })}
-      </div>
+      </section>
 
-      <div className="two-column" style={{ marginTop: 28 }}>
-        <Card className="card-pad">
-          <SectionHeading title="Your focus" description="Useful actions from live workspace records." action={<Badge tone="gold"><Sparkles size={11} /> Live</Badge>} />
-          <div className="focus-list">
-            {focusItems.slice(0, 3).map((item) => (
-              <Link className="focus-item" href={item.href} key={item.title}>
-                <span className="focus-dot" />
-                <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div><h2>Quick actions</h2><p>Only actions permitted in this business are shown.</p></div>
+          {bundle?.supportReadOnly ? <span className="badge">Read only</span> : null}
+        </div>
+        <div className={styles.quickActions}>
+          {(bundle?.quickActions ?? []).map((action) => (
+            <Link href={action.href} className={styles.quickAction} key={action.key}><Plus size={14} /> {action.label}</Link>
+          ))}
+          {bundle && bundle.quickActions.length === 0 ? <span className={styles.empty}>No create actions are available for this access profile.</span> : null}
+        </div>
+      </section>
+
+      <div className={styles.sectionGrid}>
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div><h2>Needs attention</h2><p>Highest-priority actions across connected departments.</p></div>
+            <span className="badge">{bundle?.attention.length ?? 0} shown</span>
+          </div>
+          <div className={styles.actionList}>
+            {(bundle?.attention ?? []).map((item) => (
+              <Link href={item.route} className={styles.actionRow} key={`${item.department}-${item.source_id}`}>
+                <span className={styles.rowIcon}><ArrowRight size={15} /></span>
+                <span className={styles.rowCopy}><strong>{item.title}</strong><span>{item.detail}</span></span>
+                <span className={styles.rowTime}>{formatTimeAgo(item.occurred_at)}</span>
               </Link>
             ))}
+            {bundle && bundle.attention.length === 0 ? <div className={styles.empty}>No operational actions currently require attention.</div> : null}
           </div>
-        </Card>
-        <Card className="card-pad">
-          <SectionHeading title="Recent activity" action={<Link href="/activity" className="link-button">View all</Link>} />
-          {state.activity.length > 0 ? (
-            <div className="quick-list">
-              {state.activity.slice(0, 4).map((item) => (
-                <div className="quick-row" key={item.id}>
-                  <span className={`activity-icon ${item.tone}`}><Activity size={16} /></span>
-                  <span className="quick-row-copy"><strong>{item.action}</strong><small>{item.detail}</small></span>
-                  <span className="quick-row-time">{formatTimeAgo(item.timestamp)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="focus-item">
-              <span className="activity-icon green"><CheckCircle2 size={16} /></span>
-              <div><strong>No activity yet</strong><p>Actions taken in BDB OS will appear here automatically.</p></div>
-            </div>
-          )}
-        </Card>
+        </section>
+
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div><h2>Recent activity</h2><p>Authoritative events from connected business records.</p></div>
+            <Link href="/activity" className="link-button">View all</Link>
+          </div>
+          <div className={styles.activityList}>
+            {(bundle?.activity ?? []).slice(0, 8).map((item) => (
+              <Link href={item.route || "/workspace"} className={styles.activityRow} key={`${item.department}-${item.source_id}-${item.occurred_at}`}>
+                <span className={styles.rowIcon}><Activity size={15} /></span>
+                <span className={styles.rowCopy}><strong>{item.title}</strong><span>{item.customer_name ? `${item.customer_name} · ` : ""}{item.detail}</span></span>
+                <span className={styles.rowTime}>{formatTimeAgo(item.occurred_at)}</span>
+              </Link>
+            ))}
+            {bundle && bundle.activity.length === 0 ? <div className={styles.empty}>Business activity will appear here as departments record work.</div> : null}
+          </div>
+        </section>
       </div>
-    </>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div><h2>Financial position by currency</h2><p>Amounts are never combined across currencies.</p></div>
+          <Link href="/reports" className="link-button">Open Reports</Link>
+        </div>
+        <div className={styles.currencyGrid}>
+          {(bundle?.currencies ?? []).map((metric) => (
+            <article className={styles.currencyCard} key={metric.currency}>
+              <header><span>Currency</span><strong>{metric.currency}</strong></header>
+              <div className={styles.currencyMetric}><span>Completed sales</span><b>{money(metric.completed_sale_amount, metric.currency)}</b></div>
+              <div className={styles.currencyMetric}><span>Payments received</span><b>{money(metric.received_payment_amount, metric.currency)}</b></div>
+              <div className={styles.currencyMetric}><span>Customer outstanding</span><b>{money(metric.outstanding_invoice_amount, metric.currency)}</b></div>
+              <div className={styles.currencyMetric}><span>Supplier outstanding</span><b>{money(metric.outstanding_supplier_payable_amount, metric.currency)}</b></div>
+              <div className={styles.currencyMetric}><span>Bank unreconciled</span><b>{money(metric.unreconciled_transaction_amount, metric.currency)}</b></div>
+            </article>
+          ))}
+          {bundle && bundle.currencies.length === 0 ? <div className={styles.empty}>No financial records are available for this access profile.</div> : null}
+        </div>
+      </section>
+    </main>
   );
 }

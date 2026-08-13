@@ -1,0 +1,4 @@
+-- Production feature-release marker.
+-- Production already received the complete schema under this version.
+-- Fresh database replays receive the same DDL from the smaller ordered
+-- vanita_release_* domain migrations registered after this checkpoint.

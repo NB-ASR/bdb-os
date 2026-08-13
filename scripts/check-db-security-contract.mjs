@@ -15,6 +15,10 @@ const databaseTest = await readFile(
 );
 const commandHelper = await readFile("src/lib/server/command.ts", "utf8");
 const activityWriter = await readFile("src/lib/server/activity.ts", "utf8");
+const supabaseEnvironment = await readFile("src/lib/supabase/environment.ts", "utf8");
+const supabaseServer = await readFile("src/lib/supabase/server.ts", "utf8");
+const supabaseAdmin = await readFile("src/lib/supabase/admin.ts", "utf8");
+const proxy = await readFile("src/proxy.ts", "utf8");
 
 const requiredSecurityStatements = [
   "create or replace function private.is_active_profile()",
@@ -66,5 +70,13 @@ assert.doesNotMatch(
   /"red"/,
   "Activity writer must match the database tone constraint",
 );
+
+assert.match(supabaseEnvironment, /VERCEL_ENV === "preview"/);
+assert.doesNotMatch(supabaseEnvironment, /PRODUCTION_SUPABASE_PROJECT_REF/);
+assert.doesNotMatch(supabaseEnvironment, /supabase\.co/);
+assert.match(supabaseServer, /previewIsQuarantined\(\)/);
+assert.match(supabaseAdmin, /previewIsQuarantined\(\)/);
+assert.match(proxy, /PREVIEW_ENVIRONMENT_NOT_ISOLATED/);
+assert.match(proxy, /previewIsQuarantined\(\)/);
 
 console.log("Database and server security contracts are internally consistent.");

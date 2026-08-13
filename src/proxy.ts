@@ -1,11 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { previewIsQuarantined } from "@/lib/supabase/environment";
 
 const protectedRoutes = [
   "/workspace",
   "/accounts",
   "/customers",
   "/calendar",
+  "/services",
+  "/products",
+  "/suppliers",
+  "/inventory",
+  "/sales",
   "/communications",
   "/documents",
   "/banking",
@@ -23,8 +29,16 @@ const featureRoutes: Record<string, string> = {
   "/workspace": "overview",
   "/accounts": "accounts",
   "/customers": "customers",
+  "/calendar/timesheets": "timesheets",
+  "/calendar/meetings": "meetings",
   "/calendar": "calendar",
+  "/services": "services",
+  "/products": "products",
+  "/suppliers": "suppliers",
+  "/inventory": "inventory",
+  "/sales": "sales",
   "/communications": "communications",
+  "/documents/purchasing": "purchasing",
   "/documents": "documents",
   "/banking": "banking",
   "/reports": "reports",
@@ -45,6 +59,32 @@ function serviceUnavailable() {
   });
 }
 
+function previewIsolationUnavailable(apiRoute: boolean) {
+  const options = {
+    status: 503,
+    headers: {
+      "Cache-Control": "no-store",
+      "Retry-After": "60",
+    },
+  };
+  if (apiRoute) {
+    return NextResponse.json(
+      { error: "PREVIEW_ENVIRONMENT_NOT_ISOLATED" },
+      options,
+    );
+  }
+  return new NextResponse(
+    "This Preview deployment is unavailable until it is isolated from Production.",
+    {
+      ...options,
+      headers: {
+        ...options.headers,
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+    },
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const hostname = request.headers.get("host")?.split(":")[0].toLowerCase() ?? "";
   const effectivePath = hostname === "admin.bdb-os.com" && request.nextUrl.pathname === "/"
@@ -59,6 +99,10 @@ export async function proxy(request: NextRequest) {
     : NextResponse.rewrite(responseUrl);
   const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
   const apiRoute = effectivePath.startsWith("/api/");
+
+  if (previewIsQuarantined()) {
+    return previewIsolationUnavailable(apiRoute);
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
