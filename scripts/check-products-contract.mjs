@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 
 const migration = await readFile(
-  "supabase/migrations/20260727152000_product_catalogue_foundation.sql",
+  "supabase/release-sources/vanita-integration-20260813/20260727152000_product_catalogue_foundation.sql",
   "utf8",
 );
 const api = await readFile("src/app/api/products/route.ts", "utf8");

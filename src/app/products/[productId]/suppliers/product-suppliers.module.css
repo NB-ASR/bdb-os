@@ -17,6 +17,29 @@
   margin-top: 10px;
 }
 
+.supportNotice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 14px 0 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(211, 168, 75, 0.3);
+  border-radius: 13px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+}
+
+.supportNotice div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.supportNotice span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .relationshipCard {
   overflow: hidden;
 }

@@ -1,0 +1,3 @@
+-- Production-only data-preservation checkpoint.
+-- Existing invoice timestamps were restored from the private pre-release
+-- snapshot after the additive schema backfill. No replay action is required.

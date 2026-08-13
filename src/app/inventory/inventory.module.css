@@ -5,6 +5,7 @@
   gap: 10px;
 }
 
+.supportNotice,
 .offlineNotice {
   display: flex;
   align-items: center;
@@ -23,12 +24,14 @@
   color: #a9d1e8;
 }
 
+.supportNotice div,
 .offlineNotice div {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.supportNotice span,
 .offlineNotice span {
   color: var(--muted);
   font-size: 0.78rem;

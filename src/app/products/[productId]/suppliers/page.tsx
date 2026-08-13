@@ -138,11 +138,7 @@ function writeCache(
     cacheKey(workspaceId, productId),
     JSON.stringify({
       ...cache,
-      relationships: cache.relationships.map((relationship) => {
-        const persisted = { ...relationship };
-        delete persisted.pending;
-        return persisted;
-      }),
+      relationships: cache.relationships.map(({ pending: _pending, ...relationship }) => relationship),
     }),
   );
 }
@@ -248,6 +244,8 @@ export default function ProductSuppliersPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const supportMode = false;
+
   const supplierById = useMemo(
     () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
     [suppliers],
@@ -459,7 +457,7 @@ export default function ProductSuppliersPage() {
 
   async function saveRelationship(event: FormEvent) {
     event.preventDefault();
-    if (saving || !product) return;
+    if (saving || supportMode || !product) return;
     setSaving(true);
     const id = editing?.id ?? crypto.randomUUID();
     const saved = await submitCommand(editing ? "update" : "create", {
@@ -483,7 +481,7 @@ export default function ProductSuppliersPage() {
   }
 
   async function changeStatus(relationship: ProductSupplierRow) {
-    if (saving || relationship.pending) return;
+    if (saving || supportMode || relationship.pending) return;
     setSaving(true);
     const action = relationship.status === "active" ? "archive" : "restore";
     await submitCommand(action, action === "archive"
@@ -534,7 +532,7 @@ export default function ProductSuppliersPage() {
             <Button variant="secondary" onClick={() => router.push("/products")}>
               <ArrowLeft size={17} /> Products
             </Button>
-            <Button onClick={openCreate} disabled={!product || product.status !== "active" || availableSuppliers.length === 0}>
+            <Button onClick={openCreate} disabled={supportMode || !product || product.status !== "active" || availableSuppliers.length === 0}>
               <Plus size={17} /> Link supplier
             </Button>
           </div>
@@ -568,6 +566,13 @@ export default function ProductSuppliersPage() {
             </Button>
             <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
           </div>
+        </div>
+      ) : null}
+
+      {supportMode ? (
+        <div className={styles.supportNotice}>
+          <Link2 size={18} />
+          <div><strong>Read-only access</strong><span>Product Supplier changes are blocked during this session.</span></div>
         </div>
       ) : null}
 
@@ -639,8 +644,8 @@ export default function ProductSuppliersPage() {
                     <td><Badge tone={relationship.status === "active" ? "green" : "neutral"}>{relationship.status === "active" ? "Active" : "Archived"}</Badge></td>
                     <td>
                       <div className={styles.rowActions}>
-                        <Button type="button" variant="quiet" disabled={relationship.pending || relationship.status === "archived"} onClick={() => openEdit(relationship)}>Edit</Button>
-                        <Button type="button" variant="quiet" disabled={relationship.pending || saving} onClick={() => void changeStatus(relationship)}>
+                        <Button type="button" variant="quiet" disabled={supportMode || relationship.pending || relationship.status === "archived"} onClick={() => openEdit(relationship)}>Edit</Button>
+                        <Button type="button" variant="quiet" disabled={supportMode || relationship.pending || saving} onClick={() => void changeStatus(relationship)}>
                           {relationship.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
                         </Button>
                       </div>
@@ -721,7 +726,7 @@ export default function ProductSuppliersPage() {
           </div>
           <div className="dialog-actions">
             <Button type="button" variant="quiet" disabled={saving} onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Saving…" : editing ? "Save terms" : "Link supplier"}</Button>
+            <Button type="submit" disabled={saving || supportMode}>{saving ? "Saving…" : editing ? "Save terms" : "Link supplier"}</Button>
           </div>
         </form>
       </Dialog>

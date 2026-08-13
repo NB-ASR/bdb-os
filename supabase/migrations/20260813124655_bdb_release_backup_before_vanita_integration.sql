@@ -1,0 +1,3 @@
+-- Production-only rollback snapshot checkpoint.
+-- The snapshot itself remains private inside the Production database and is
+-- intentionally not recreated when the schema is replayed elsewhere.

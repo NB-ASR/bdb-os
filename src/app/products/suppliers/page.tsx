@@ -122,6 +122,8 @@ export default function ProductSupplierIndexPage() {
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const supportMode = false;
+
   const loadCloud = useCallback(async () => {
     const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
     const context = await contextResponse.json().catch(() => ({}));
@@ -245,6 +247,8 @@ export default function ProductSupplierIndexPage() {
       {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Supplier terms need attention</strong><p>{error}</p></div></div> : null}
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Cached Supplier terms</strong><p>{notice}</p></div> : null}
       {pendingCount ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>{pendingCount} relationship change{pendingCount === 1 ? "" : "s"} waiting to sync</strong><p>Open the affected Product to retry or discard its queued changes.</p></div> : null}
+      {supportMode ? <div className={styles.supportNotice}><Link2 size={18} /><div><strong>Read-only access</strong><span>Supplier terms are visible but cannot be changed during this session.</span></div></div> : null}
+
       <div className="stat-grid">
         <StatCard label="Active products" value={String(activeProducts.length)} detail="Catalogue records available for sourcing" icon={<Package size={19} />} />
         <StatCard label="Products linked" value={String(linkedProductCount)} detail="Products with at least one Supplier" icon={<Link2 size={19} />} />

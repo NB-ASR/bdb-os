@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migration = await readFile(
-  "supabase/migrations/20260727190000_inventory_movement_ledger.sql",
+  "supabase/release-sources/vanita-integration-20260813/20260727190000_inventory_movement_ledger.sql",
   "utf8",
 );
 const api = await readFile("src/app/api/inventory/route.ts", "utf8");
@@ -62,7 +62,8 @@ assert.match(api, /post_supplier_document_to_inventory/);
 assert.match(api, /reverse_supplier_document_inventory/);
 assert.match(api, /Purchasing, Sales and Appointment movements must be posted from their owning records/);
 assert.match(api, /Manual Inventory changes cannot claim a Purchasing, Sales or Appointment source record/);
-assert.doesNotMatch(api, /post_appointment_product_consumption|reverse_appointment_product_consumption/i);
+assert.match(api, /post_appointment_product_consumption/);
+assert.match(api, /reverse_appointment_product_consumption/);
 
 assert.match(domain, /normaliseInventoryMovementDelta/);
 assert.match(domain, /inventoryStockStatus/);

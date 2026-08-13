@@ -25,6 +25,7 @@ function failure(error: unknown) {
 }
 
 type LinkedWorkspace = { workspace_id: string; is_active?: boolean };
+type EffectiveFeature = { feature_key: string; enabled: boolean };
 
 export async function GET() {
   try {
@@ -49,7 +50,25 @@ export async function GET() {
       }
     }
 
-    const response = Response.json({ workspaces, currentWorkspaceId: current?.workspace_id ?? null });
+    let features: Record<string, boolean> = {};
+    if (current) {
+      const featureResult = await supabase.rpc("get_effective_features", {
+        target_workspace_id: current.workspace_id,
+      });
+      if (featureResult.error) throw featureResult.error;
+      features = Object.fromEntries(
+        ((featureResult.data ?? []) as EffectiveFeature[])
+          .map((feature) => [feature.feature_key, feature.enabled]),
+      );
+    }
+
+    const response = Response.json({
+      workspaces,
+      currentWorkspaceId: current?.workspace_id ?? null,
+      features,
+      supportAccess: false,
+      supportAccessMode: null,
+    });
     if (current) {
       response.headers.append(
         "Set-Cookie",

@@ -1,0 +1,8 @@
+.page :global(table[class*="documentTable"] th:nth-child(8)),
+.page :global(table[class*="documentTable"] td:nth-child(8)),
+.page :global(table[class*="documentTable"] th:nth-child(9)),
+.page :global(table[class*="documentTable"] td:nth-child(9)),
+.page :global([class*="lowerGrid"]),
+.page :global([class*="postingLockGrid"]) {
+  display: none;
+}

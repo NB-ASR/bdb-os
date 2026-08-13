@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  enqueueSupplierPayablesCommand,
+  readSupplierPayablesQueue,
+  removeSupplierPayablesCommand,
+} from "../../src/lib/modules/supplier-payables-queue.ts";
+
+class MemoryStorage {
+  #values = new Map<string, string>();
+  getItem(key: string) { return this.#values.get(key) ?? null; }
+  setItem(key: string, value: string) { this.#values.set(key, value); }
+  removeItem(key: string) { this.#values.delete(key); }
+}
+
+function installStorage() {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: new MemoryStorage() },
+  });
+}
+
+test("Supplier Payables queues remain workspace-scoped and ordered", () => {
+  installStorage();
+  enqueueSupplierPayablesCommand("workspace-a", "payable-post", { id: "payable-a" }, "command-a1");
+  enqueueSupplierPayablesCommand("workspace-a", "payment-record", { id: "payment-a" }, "command-a2");
+  enqueueSupplierPayablesCommand("workspace-b", "credit-allocate", { id: "credit-b" }, "command-b1");
+
+  assert.deepEqual(readSupplierPayablesQueue("workspace-a").map((command) => command.id), ["command-a1", "command-a2"]);
+  assert.deepEqual(readSupplierPayablesQueue("workspace-b").map((command) => command.id), ["command-b1"]);
+});
+
+test("Supplier Payables stable command IDs are queued only once", () => {
+  installStorage();
+  enqueueSupplierPayablesCommand("workspace-a", "payment-allocate", { id: "allocation-a" }, "stable-command");
+  enqueueSupplierPayablesCommand("workspace-a", "payment-allocate", { id: "allocation-a" }, "stable-command");
+  assert.equal(readSupplierPayablesQueue("workspace-a").length, 1);
+});
+
+test("Supplier Payables commands can be discarded without affecting another workspace", () => {
+  installStorage();
+  enqueueSupplierPayablesCommand("workspace-a", "payable-reverse", { payableId: "payable-a" }, "remove-command");
+  enqueueSupplierPayablesCommand("workspace-b", "payment-reverse", { paymentId: "payment-b" }, "keep-command");
+  removeSupplierPayablesCommand("workspace-a", "remove-command");
+
+  assert.deepEqual(readSupplierPayablesQueue("workspace-a"), []);
+  assert.equal(readSupplierPayablesQueue("workspace-b").length, 1);
+});

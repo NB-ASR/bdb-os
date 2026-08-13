@@ -72,11 +72,11 @@ assert.doesNotMatch(
 );
 
 assert.match(supabaseEnvironment, /VERCEL_ENV === "preview"/);
-assert.match(supabaseEnvironment, /PRODUCTION_SUPABASE_PROJECT_REF/);
-assert.match(supabaseEnvironment, /hostname\.endsWith\(suffix\)/);
-assert.match(supabaseServer, /previewUsesProductionSupabase\(\)/);
-assert.match(supabaseAdmin, /previewUsesProductionSupabase\(\)/);
+assert.doesNotMatch(supabaseEnvironment, /PRODUCTION_SUPABASE_PROJECT_REF/);
+assert.doesNotMatch(supabaseEnvironment, /supabase\.co/);
+assert.match(supabaseServer, /previewIsQuarantined\(\)/);
+assert.match(supabaseAdmin, /previewIsQuarantined\(\)/);
 assert.match(proxy, /PREVIEW_ENVIRONMENT_NOT_ISOLATED/);
-assert.match(proxy, /previewUsesProductionSupabase\(\)/);
+assert.match(proxy, /previewIsQuarantined\(\)/);
 
 console.log("Database and server security contracts are internally consistent.");

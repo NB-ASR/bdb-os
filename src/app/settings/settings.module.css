@@ -1,0 +1,407 @@
+.loading {
+  min-height: 50vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+
+.statusRow span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--gold) 48%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--gold) 9%, var(--surface));
+  color: var(--text);
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 9px 13px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.tabs .activeTab {
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--border));
+  background: color-mix(in srgb, var(--gold) 13%, var(--surface));
+  color: var(--gold);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 12%, transparent);
+}
+
+.twoColumn,
+.recoveryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.recoveryGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recoveryCard,
+.boundaryCard {
+  min-width: 0;
+}
+
+.recoveryFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.recoveryFacts span {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 86%, transparent);
+}
+
+.recoveryFacts strong,
+.recoveryFacts small {
+  display: block;
+}
+
+.recoveryFacts strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.recoveryFacts small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.restoreBlocker {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 18px;
+  padding: 13px;
+  border: 1px solid color-mix(in srgb, var(--red) 48%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+}
+
+.restoreBlocker svg {
+  flex: 0 0 auto;
+  color: var(--red);
+}
+
+.restoreBlocker strong {
+  color: var(--text);
+}
+
+.restoreBlocker p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.boundaryCard {
+  border-color: color-mix(in srgb, var(--gold) 34%, var(--border));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--gold) 12%, transparent), transparent 42%),
+    var(--surface);
+}
+
+.boundaryCard > svg {
+  color: var(--gold);
+}
+
+.boundaryCard h2 {
+  margin: 10px 0 8px;
+  font-size: 1.15rem;
+}
+
+.boundaryCard p {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.controlGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.controlCard,
+.operationsBoundary {
+  min-width: 0;
+}
+
+.settingToggle {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 86%, transparent);
+}
+
+.settingToggle input {
+  margin-top: 3px;
+}
+
+.settingToggle svg {
+  color: var(--gold);
+}
+
+.settingToggle strong,
+.settingToggle small {
+  display: block;
+}
+
+.settingToggle strong {
+  color: var(--text);
+}
+
+.settingToggle small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.controlActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.controlMeta {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.fixedSignals {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.fixedSignals span {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.fixedSignals svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--gold);
+}
+
+.exportBox {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.linkList {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.linkList a {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 84%, transparent);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.linkList a:hover {
+  border-color: color-mix(in srgb, var(--gold) 48%, var(--border));
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface));
+}
+
+.linkList svg {
+  color: var(--gold);
+}
+
+.linkList strong,
+.linkList small {
+  display: block;
+}
+
+.linkList small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.diagnostics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.diagnostics span {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 84%, transparent);
+}
+
+.diagnostics svg,
+.diagnostics strong,
+.diagnostics small {
+  display: block;
+}
+
+.diagnostics svg {
+  margin-bottom: 9px;
+  color: var(--gold);
+}
+
+.diagnostics strong {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.diagnostics small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.operationsBoundary {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--red) 38%, var(--border));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--red) 9%, transparent), transparent 44%),
+    var(--surface);
+}
+
+.operationsBoundary > svg {
+  color: var(--red);
+}
+
+.operationsBoundary h2 {
+  margin: 10px 0 8px;
+  color: var(--text);
+  font-size: 1.15rem;
+}
+
+.operationsBoundary p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 980px) {
+  .twoColumn,
+  .recoveryGrid,
+  .controlGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .operationsBoundary {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tabs button {
+    justify-content: flex-start;
+  }
+
+  .recoveryFacts,
+  .diagnostics {
+    grid-template-columns: 1fr;
+  }
+
+  .exportBox {
+    grid-template-columns: 1fr;
+  }
+}

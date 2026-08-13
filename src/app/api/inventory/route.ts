@@ -19,6 +19,14 @@ const MANUAL_MOVEMENT_TYPES = new Set<InventoryMovementType>([
   "stocktake_correction",
   "write_off",
 ]);
+const OWNING_WORKFLOW_SOURCE_TYPES = new Set([
+  "supplier_document",
+  "purchasing",
+  "sale",
+  "sales",
+  "appointment",
+  "appointment_consumption",
+]);
 
 type InventoryCommandBody = Record<string, unknown> & {
   workspaceId?: unknown;
@@ -96,6 +104,23 @@ function friendlyInventoryError(error: { message: string; code?: string | null }
   const message = error.message.toLowerCase();
   if (message.includes("access denied") || message.includes("posting access denied")) {
     return new CommandError("INVENTORY_FORBIDDEN", "You do not have permission to change Inventory.", 403);
+  }
+  if (message.includes("resale products must leave inventory through a completed sale")) {
+    return new CommandError(
+      "APPOINTMENT_CONSUMPTION_RESALE_REQUIRES_SALE",
+      "Resale Products must be added to a completed Sale rather than recorded as internal consumption.",
+      409,
+    );
+  }
+  if (message.includes("only completed service appointments")) {
+    return new CommandError(
+      "APPOINTMENT_CONSUMPTION_APPOINTMENT_NOT_COMPLETED",
+      "Complete the Service Appointment before recording its Product consumption.",
+      409,
+    );
+  }
+  if (message.includes("appointment consumption") && message.includes("unavailable")) {
+    return new CommandError("APPOINTMENT_CONSUMPTION_REFERENCE_UNAVAILABLE", error.message, 409);
   }
   if (message.includes("changed on another device")) {
     return new CommandError("INVENTORY_CONFLICT", error.message, 409);
@@ -219,6 +244,39 @@ export async function POST(request: Request) {
       return result.data as Record<string, unknown>;
     }
 
+    if (action === "post-appointment-consumption") {
+      const result = await admin.rpc("post_appointment_product_consumption", {
+        p_workspace_id: workspaceId,
+        p_movement_id: uuid(body.id, "Movement ID"),
+        p_appointment_id: uuid(body.appointmentId, "Appointment"),
+        p_product_id: uuid(body.productId, "Product"),
+        p_location_id: uuid(body.locationId, "Inventory location"),
+        p_quantity: numberValue(body.quantity, "Quantity", { minimum: 0.001, allowZero: false }),
+        p_idempotency_key: context.idempotencyKey,
+        p_command_id: context.commandId,
+        p_actor_user_id: context.userId,
+        p_occurred_at: occurredAt(body.occurredAt),
+        p_note: optionalText(body.note, 500),
+      });
+      if (result.error) throw friendlyInventoryError(result.error);
+      return result.data as Record<string, unknown>;
+    }
+
+    if (action === "reverse-appointment-consumption") {
+      const result = await admin.rpc("reverse_appointment_product_consumption", {
+        p_workspace_id: workspaceId,
+        p_reversal_id: uuid(body.id, "Reversal movement ID"),
+        p_movement_id: uuid(body.movementId, "Original movement"),
+        p_idempotency_key: context.idempotencyKey,
+        p_command_id: context.commandId,
+        p_actor_user_id: context.userId,
+        p_reason: text(body.reason, "Reversal reason", 5, 500),
+        p_occurred_at: occurredAt(body.occurredAt),
+      });
+      if (result.error) throw friendlyInventoryError(result.error);
+      return result.data as Record<string, unknown>;
+    }
+
     if (action === "post-movement" || action === "reverse-movement") {
       const reversing = action === "reverse-movement";
       const movementType = reversing
@@ -231,7 +289,7 @@ export async function POST(request: Request) {
         );
       }
       const sourceType = optionalText(body.sourceType, 48);
-      if (!reversing && sourceType) {
+      if (!reversing && sourceType && OWNING_WORKFLOW_SOURCE_TYPES.has(sourceType)) {
         throw new CommandError(
           "INVALID_INVENTORY_INPUT",
           "Manual Inventory changes cannot claim a Purchasing, Sales or Appointment source record.",

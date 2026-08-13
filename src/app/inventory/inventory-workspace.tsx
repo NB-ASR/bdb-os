@@ -175,16 +175,8 @@ function writeCache(workspaceId: string, data: InventoryData) {
   window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
   window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify({
     ...data,
-    locations: data.locations.map((location) => {
-      const persisted = { ...location };
-      delete persisted.pending;
-      return persisted;
-    }),
-    movements: data.movements.map((movement) => {
-      const persisted = { ...movement };
-      delete persisted.pending;
-      return persisted;
-    }),
+    locations: data.locations.map(({ pending: _pending, ...location }) => location),
+    movements: data.movements.map(({ pending: _pending, ...movement }) => movement),
   }));
 }
 
@@ -416,6 +408,7 @@ export default function InventoryWorkspace() {
   const [reversalDocument, setReversalDocument] = useState<PurchasingDocument | null>(null);
   const [reversalReason, setReversalReason] = useState("");
   const syncInFlight = useRef(false);
+  const supportMode = false;
   const cloudMode = mode === "cloud";
 
   const currency = useMemo(
@@ -515,17 +508,14 @@ export default function InventoryWorkspace() {
 
   useEffect(() => {
     if (!cloudMode || !online || !pendingCount) return;
-    const timer = window.setTimeout(() => {
-      void syncPending();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    void syncPending();
   }, [cloudMode, online, pendingCount, syncPending]);
 
   const submitCommand = useCallback(async (
     action: InventoryCommandAction,
     payload: Record<string, unknown>,
   ) => {
-    if (!workspaceId) return false;
+    if (!workspaceId || supportMode) return false;
     setError("");
     setNotice("");
     const command: InventoryQueuedCommand = {
@@ -566,7 +556,7 @@ export default function InventoryWorkspace() {
       setError(message);
       return false;
     }
-  }, [loadCloud, mode, online, workspaceId]);
+  }, [loadCloud, mode, online, supportMode, workspaceId]);
 
   const activeLocations = data.locations.filter((location) => location.status === "active");
   const defaultLocation = activeLocations.find((location) => location.is_default) ?? activeLocations[0] ?? null;
@@ -587,13 +577,16 @@ export default function InventoryWorkspace() {
     status: product.status,
   }));
   const summary = summariseInventory(productSnapshots);
-  const productMap = new Map(data.products.map((product) => [product.id, product]));
+  const productMap = useMemo(
+    () => new Map(data.products.map((product) => [product.id, product])),
+    [data.products],
+  );
   const locationMap = new Map(data.locations.map((location) => [location.id, location]));
   const reversedMovementIds = new Set(
     data.movements.map((movement) => movement.reversal_of_id).filter(Boolean) as string[],
   );
 
-  const visibleProducts = (() => {
+  const visibleProducts = useMemo(() => {
     const term = query.trim().toLowerCase();
     return productSnapshots.filter((snapshot) => {
       const product = productMap.get(snapshot.id);
@@ -614,7 +607,7 @@ export default function InventoryWorkspace() {
             : product?.status === "active" && stockStatus === "out-of-stock";
       return matchesSearch && matchesFilter;
     });
-  })();
+  }, [filter, productMap, productSnapshots, query]);
 
   function openCreateLocation() {
     setEditingLocation(null);
@@ -634,7 +627,7 @@ export default function InventoryWorkspace() {
 
   async function saveLocation(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || supportMode) return;
     setBusy(true);
     const payload = editingLocation
       ? {
@@ -656,7 +649,7 @@ export default function InventoryWorkspace() {
   }
 
   async function changeLocationStatus(location: LocationRow) {
-    if (busy) return;
+    if (busy || supportMode) return;
     setBusy(true);
     await submitCommand(location.status === "active" ? "archive-location" : "restore-location", {
       id: location.id,
@@ -681,7 +674,7 @@ export default function InventoryWorkspace() {
 
   async function saveMovement(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || supportMode) return;
     setBusy(true);
     const isTransfer = movementForm.movementType === "transfer";
     const saved = isTransfer
@@ -712,7 +705,7 @@ export default function InventoryWorkspace() {
   }
 
   async function reverseMovement(movement: MovementRow) {
-    if (busy || movement.pending) return;
+    if (busy || supportMode || movement.pending) return;
     setBusy(true);
     await submitCommand("reverse-movement", {
       id: crypto.randomUUID(),
@@ -733,7 +726,7 @@ export default function InventoryWorkspace() {
 
   async function postDocument(event: FormEvent) {
     event.preventDefault();
-    if (!workspaceId || workspaceId === "demo" || busy || !online) return;
+    if (!workspaceId || workspaceId === "demo" || supportMode || busy || !online) return;
     setBusy(true);
     setError("");
     try {
@@ -764,7 +757,7 @@ export default function InventoryWorkspace() {
 
   async function reverseDocumentPosting(event: FormEvent) {
     event.preventDefault();
-    if (!workspaceId || !reversalDocument || busy || !online) return;
+    if (!workspaceId || !reversalDocument || supportMode || busy || !online) return;
     setBusy(true);
     setError("");
     try {
@@ -815,13 +808,13 @@ export default function InventoryWorkspace() {
         description="Current stock is derived from immutable Product movements across workspace locations."
         action={(
           <div className={styles.headerActions}>
-            <Button variant="secondary" onClick={openCreateLocation}>
+            <Button variant="secondary" onClick={openCreateLocation} disabled={supportMode}>
               <MapPin size={17} /> Manage location
             </Button>
-            <Button variant="secondary" onClick={() => openMovement()} disabled={!activeLocations.length || !data.products.some((product) => product.status === "active")}>
+            <Button variant="secondary" onClick={() => openMovement()} disabled={supportMode || !activeLocations.length || !data.products.some((product) => product.status === "active")}>
               <Plus size={17} /> Record movement
             </Button>
-            <Button onClick={() => openPosting()} disabled={!online || !data.purchasingDocuments.some((document) => document.inventory_posting_status === "ready") || !activeLocations.length}>
+            <Button onClick={() => openPosting()} disabled={supportMode || !online || !data.purchasingDocuments.some((document) => document.inventory_posting_status === "ready") || !activeLocations.length}>
               <FileCheck2 size={17} /> Post approved document
             </Button>
           </div>
@@ -837,6 +830,7 @@ export default function InventoryWorkspace() {
       </div>
 
       {!online ? <div className={styles.offlineNotice}><WifiOff size={18} /><div><strong>Working offline</strong><span>Manual movements and location changes remain queued. Purchasing posting requires current cloud validation.</span></div></div> : null}
+      {supportMode ? <div className={styles.supportNotice}><FileCheck2 size={18} /><div><strong>Read-only access</strong><span>Inventory commands and Purchasing posting are blocked during this session.</span></div></div> : null}
       {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Inventory needs attention</strong><p>{error}</p></div></div> : null}
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Inventory updated</strong><p>{notice}</p></div> : null}
 
@@ -895,7 +889,7 @@ export default function InventoryWorkspace() {
                     <td>{snapshot.reorderLevel}</td>
                     <td><Badge tone={stockStatus === "in-stock" ? "green" : stockStatus === "low-stock" ? "gold" : "neutral"}>{negative ? "Correction required" : stockStatus.replaceAll("-", " ")}</Badge></td>
                     <td>{currency.format(snapshot.quantity * snapshot.unitCost)}</td>
-                    <td><Button variant="quiet" onClick={() => openMovement(product.id)} disabled={product.status === "archived" || !activeLocations.length}><Plus size={15} /> Movement</Button></td>
+                    <td><Button variant="quiet" onClick={() => openMovement(product.id)} disabled={supportMode || product.status === "archived" || !activeLocations.length}><Plus size={15} /> Movement</Button></td>
                   </tr>
                 );
               })}
@@ -907,15 +901,15 @@ export default function InventoryWorkspace() {
 
       <div className={styles.operationalGrid}>
         <Card className={styles.panelCard}>
-          <div className={styles.panelHeader}><div><p className="eyebrow">Stock locations</p><h2>Where stock is held</h2></div><Button variant="quiet" onClick={openCreateLocation}><Plus size={15} /> Add</Button></div>
+          <div className={styles.panelHeader}><div><p className="eyebrow">Stock locations</p><h2>Where stock is held</h2></div><Button variant="quiet" onClick={openCreateLocation} disabled={supportMode}><Plus size={15} /> Add</Button></div>
           <div className={styles.locationList}>
             {data.locations.map((location) => (
               <div className={styles.locationItem} key={location.id}>
                 <div><strong>{location.name}</strong><span>{location.code} · {location.is_default ? "Default" : location.status}</span></div>
                 <div className={styles.rowActions}>
                   <Badge tone={location.status === "active" ? "green" : "neutral"}>{location.status}</Badge>
-                  <Button variant="quiet" onClick={() => openEditLocation(location)} disabled={location.status === "archived"}>Edit</Button>
-                  <Button variant="quiet" onClick={() => void changeLocationStatus(location)} disabled={busy}>{location.status === "active" ? "Archive" : "Restore"}</Button>
+                  <Button variant="quiet" onClick={() => openEditLocation(location)} disabled={supportMode || location.status === "archived"}>Edit</Button>
+                  <Button variant="quiet" onClick={() => void changeLocationStatus(location)} disabled={supportMode || busy}>{location.status === "active" ? "Archive" : "Restore"}</Button>
                 </div>
               </div>
             ))}
@@ -931,8 +925,8 @@ export default function InventoryWorkspace() {
                 <div><strong>{document.document_number || document.file_name}</strong><span>{document.supplier?.name || "Supplier"} · {document.document_type === "credit_note" ? "Credit note" : "Invoice"}</span></div>
                 <div className={styles.rowActions}>
                   <Badge tone={document.inventory_posting_status === "posted" ? "green" : document.inventory_posting_status === "ready" ? "gold" : "neutral"}>{postingLabel(document.inventory_posting_status)}</Badge>
-                  {document.inventory_posting_status === "ready" ? <Button variant="quiet" onClick={() => openPosting(document.id)} disabled={!online || !activeLocations.length}>Post</Button> : null}
-                  {document.inventory_posting_status === "posted" ? <Button variant="quiet" onClick={() => { setReversalDocument(document); setReversalReason(""); }} disabled={!online}>Reverse</Button> : null}
+                  {document.inventory_posting_status === "ready" ? <Button variant="quiet" onClick={() => openPosting(document.id)} disabled={supportMode || !online || !activeLocations.length}>Post</Button> : null}
+                  {document.inventory_posting_status === "posted" ? <Button variant="quiet" onClick={() => { setReversalDocument(document); setReversalReason(""); }} disabled={supportMode || !online}>Reverse</Button> : null}
                 </div>
               </div>
             ))}
@@ -962,7 +956,7 @@ export default function InventoryWorkspace() {
                     <td><strong className={numberOf(movement.quantity_delta) < 0 ? styles.negative : styles.positive}>{numberOf(movement.quantity_delta) > 0 ? "+" : ""}{numberOf(movement.quantity_delta)}</strong></td>
                     <td>{movement.supplier_document_id ? "Purchasing document" : movement.source_type?.replaceAll("_", " ") || "Manual"}</td>
                     <td>{movement.note || "—"}</td>
-                    <td>{reversible ? <Button variant="quiet" onClick={() => void reverseMovement(movement)} disabled={busy}><Undo2 size={15} /> Reverse</Button> : null}</td>
+                    <td>{reversible ? <Button variant="quiet" onClick={() => void reverseMovement(movement)} disabled={supportMode || busy}><Undo2 size={15} /> Reverse</Button> : null}</td>
                   </tr>
                 );
               })}
@@ -975,7 +969,7 @@ export default function InventoryWorkspace() {
       <Dialog open={locationOpen} onClose={() => { if (!busy) setLocationOpen(false); }} title={editingLocation ? "Edit stock location" : "Create stock location"} description="Locations separate stock physically or operationally without duplicating Products." className={styles.inventoryDialog}>
         <form onSubmit={saveLocation}>
           <div className={styles.dialogBody}><div className={styles.formGrid}><label>Location code<input required maxLength={32} value={locationForm.code} onChange={(event) => setLocationForm((current) => ({ ...current, code: event.target.value }))} /></label><label>Location name<input required maxLength={120} value={locationForm.name} onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))} /></label><label className={styles.checkboxLabel}><input type="checkbox" checked={locationForm.isDefault} onChange={(event) => setLocationForm((current) => ({ ...current, isDefault: event.target.checked }))} /> Default posting location</label></div></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setLocationOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? <RefreshCw size={16} className="spin" /> : <MapPin size={16} />} Save location</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setLocationOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy || supportMode}>{busy ? <RefreshCw size={16} className="spin" /> : <MapPin size={16} />} Save location</Button></div>
         </form>
       </Dialog>
 
@@ -990,21 +984,21 @@ export default function InventoryWorkspace() {
             <label>Occurred at<input required type="datetime-local" value={movementForm.occurredAt} onChange={(event) => setMovementForm((current) => ({ ...current, occurredAt: event.target.value }))} /></label>
             <label className={styles.fullField}>Reason or note<textarea maxLength={500} value={movementForm.note} onChange={(event) => setMovementForm((current) => ({ ...current, note: event.target.value }))} placeholder="Explain manual corrections and write-offs." /></label>
           </div></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setMovementOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy || !movementForm.productId || !movementForm.locationId || !movementForm.quantity || (movementForm.movementType === "transfer" && !movementForm.destinationLocationId)}>{busy ? <RefreshCw size={16} className="spin" /> : movementForm.movementType === "transfer" ? <ArrowLeftRight size={16} /> : <Plus size={16} />} Record movement</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setMovementOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy || supportMode || !movementForm.productId || !movementForm.locationId || !movementForm.quantity || (movementForm.movementType === "transfer" && !movementForm.destinationLocationId)}>{busy ? <RefreshCw size={16} className="spin" /> : movementForm.movementType === "transfer" ? <ArrowLeftRight size={16} /> : <Plus size={16} />} Record movement</Button></div>
         </form>
       </Dialog>
 
       <Dialog open={postingOpen} onClose={() => { if (!busy) setPostingOpen(false); }} title="Post approved Purchasing document" description="Create one immutable movement for every reviewed Product line." className={styles.inventoryDialog}>
         <form onSubmit={postDocument}>
           <div className={styles.dialogBody}><div className={styles.formGrid}><label>Approved document<select required value={postingDocumentId} onChange={(event) => setPostingDocumentId(event.target.value)}><option value="">Select document</option>{data.purchasingDocuments.filter((document) => document.inventory_posting_status === "ready").map((document) => <option key={document.id} value={document.id}>{document.document_number || document.file_name} · {document.supplier?.name || "Supplier"}</option>)}</select></label><label>Stock location<select required value={postingLocationId} onChange={(event) => setPostingLocationId(event.target.value)}><option value="">Select location</option>{activeLocations.map((location) => <option key={location.id} value={location.id}>{location.name}{location.is_default ? " · Default" : ""}</option>)}</select></label></div><div className={styles.boundaryNote}><CheckCircle2 size={18} /><div><strong>Atomic posting</strong><span>Every Product line posts together or none post. Repeating the command cannot duplicate stock.</span></div></div></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setPostingOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy || !online || !postingDocumentId || !postingLocationId}>{busy ? <RefreshCw size={16} className="spin" /> : <PackageCheck size={16} />} Post to Inventory</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setPostingOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy || supportMode || !online || !postingDocumentId || !postingLocationId}>{busy ? <RefreshCw size={16} className="spin" /> : <PackageCheck size={16} />} Post to Inventory</Button></div>
         </form>
       </Dialog>
 
       <Dialog open={Boolean(reversalDocument)} onClose={() => { if (!busy) setReversalDocument(null); }} title="Reverse supplier-document posting" description="Reverse every movement created by this document. The approved source document remains preserved." className={styles.inventoryDialog}>
         <form onSubmit={reverseDocumentPosting}>
           <div className={styles.dialogBody}><div className={styles.warningPanel}><RotateCcw size={20} /><div><strong>{reversalDocument?.document_number || reversalDocument?.file_name}</strong><span>This action creates opposite movements; it does not delete history.</span></div></div><label className={styles.reasonField}>Audit reason<textarea required minLength={5} maxLength={500} value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} placeholder="Explain why the complete posting is being reversed." /></label></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setReversalDocument(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="secondary" disabled={busy || !online || reversalReason.trim().length < 5}>{busy ? <RefreshCw size={16} className="spin" /> : <RotateCcw size={16} />} Reverse posting</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setReversalDocument(null)} disabled={busy}>Cancel</Button><Button type="submit" variant="secondary" disabled={busy || supportMode || !online || reversalReason.trim().length < 5}>{busy ? <RefreshCw size={16} className="spin" /> : <RotateCcw size={16} />} Reverse posting</Button></div>
         </form>
       </Dialog>
     </>

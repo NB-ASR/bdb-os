@@ -127,8 +127,6 @@ export async function POST(
     const admin = createAdminClient();
     if (!supabase || !admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
-    // Resolve the document through the caller's RLS-scoped session before the
-    // service role is used for the trusted extraction command and private file.
     const documentResult = await supabase
       .from("supplier_documents")
       .select("id,file_bucket,file_path,file_name,mime_type,status")

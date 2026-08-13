@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migration = await readFile(
-  "supabase/migrations/20260727161000_supplier_document_capture_review.sql",
+  "supabase/release-sources/vanita-integration-20260813/20260727161000_supplier_document_capture_review.sql",
   "utf8",
 );
 const uploadApi = await readFile("src/app/api/purchasing/documents/route.ts", "utf8");
@@ -74,8 +74,9 @@ assert.match(extractionApi, /fail_supplier_document_extraction/);
 assert.match(extractionApi, /input_file|input_image/);
 
 assert.match(reviewApi, /apply_supplier_document_review/);
-assert.doesNotMatch(reviewApi, /Create new Supplier|proposed_new_supplier|proposed_new_product/);
-assert.doesNotMatch(reviewApi, /apply_supplier_document_review_with_supplier_proposal/);
+assert.match(reviewApi, /Create new Supplier|proposed_new_supplier/);
+assert.match(reviewApi, /Create new Product|proposed_new_product/);
+assert.match(reviewApi, /apply_supplier_document_review_with_supplier_proposal/);
 assert.match(reviewApi, /expectedVersion/);
 assert.match(reviewApi, /save_review/);
 assert.match(reviewApi, /approve/);

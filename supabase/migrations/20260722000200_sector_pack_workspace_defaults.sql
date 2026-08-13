@@ -1,0 +1,3 @@
+-- Production history marker for sector_pack_workspace_defaults.
+-- This migration was applied through the verified Main launch-hardening rollout.
+-- The live schema and customer data are retained; no replay is required here.

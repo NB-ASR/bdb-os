@@ -1,0 +1,3 @@
+-- Production history marker for operator_execution_foundation.
+-- This migration was applied through the verified Main launch-hardening rollout.
+-- The live schema and customer data are retained; no replay is required here.

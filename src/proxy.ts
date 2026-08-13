@@ -1,15 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { previewUsesProductionSupabase } from "@/lib/supabase/environment";
+import { previewIsQuarantined } from "@/lib/supabase/environment";
 
 const protectedRoutes = [
   "/workspace",
   "/accounts",
   "/customers",
   "/calendar",
+  "/services",
   "/products",
   "/suppliers",
   "/inventory",
+  "/sales",
   "/communications",
   "/documents",
   "/banking",
@@ -27,10 +29,14 @@ const featureRoutes: Record<string, string> = {
   "/workspace": "overview",
   "/accounts": "accounts",
   "/customers": "customers",
+  "/calendar/timesheets": "timesheets",
+  "/calendar/meetings": "meetings",
   "/calendar": "calendar",
+  "/services": "services",
   "/products": "products",
   "/suppliers": "suppliers",
   "/inventory": "inventory",
+  "/sales": "sales",
   "/communications": "communications",
   "/documents/purchasing": "purchasing",
   "/documents": "documents",
@@ -94,7 +100,7 @@ export async function proxy(request: NextRequest) {
   const requiresAuth = protectedRoutes.some((route) => effectivePath === route || effectivePath.startsWith(`${route}/`));
   const apiRoute = effectivePath.startsWith("/api/");
 
-  if (previewUsesProductionSupabase()) {
+  if (previewIsQuarantined()) {
     return previewIsolationUnavailable(apiRoute);
   }
 

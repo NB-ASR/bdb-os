@@ -320,6 +320,7 @@ export default function PurchasingWorkspace() {
   const syncInFlight = useRef(false);
   const autoSyncKey = useRef("");
   const activeReviewCommand = useRef<{ action: "save_review" | "approve"; key: string } | null>(null);
+  const supportMode = false;
   const cloudMode = mode === "cloud";
 
   useEffect(() => {
@@ -420,7 +421,7 @@ export default function PurchasingWorkspace() {
   }, [online, workspaceId]);
 
   const scanDocument = useCallback(async (documentId: string, openAfter = true) => {
-    if (!workspaceId || workspaceId === "demo") return false;
+    if (!workspaceId || workspaceId === "demo" || supportMode) return false;
     if (!online) {
       setError("Document extraction requires an internet connection.");
       return false;
@@ -447,10 +448,10 @@ export default function PurchasingWorkspace() {
     } finally {
       setScanningId(null);
     }
-  }, [loadCloud, online, openDocument, workspaceId]);
+  }, [loadCloud, online, openDocument, supportMode, workspaceId]);
 
   const syncPendingReviews = useCallback(async (currentWorkspaceId: string) => {
-    if (!online) return 0;
+    if (!online || supportMode) return 0;
     const queue = readReviewQueue(currentWorkspaceId);
     let completed = 0;
     for (const command of queue) {
@@ -484,7 +485,7 @@ export default function PurchasingWorkspace() {
     }
     setPendingReviews(readReviewQueue(currentWorkspaceId));
     return completed;
-  }, [online]);
+  }, [online, supportMode]);
 
   const syncPending = useCallback(async () => {
     if (!workspaceId || workspaceId === "demo" || !online || syncInFlight.current) return;
@@ -533,7 +534,7 @@ export default function PurchasingWorkspace() {
 
   async function uploadDocument(event: FormEvent) {
     event.preventDefault();
-    if (!selectedFile || !workspaceId || workspaceId === "demo" || busy) return;
+    if (!selectedFile || !workspaceId || workspaceId === "demo" || supportMode || busy) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -639,7 +640,7 @@ export default function PurchasingWorkspace() {
   }
 
   async function saveReview(action: "save_review" | "approve") {
-    if (!review || !workspaceId || workspaceId === "demo" || busy) return;
+    if (!review || !workspaceId || workspaceId === "demo" || supportMode || busy) return;
     if (!online) {
       if (action === "approve") {
         setError("Approval requires an internet connection so BDB OS can validate the current shared record.");
@@ -739,6 +740,7 @@ export default function PurchasingWorkspace() {
       && review.lines.length
       && unresolvedReviewLines === 0
       && invalidReviewLines === 0
+      && !supportMode
       && !busy
       && review.document.status !== "approved",
   );
@@ -753,7 +755,7 @@ export default function PurchasingWorkspace() {
         description="Capture supplier invoices and credit notes, review extracted data and approve one shared source document before downstream posting."
         action={(
           <div className={styles.headerActions}>
-            <Button onClick={() => setUploadOpen(true)} disabled={!cloudMode}>
+            <Button onClick={() => setUploadOpen(true)} disabled={supportMode || !cloudMode}>
               <UploadCloud size={17} /> Upload or scan document
             </Button>
           </div>
@@ -818,6 +820,13 @@ export default function PurchasingWorkspace() {
         </div>
       ) : null}
 
+      {supportMode ? (
+        <div className={styles.supportNotice}>
+          <FileCheck2 size={18} />
+          <div><strong>Read-only access</strong><span>Upload, extraction, review and approval are blocked during this session.</span></div>
+        </div>
+      ) : null}
+
       <div className="stat-grid">
         <StatCard label="Documents" value={String(documents.length)} detail="Workspace supplier files" icon={<FileText size={19} />} />
         <StatCard label="Needs review" value={String(awaitingReview)} detail="Uploaded or extracted drafts" icon={<AlertTriangle size={19} />} />
@@ -859,7 +868,7 @@ export default function PurchasingWorkspace() {
                   <td>
                     <div className={styles.rowActions}>
                       {document.status !== "approved" && document.status !== "extracting" ? (
-                        <Button variant="quiet" disabled={scanningId === document.id || !online} onClick={() => void scanDocument(document.id)}>
+                        <Button variant="quiet" disabled={supportMode || scanningId === document.id || !online} onClick={() => void scanDocument(document.id)}>
                           {scanningId === document.id ? <RefreshCw size={15} className="spin" /> : <ScanLine size={15} />} {document.extraction_status === "completed" ? "Rescan" : "Scan"}
                         </Button>
                       ) : null}
@@ -904,7 +913,7 @@ export default function PurchasingWorkspace() {
               </div>
             </div>
           </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setUploadOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={!selectedFile || busy || !cloudMode}>{busy ? <RefreshCw size={16} className="spin" /> : <UploadCloud size={16} />} {online ? "Upload and scan" : "Save for upload"}</Button></div>
+          <div className="dialog-actions"><Button type="button" variant="quiet" onClick={() => setUploadOpen(false)} disabled={busy}>Cancel</Button><Button type="submit" disabled={!selectedFile || busy || supportMode || !cloudMode}>{busy ? <RefreshCw size={16} className="spin" /> : <UploadCloud size={16} />} {online ? "Upload and scan" : "Save for upload"}</Button></div>
         </form>
       </Dialog>
 
@@ -922,25 +931,25 @@ export default function PurchasingWorkspace() {
             {review.document.extraction_notes?.length ? <div className="settings-note" style={{ marginBottom: 16 }}><strong>Extraction notes</strong><p>{review.document.extraction_notes.join(" · ")}</p></div> : null}
 
             <div className={styles.reviewFormGrid}>
-              <label>Supplier<select value={review.header.supplierId} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ supplierId: event.target.value })}><option value="">Select Supplier</option>{review.suppliers.filter((supplier) => supplier.supplier_type === "product").map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.code}</option>)}</select></label>
-              <label>Document type<select value={review.header.documentType} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ documentType: event.target.value as ReviewHeader["documentType"] })}><option value="invoice">Supplier invoice</option><option value="credit_note">Credit note</option><option value="other">Other</option></select></label>
-              <label>Document number<input value={review.header.documentNumber} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ documentNumber: event.target.value })} /></label>
-              <label>Document date<input type="date" value={review.header.documentDate} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ documentDate: event.target.value })} /></label>
-              <label>Due date<input type="date" value={review.header.dueDate} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ dueDate: event.target.value })} /></label>
-              <label>Currency<input maxLength={3} value={review.header.currency} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ currency: event.target.value.toUpperCase() })} /></label>
-              <label>Subtotal before discount<input type="number" min="0" step="0.01" value={review.header.subtotalBeforeDiscount} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ subtotalBeforeDiscount: event.target.value })} /></label>
-              <label>Discount amount<input type="number" min="0" step="0.01" value={review.header.discountAmount} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ discountAmount: event.target.value })} /></label>
-              <label>Net after discount<input type="number" min="0" step="0.01" value={review.header.netAfterDiscount} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ netAfterDiscount: event.target.value })} /></label>
-              <label>VAT rate %<input type="number" min="0" step="0.01" value={review.header.vatRate} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ vatRate: event.target.value })} /></label>
-              <label>VAT amount<input type="number" min="0" step="0.01" value={review.header.vatAmount} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ vatAmount: event.target.value })} /></label>
-              <label>Gross amount<input type="number" min="0" step="0.01" value={review.header.grossAmount} disabled={review.document.status === "approved"} onChange={(event) => updateHeader({ grossAmount: event.target.value })} /></label>
+              <label>Supplier<select value={review.header.supplierId} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ supplierId: event.target.value })}><option value="">Select Supplier</option>{review.suppliers.filter((supplier) => supplier.supplier_type === "product").map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.code}</option>)}</select></label>
+              <label>Document type<select value={review.header.documentType} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ documentType: event.target.value as ReviewHeader["documentType"] })}><option value="invoice">Supplier invoice</option><option value="credit_note">Credit note</option><option value="other">Other</option></select></label>
+              <label>Document number<input value={review.header.documentNumber} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ documentNumber: event.target.value })} /></label>
+              <label>Document date<input type="date" value={review.header.documentDate} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ documentDate: event.target.value })} /></label>
+              <label>Due date<input type="date" value={review.header.dueDate} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ dueDate: event.target.value })} /></label>
+              <label>Currency<input maxLength={3} value={review.header.currency} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ currency: event.target.value.toUpperCase() })} /></label>
+              <label>Subtotal before discount<input type="number" min="0" step="0.01" value={review.header.subtotalBeforeDiscount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ subtotalBeforeDiscount: event.target.value })} /></label>
+              <label>Discount amount<input type="number" min="0" step="0.01" value={review.header.discountAmount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ discountAmount: event.target.value })} /></label>
+              <label>Net after discount<input type="number" min="0" step="0.01" value={review.header.netAfterDiscount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ netAfterDiscount: event.target.value })} /></label>
+              <label>VAT rate %<input type="number" min="0" step="0.01" value={review.header.vatRate} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ vatRate: event.target.value })} /></label>
+              <label>VAT amount<input type="number" min="0" step="0.01" value={review.header.vatAmount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ vatAmount: event.target.value })} /></label>
+              <label>Gross amount<input type="number" min="0" step="0.01" value={review.header.grossAmount} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateHeader({ grossAmount: event.target.value })} /></label>
             </div>
 
             <div className={styles.reviewLinesHeader}>
               <div><p className="eyebrow">Document lines</p><h3>Product and expense matching</h3></div>
               <div className={styles.rowActions}>
                 <Badge tone={unresolvedReviewLines || invalidReviewLines ? "gold" : "green"}>{review.lines.length} lines</Badge>
-                {review.document.status !== "approved" ? <Button variant="secondary" onClick={addLine} disabled={busy}><Plus size={15} /> Add line</Button> : null}
+                {review.document.status !== "approved" ? <Button variant="secondary" onClick={addLine} disabled={supportMode || busy}><Plus size={15} /> Add line</Button> : null}
               </div>
             </div>
 
@@ -948,16 +957,16 @@ export default function PurchasingWorkspace() {
               {review.lines.map((line, index) => (
                 <div className={styles.reviewLine} key={line.id}>
                   <div className={styles.lineNumber}>{index + 1}</div>
-                  <label className={styles.lineDescription}>Printed description<input required value={line.description} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { description: event.target.value })} /></label>
-                  <label>Kind<select value={line.lineKind} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { lineKind: event.target.value as ReviewLine["lineKind"] })}><option value="product">Product</option><option value="expense">Non-stock expense</option></select></label>
-                  <label>Supplier SKU<input value={line.supplierSku} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { supplierSku: event.target.value })} /></label>
-                  <label>Barcode<input value={line.barcode} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { barcode: event.target.value })} /></label>
-                  <label>Quantity<input type="number" min="0.0001" step="0.0001" value={line.quantity} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
-                  <label>Unit cost<input type="number" min="0" step="0.0001" value={line.unitCost} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { unitCost: event.target.value })} /></label>
-                  <label>RRP<input type="number" min="0" step="0.0001" value={line.rrp} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { rrp: event.target.value })} /></label>
-                  <label className={styles.lineProduct}>Matched Product<select value={line.matchedProductId} disabled={line.lineKind === "expense" || review.document.status === "approved"} onChange={(event) => updateLine(index, { matchedProductId: event.target.value })}><option value="">Select Product</option>{review.products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select><small>{line.lineKind === "expense" ? "This line will not create an Inventory movement." : line.matchedProductSupplierId ? "Product–Supplier relationship matched." : line.matchedProductId ? "Product matched without Supplier terms." : "Match required before approval."}</small></label>
-                  <label className={styles.lineNotes}>Review notes<input value={line.notes} disabled={review.document.status === "approved"} onChange={(event) => updateLine(index, { notes: event.target.value })} /></label>
-                  {review.document.status !== "approved" ? <Button variant="quiet" onClick={() => removeLine(index)} disabled={busy}><Trash2 size={15} /> Remove line</Button> : null}
+                  <label className={styles.lineDescription}>Printed description<input required value={line.description} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { description: event.target.value })} /></label>
+                  <label>Kind<select value={line.lineKind} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { lineKind: event.target.value as ReviewLine["lineKind"] })}><option value="product">Product</option><option value="expense">Non-stock expense</option></select></label>
+                  <label>Supplier SKU<input value={line.supplierSku} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { supplierSku: event.target.value })} /></label>
+                  <label>Barcode<input value={line.barcode} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { barcode: event.target.value })} /></label>
+                  <label>Quantity<input type="number" min="0.0001" step="0.0001" value={line.quantity} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label>
+                  <label>Unit cost<input type="number" min="0" step="0.0001" value={line.unitCost} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { unitCost: event.target.value })} /></label>
+                  <label>RRP<input type="number" min="0" step="0.0001" value={line.rrp} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { rrp: event.target.value })} /></label>
+                  <label className={styles.lineProduct}>Matched Product<select value={line.matchedProductId} disabled={supportMode || line.lineKind === "expense" || review.document.status === "approved"} onChange={(event) => updateLine(index, { matchedProductId: event.target.value })}><option value="">Select Product</option>{review.products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select><small>{line.lineKind === "expense" ? "This line will not create an Inventory movement." : line.matchedProductSupplierId ? "Product–Supplier relationship matched." : line.matchedProductId ? "Product matched without Supplier terms." : "Match required before approval."}</small></label>
+                  <label className={styles.lineNotes}>Review notes<input value={line.notes} disabled={supportMode || review.document.status === "approved"} onChange={(event) => updateLine(index, { notes: event.target.value })} /></label>
+                  {review.document.status !== "approved" ? <Button variant="quiet" onClick={() => removeLine(index)} disabled={supportMode || busy}><Trash2 size={15} /> Remove line</Button> : null}
                 </div>
               ))}
               {!review.lines.length ? <div className={styles.emptyLines}><FileText size={20} /><strong>No document lines</strong><span>Add the printed lines manually or rescan a clearer document.</span></div> : null}
@@ -971,8 +980,8 @@ export default function PurchasingWorkspace() {
         ) : null}
         <div className="dialog-actions">
           <Button type="button" variant="quiet" onClick={() => setReview(null)} disabled={busy}>Close</Button>
-          {review?.document.status !== "approved" ? <Button type="button" variant="quiet" disabled={busy || !online} onClick={() => review && void scanDocument(review.document.id)}><ScanLine size={15} /> Rescan</Button> : null}
-          {review?.document.status !== "approved" ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void saveReview("save_review")}>{online ? "Save review" : "Save locally"}</Button> : null}
+          {review?.document.status !== "approved" ? <Button type="button" variant="quiet" disabled={busy || supportMode || !online} onClick={() => review && void scanDocument(review.document.id)}><ScanLine size={15} /> Rescan</Button> : null}
+          {review?.document.status !== "approved" ? <Button type="button" variant="secondary" disabled={busy || supportMode} onClick={() => void saveReview("save_review")}>{online ? "Save review" : "Save locally"}</Button> : null}
           {review?.document.status !== "approved" ? <Button type="button" disabled={!canApprove} title={!canApprove ? "Confirm Supplier, type, number, date, currency and every line before approval" : undefined} onClick={() => void saveReview("approve")}><CheckCircle2 size={16} /> Approve document</Button> : null}
         </div>
       </Dialog>
