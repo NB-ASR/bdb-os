@@ -8,6 +8,7 @@ import {
   Building2,
   Check,
   CreditCard,
+  ImageIcon,
   KeyRound,
   Layers3,
   Link2,
@@ -196,6 +197,7 @@ export default function AdminPage() {
           <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}><SlidersHorizontal size={18} /> Plans & features</button>
           <Link href="/admin/templates"><Layers3 size={18} /> Workspace templates</Link>
           <Link href="/admin/manual-provisioning"><KeyRound size={18} /> Manual provisioning</Link>
+          <Link href="/admin/branding"><ImageIcon size={18} /> Custom branding</Link>
           <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}><Activity size={18} /> Audit trail</button>
         </nav>
         <div className="admin-secure"><ShieldCheck size={17} /><span><strong>MFA protected</strong><small>Founder actions audited</small></span></div>
@@ -278,7 +280,7 @@ export default function AdminPage() {
                 <h3>Client modules</h3>
                 <p className="muted small">The template copied an explicit starting matrix. Founder overrides remain client-specific and never change the template.</p>
                 <div className="entitlement-grid">
-                  {data.features.map((feature) => {
+                  {data.features.filter((feature) => feature.key !== "custom_branding").map((feature) => {
                     const override = data.overrides.find((item) => item.workspace_id === activeWorkspace.id && item.feature_key === feature.key);
                     const planEnabled = data.planFeatures.some((item) => item.plan_id === activeWorkspace.plan_id && item.feature_key === feature.key && item.enabled);
                     const enabled = override?.enabled ?? planEnabled;
@@ -330,7 +332,7 @@ export default function AdminPage() {
           <div className="admin-plan-grid">
             {data.plans.map((plan) => (
               <article key={plan.id}><p className="eyebrow">Commercial plan</p><h2>{plan.name}</h2><p>{plan.description}</p><div className="plan-feature-list">
-                {data.features.map((feature) => {
+                {data.features.filter((feature) => feature.key !== "custom_branding").map((feature) => {
                   const enabled = data.planFeatures.some((item) => item.plan_id === plan.id && item.feature_key === feature.key && item.enabled);
                   return <button key={feature.key} className={enabled ? "enabled" : ""} onClick={() => void mutate({ action: "plan-feature", planId: plan.id, featureKey: feature.key, enabled: !enabled }, `plan-${plan.id}-${feature.key}`, `${plan.name} updated.`)}><span>{enabled && <Check size={13} />}</span>{feature.name}</button>;
                 })}
