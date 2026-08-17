@@ -32,6 +32,69 @@ select plan.id, 'custom_branding', false
 from public.plans plan
 on conflict (plan_id, feature_key) do nothing;
 
+-- Template and workspace access matrices are deliberately complete for every
+-- active feature. Branding is Founder-controlled, so Manager, Employee and
+-- Custom profiles receive explicit false permissions while the feature matrix
+-- keeps the add-on disabled by default.
+insert into public.workspace_template_features (template_id, feature_key, enabled)
+select template.id, 'custom_branding', false
+from public.workspace_templates template
+on conflict (template_id, feature_key) do nothing;
+
+insert into public.workspace_template_permissions (
+  template_id,
+  access_profile,
+  feature_key,
+  can_view,
+  can_create,
+  can_edit,
+  can_delete,
+  can_approve,
+  can_export
+)
+select
+  template.id,
+  profile.access_profile,
+  'custom_branding',
+  false,
+  false,
+  false,
+  false,
+  false,
+  false
+from public.workspace_templates template
+cross join (values ('manager'), ('employee'), ('custom')) profile(access_profile)
+on conflict (template_id, access_profile, feature_key) do nothing;
+
+insert into public.workspace_access_profile_permissions (
+  workspace_id,
+  access_profile,
+  feature_key,
+  can_view,
+  can_create,
+  can_edit,
+  can_delete,
+  can_approve,
+  can_export,
+  source_template_id,
+  source_template_version
+)
+select
+  workspace.id,
+  profile.access_profile,
+  'custom_branding',
+  false,
+  false,
+  false,
+  false,
+  false,
+  false,
+  workspace.workspace_template_id,
+  workspace.workspace_template_version
+from public.workspaces workspace
+cross join (values ('manager'), ('employee'), ('custom')) profile(access_profile)
+on conflict (workspace_id, access_profile, feature_key) do nothing;
+
 -- Existing workspace settings used to allow Owner/Manager logo changes. Keep
 -- the trusted function for compatibility, but move authority to an active
 -- platform administrator so customer-side calls fail closed.
