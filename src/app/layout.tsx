@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans, Manrope } from "next/font/google";
 import "./globals.css";
 import "./bdb-design-system.css";
+import "./bdb-refinement-v2.css";
 import { Providers } from "./providers";
 
 const bodyFont = DM_Sans({
@@ -32,7 +33,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0d0e0d",
+  themeColor: "#0b0c0b",
   colorScheme: "dark",
 };
 
