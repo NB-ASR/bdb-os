@@ -2,24 +2,20 @@
 
 import Link from "next/link";
 import {
-  Activity,
-  ArrowRight,
+  AlertCircle,
   Boxes,
   CalendarDays,
+  CheckCircle2,
   CircleDollarSign,
   FileText,
   Landmark,
   MessageSquareText,
-  Plus,
-  RefreshCw,
   ShoppingBag,
   UsersRound,
-  Wifi,
   WifiOff,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { Button } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatTimeAgo } from "@/lib/format";
 import {
   readBusinessInsightCache,
@@ -50,26 +46,6 @@ type AttentionItem = {
   occurred_at: string;
 };
 
-type ActivityItem = {
-  source_id: string;
-  department: string;
-  title: string;
-  detail: string;
-  route: string;
-  occurred_at: string;
-  customer_name: string | null;
-};
-
-type CurrencyMetric = {
-  currency: string;
-  completed_sale_amount: number;
-  outstanding_invoice_amount: number;
-  received_payment_amount: number;
-  overdue_invoice_amount: number;
-  unreconciled_transaction_amount: number;
-  outstanding_supplier_payable_amount: number;
-};
-
 type HubBundle = {
   workspaceId: string;
   workspaceName: string;
@@ -78,10 +54,19 @@ type HubBundle = {
   supportReadOnly: boolean;
   operational: Record<string, number | string>;
   departments: DepartmentSignal[];
-  currencies: CurrencyMetric[];
   attention: AttentionItem[];
-  activity: ActivityItem[];
   quickActions: Array<{ key: string; label: string; href: string }>;
+};
+
+type FocusItem = {
+  key: string;
+  department: string;
+  title: string;
+  detail: string;
+  href: string;
+  status: string;
+  occurredAt?: string;
+  tone: string;
 };
 
 const icons: Record<string, LucideIcon> = {
@@ -95,18 +80,48 @@ const icons: Record<string, LucideIcon> = {
   inventory: Boxes,
 };
 
-function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+function detailText(detail: DepartmentSignal["detail"]) {
+  if (typeof detail === "string") return detail;
+  if (!detail.length) return "Open the department for details";
+  return detail
+    .slice(0, 2)
+    .map((item) => `${item.currency} ${Number(item.amount).toLocaleString("en-GB", { maximumFractionDigits: 2 })}`)
+    .join(" · ");
 }
 
-function signalDetail(detail: DepartmentSignal["detail"]) {
-  if (typeof detail === "string") return detail;
-  if (detail.length === 0) return "No recorded monetary activity";
-  return detail.slice(0, 2).map((item) => money(item.amount, item.currency)).join(" · ");
+function buildFocus(bundle: HubBundle | null): FocusItem[] {
+  if (!bundle) return [];
+
+  const attention = bundle.attention.map((item) => ({
+    key: `attention-${item.department}-${item.source_id}`,
+    department: item.department,
+    title: item.title,
+    detail: item.detail,
+    href: item.route,
+    status: "Needs attention",
+    occurredAt: item.occurred_at,
+    tone: item.tone || "gold",
+  }));
+
+  if (attention.length >= 5) return attention.slice(0, 5);
+
+  const represented = new Set(attention.map((item) => item.department));
+  const preferredDepartments = ["calendar", "communications", "sales", "inventory", "accounts", "customers"];
+  const fillers = preferredDepartments
+    .map((key) => bundle.departments.find((department) => department.key === key))
+    .filter((department): department is DepartmentSignal => Boolean(department))
+    .filter((department) => !represented.has(department.key) && department.value > 0)
+    .map((department) => ({
+      key: `today-${department.key}`,
+      department: department.key,
+      title: `${department.value} ${department.label}`,
+      detail: detailText(department.detail),
+      href: department.href,
+      status: department.key === "calendar" ? "Today" : "Open",
+      tone: department.attention > 0 ? "gold" : "neutral",
+    }));
+
+  return [...attention, ...fillers].slice(0, 5);
 }
 
 export default function WorkspacePage() {
@@ -124,10 +139,12 @@ export default function WorkspacePage() {
     if (!contextResponse.ok || !context.currentWorkspaceId) {
       throw new Error(context.error ?? "The current business could not be resolved.");
     }
+
     const workspaceId = String(context.currentWorkspaceId);
     const response = await fetch(`/api/business-hub?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error ?? "The Business Hub could not be loaded.");
+    if (!response.ok || !payload.ok) throw new Error(payload.error ?? "The Overview could not be loaded.");
+
     const result = payload.result as HubBundle;
     setBundle(result);
     setCachedAt(null);
@@ -148,164 +165,108 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     let active = true;
+
     async function initialise() {
       const lastWorkspace = readLastBusinessInsightWorkspace();
       const cached = lastWorkspace ? readBusinessInsightCache<HubBundle>("hub", lastWorkspace) : null;
+
       if (cached && active) {
         setBundle({ ...cached.payload, cached: true });
         setCachedAt(cached.cachedAt);
       }
+
       try {
         if (!window.navigator.onLine) {
-          if (cached) setNotice("Showing the last trusted Business Hub snapshot while offline.");
-          else setError("The Business Hub needs one successful online load before it can reopen offline.");
+          if (cached) setNotice("Offline · showing your last saved Overview.");
+          else setError("Open the Overview online once before using it offline.");
           return;
         }
         await load();
       } catch (loadError) {
-        if (!cached && active) setError(loadError instanceof Error ? loadError.message : "The Business Hub could not be loaded.");
-        else if (active) setNotice("Showing the cached Business Hub because live records are unavailable.");
+        if (!cached && active) {
+          setError(loadError instanceof Error ? loadError.message : "The Overview could not be loaded.");
+        } else if (active) {
+          setNotice("Live records are unavailable · showing your last saved Overview.");
+        }
       } finally {
         if (active) setLoading(false);
       }
     }
+
     void initialise();
     return () => { active = false; };
   }, [load]);
 
-  async function refresh() {
-    if (!online) {
-      setNotice("Reconnect to refresh authoritative Business Hub records.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await load();
-    } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : "The Business Hub could not be refreshed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  const focus = useMemo(() => buildFocus(bundle), [bundle]);
   const attentionCount = Number(bundle?.operational.attention_count ?? bundle?.attention.length ?? 0);
+  const statusLine = bundle?.cached
+    ? `Saved ${formatTimeAgo(cachedAt ?? bundle.generatedAt)}`
+    : bundle?.generatedAt
+      ? `Updated ${formatTimeAgo(bundle.generatedAt)}`
+      : "";
 
   return (
     <main className={styles.shell}>
-      <div className={styles.statusBar}>
-        <div className={styles.statusText}>
-          {online && !bundle?.cached ? <Wifi size={16} /> : <WifiOff size={16} />}
-          <span>
-            <strong>{online && !bundle?.cached ? "Live business records" : "Cached business view"}</strong>
-            {cachedAt ? ` · saved ${formatTimeAgo(cachedAt)}` : bundle?.generatedAt ? ` · updated ${formatTimeAgo(bundle.generatedAt)}` : ""}
-          </span>
+      {(notice || error || !online) ? (
+        <div className={`${styles.connectionNote} ${error ? styles.error : ""}`} role={error ? "alert" : "status"}>
+          <WifiOff size={15} />
+          <span>{error || notice || "Offline · showing saved business information."}</span>
+          {statusLine ? <small>{statusLine}</small> : null}
         </div>
-        <Button variant="secondary" onClick={() => void refresh()} disabled={loading || !online}>
-          <RefreshCw size={15} className={loading ? "spin" : ""} /> Refresh
-        </Button>
-      </div>
+      ) : null}
 
-      {notice ? <div className={styles.statusBar}><span className={styles.statusText}>{notice}</span></div> : null}
-      {error ? <div className={`${styles.statusBar} ${styles.error}`}>{error}</div> : null}
+      <section className={styles.focusPanel} aria-labelledby="today-attention-title">
+        <header className={styles.focusHeader}>
+          <div>
+            <p className={styles.eyebrow}>Overview</p>
+            <h1 id="today-attention-title">Today &amp; Attention</h1>
+            <p>
+              {loading && !bundle
+                ? "Checking what needs you now…"
+                : attentionCount > 0
+                  ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} need attention across the areas you can access.`
+                  : "Only the work relevant to your access appears here."}
+            </p>
+          </div>
+          {bundle?.supportReadOnly ? <span className={styles.readOnly}>Read only</span> : null}
+        </header>
 
-      <section className={styles.hubStage} aria-label="Business departments">
-        <div className={styles.orbit} aria-hidden="true" />
-        <div className={styles.center}>
-          <span className={styles.monogram}>BDB</span>
-          <h1>{bundle?.workspaceName ?? "Business Hub"}</h1>
-          <p>Connected operations</p>
-          <span className={styles.attentionCount}>
-            {attentionCount > 0 ? `${attentionCount} item${attentionCount === 1 ? "" : "s"} need attention` : "Everything is in order"}
-          </span>
-        </div>
-        {(bundle?.departments ?? []).map((department, index, departments) => {
-          const Icon = icons[department.key] ?? Activity;
-          const angle = `${(index * 360) / Math.max(departments.length, 1)}deg`;
-          return (
-            <Link
-              key={department.key}
-              href={department.href}
-              className={styles.departmentNode}
-              style={{ "--angle": angle } as CSSProperties}
-            >
-              {department.attention > 0 ? <span className={styles.nodeAttention}>{department.attention}</span> : null}
-              <Icon size={20} />
-              <strong>{department.name}</strong>
-              <b>{department.value}</b>
-              <small>{department.label}<br />{signalDetail(department.detail)}</small>
-            </Link>
-          );
-        })}
+        {loading && !bundle ? (
+          <div className={styles.loadingRows} aria-hidden="true">
+            <span /><span /><span />
+          </div>
+        ) : focus.length ? (
+          <div className={styles.focusList}>
+            {focus.map((item) => {
+              const Icon = icons[item.department] ?? AlertCircle;
+              return (
+                <Link href={item.href} className={styles.focusRow} data-tone={item.tone} key={item.key}>
+                  <span className={styles.focusIcon}><Icon size={18} /></span>
+                  <span className={styles.focusCopy}>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                  <span className={styles.focusMeta}>
+                    <b>{item.status}</b>
+                    {item.occurredAt ? <small>{formatTimeAgo(item.occurredAt)}</small> : null}
+                  </span>
+                  <span className={styles.chevron} aria-hidden="true">›</span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={styles.clearState}>
+            <span><CheckCircle2 size={22} /></span>
+            <div>
+              <strong>Nothing needs your attention right now.</strong>
+              <p>Use Create or the navigation to continue working.</p>
+            </div>
+          </div>
+        )}
       </section>
 
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div><h2>Quick actions</h2><p>Only actions permitted in this business are shown.</p></div>
-          {bundle?.supportReadOnly ? <span className="badge">Read only</span> : null}
-        </div>
-        <div className={styles.quickActions}>
-          {(bundle?.quickActions ?? []).map((action) => (
-            <Link href={action.href} className={styles.quickAction} key={action.key}><Plus size={14} /> {action.label}</Link>
-          ))}
-          {bundle && bundle.quickActions.length === 0 ? <span className={styles.empty}>No create actions are available for this access profile.</span> : null}
-        </div>
-      </section>
-
-      <div className={styles.sectionGrid}>
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div><h2>Needs attention</h2><p>Highest-priority actions across connected departments.</p></div>
-            <span className="badge">{bundle?.attention.length ?? 0} shown</span>
-          </div>
-          <div className={styles.actionList}>
-            {(bundle?.attention ?? []).map((item) => (
-              <Link href={item.route} className={styles.actionRow} key={`${item.department}-${item.source_id}`}>
-                <span className={styles.rowIcon}><ArrowRight size={15} /></span>
-                <span className={styles.rowCopy}><strong>{item.title}</strong><span>{item.detail}</span></span>
-                <span className={styles.rowTime}>{formatTimeAgo(item.occurred_at)}</span>
-              </Link>
-            ))}
-            {bundle && bundle.attention.length === 0 ? <div className={styles.empty}>No operational actions currently require attention.</div> : null}
-          </div>
-        </section>
-
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div><h2>Recent activity</h2><p>Authoritative events from connected business records.</p></div>
-            <Link href="/activity" className="link-button">View all</Link>
-          </div>
-          <div className={styles.activityList}>
-            {(bundle?.activity ?? []).slice(0, 8).map((item) => (
-              <Link href={item.route || "/workspace"} className={styles.activityRow} key={`${item.department}-${item.source_id}-${item.occurred_at}`}>
-                <span className={styles.rowIcon}><Activity size={15} /></span>
-                <span className={styles.rowCopy}><strong>{item.title}</strong><span>{item.customer_name ? `${item.customer_name} · ` : ""}{item.detail}</span></span>
-                <span className={styles.rowTime}>{formatTimeAgo(item.occurred_at)}</span>
-              </Link>
-            ))}
-            {bundle && bundle.activity.length === 0 ? <div className={styles.empty}>Business activity will appear here as departments record work.</div> : null}
-          </div>
-        </section>
-      </div>
-
-      <section className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div><h2>Financial position by currency</h2><p>Amounts are never combined across currencies.</p></div>
-          <Link href="/reports" className="link-button">Open Reports</Link>
-        </div>
-        <div className={styles.currencyGrid}>
-          {(bundle?.currencies ?? []).map((metric) => (
-            <article className={styles.currencyCard} key={metric.currency}>
-              <header><span>Currency</span><strong>{metric.currency}</strong></header>
-              <div className={styles.currencyMetric}><span>Completed sales</span><b>{money(metric.completed_sale_amount, metric.currency)}</b></div>
-              <div className={styles.currencyMetric}><span>Payments received</span><b>{money(metric.received_payment_amount, metric.currency)}</b></div>
-              <div className={styles.currencyMetric}><span>Customer outstanding</span><b>{money(metric.outstanding_invoice_amount, metric.currency)}</b></div>
-              <div className={styles.currencyMetric}><span>Supplier outstanding</span><b>{money(metric.outstanding_supplier_payable_amount, metric.currency)}</b></div>
-              <div className={styles.currencyMetric}><span>Bank unreconciled</span><b>{money(metric.unreconciled_transaction_amount, metric.currency)}</b></div>
-            </article>
-          ))}
-          {bundle && bundle.currencies.length === 0 ? <div className={styles.empty}>No financial records are available for this access profile.</div> : null}
-        </div>
-      </section>
+      {bundle && !bundle.cached && statusLine ? <p className={styles.updated}>{statusLine}</p> : null}
     </main>
   );
 }

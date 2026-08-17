@@ -1,0 +1,386 @@
+/*
+  BDB OS · Visual Refinement V2
+
+  Product rule: premium through restraint.
+  This layer intentionally sits after the existing production design system so
+  the application can evolve without duplicating operational components.
+*/
+
+:root {
+  --bg: #0b0c0b;
+  --surface: #141512;
+  --surface-2: #1a1b17;
+  --surface-3: #20211c;
+  --border: #292a24;
+  --border-strong: #37372e;
+  --text: #eee9de;
+  --muted: #a7a195;
+  --muted-2: #77736a;
+  --gold: #b49355;
+  --gold-light: #d6bb7d;
+  --gold-faint: rgba(180, 147, 85, .09);
+  --green: #78aa83;
+  --red: #ce7467;
+  --blue: #7897bd;
+  --radius: 16px;
+  --sidebar: 252px;
+  --shadow-soft: 0 16px 44px rgba(0, 0, 0, .14);
+  --shadow-raised: 0 28px 72px rgba(0, 0, 0, .24);
+}
+
+body {
+  background:
+    radial-gradient(circle at 82% -12%, rgba(180, 147, 85, .045), transparent 30%),
+    var(--bg);
+}
+
+/* BDB stays recognisable without visually overpowering the client's workspace. */
+.sidebar {
+  width: var(--sidebar);
+  padding: 22px 16px 16px;
+  background: #10110f;
+  border-right: 1px solid var(--border);
+}
+
+.brand-row {
+  min-height: 48px;
+}
+
+.bdb-wordmark strong {
+  color: #e7e0d3;
+  font-weight: 720;
+  letter-spacing: .025em;
+}
+
+.bdb-wordmark small,
+.powered-by {
+  color: #68655e;
+}
+
+.sidebar-search {
+  height: 42px;
+  border-color: #252620;
+  background: #131411;
+  box-shadow: none;
+}
+
+.sidebar-search:hover {
+  border-color: #39382f;
+}
+
+.nav-label {
+  color: #68645a;
+  font-size: 9.5px;
+  letter-spacing: .12em;
+}
+
+.sidebar-nav a {
+  position: relative;
+  min-height: 39px;
+  border-radius: 9px;
+  color: #a29d92;
+}
+
+.sidebar-nav a:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, .018);
+}
+
+.sidebar-nav a.active {
+  color: #e2d0a8;
+  background: rgba(180, 147, 85, .065);
+}
+
+.sidebar-nav a.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--gold);
+}
+
+.sidebar-footer {
+  border-color: #24251f;
+}
+
+.profile-avatar {
+  border-color: rgba(180, 147, 85, .24);
+  background: rgba(180, 147, 85, .07);
+  color: var(--gold-light);
+}
+
+/* The top bar is an identity and command surface, not another navigation row. */
+.topbar {
+  height: 78px;
+  padding: 0 30px;
+  border-bottom: 1px solid #24251f;
+  background: rgba(11, 12, 11, .92);
+  backdrop-filter: blur(18px);
+}
+
+.topbar-business {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.topbar-business-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #313128;
+  border-radius: 10px;
+  background: #171814;
+  color: var(--gold-light);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.topbar-business-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 4px;
+  background: #f5f3ed;
+}
+
+.topbar-business-copy {
+  min-width: 0;
+}
+
+.topbar-business-copy strong,
+.topbar-business-copy small {
+  display: block;
+}
+
+.topbar-business-copy strong {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-business-copy small {
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 10.5px;
+  text-transform: capitalize;
+}
+
+.topbar-business select {
+  max-width: 250px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 720;
+}
+
+.topbar-actions {
+  gap: 9px;
+}
+
+.topbar-search {
+  width: min(340px, 31vw);
+  height: 42px;
+  justify-content: flex-start;
+  border-color: #2a2b24;
+  border-radius: 11px;
+  background: #121310;
+  color: #8f8b82;
+}
+
+.topbar-search span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-search kbd {
+  margin-left: auto;
+}
+
+.global-create {
+  position: relative;
+}
+
+.global-create-button {
+  min-height: 42px;
+  padding-inline: 16px;
+  border: 1px solid #9b7e49;
+  border-radius: 11px;
+  background: #b49355;
+  color: #17140e;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.global-create-button:hover:not(:disabled) {
+  background: #c1a160;
+}
+
+.global-create-button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.global-create-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  right: 0;
+  z-index: 80;
+  width: 218px;
+  padding: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  background: #151612;
+  box-shadow: var(--shadow-raised);
+}
+
+.global-create-menu a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 39px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: #c9c4b8;
+  font-size: 12.5px;
+}
+
+.global-create-menu a:hover {
+  background: rgba(180, 147, 85, .075);
+  color: var(--text);
+}
+
+.connection-pill {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.main-content {
+  width: min(100%, 1320px);
+  padding: 42px 42px 70px;
+}
+
+/* Shared product surfaces: less card chrome, more hierarchy and space. */
+.card,
+.admin-detail,
+.audit-table,
+.admin-client-layout,
+.admin-plan-grid article,
+.admin-stats > div {
+  border-color: #2a2b24;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.card-interactive:hover,
+.customer-card:hover,
+.module-card:hover {
+  transform: translateY(-1px);
+  border-color: #3a392f;
+  background: #171814;
+  box-shadow: none;
+}
+
+.button-primary,
+.marketing-primary {
+  border-color: #9b7e49;
+  background: #b49355;
+  color: #17140e;
+  box-shadow: none;
+}
+
+.button-primary:hover:not(:disabled),
+.marketing-primary:hover {
+  background: #c1a160;
+  box-shadow: none;
+}
+
+.button-secondary {
+  background: #171814;
+  border-color: #303129;
+}
+
+.button-secondary:hover:not(:disabled) {
+  border-color: #474438;
+}
+
+.field input,
+.field select,
+.field textarea,
+.search-large input,
+.filter-input {
+  border-color: #2b2c25;
+  background: #11120f;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.search-large input:focus,
+.filter-input:focus {
+  border-color: rgba(180, 147, 85, .62);
+  box-shadow: 0 0 0 3px rgba(180, 147, 85, .075);
+}
+
+/* Client logo is a Founder-controlled commercial add-on. Normal workspace
+   Settings must not offer a second self-service branding path. */
+.logo-upload-card {
+  display: none !important;
+}
+
+.settings-card {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .topbar-search {
+    width: 42px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .topbar-search span,
+  .topbar-search kbd {
+    display: none;
+  }
+
+  .topbar-business-copy small {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    height: 64px;
+    padding-inline: 14px;
+  }
+
+  .main-content {
+    padding: 24px 16px 54px;
+  }
+
+  .global-create-button {
+    min-width: 40px;
+    padding-inline: 11px;
+  }
+
+  .global-create-label {
+    display: none;
+  }
+}

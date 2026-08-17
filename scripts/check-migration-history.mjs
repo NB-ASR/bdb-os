@@ -59,10 +59,29 @@ const canonicalProductionHistory = [
   "20260813143945_unify_sales_service_permission_boundaries.sql",
 ];
 
+// Production remains the immutable registered prefix. New work may add an
+// explicitly reviewed pending migration on a release branch without pretending
+// it has already been registered in Production.
+const pendingMigrations = [
+  "20260817191500_custom_business_branding.sql",
+];
+const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
+const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
+
+assert.deepEqual(
+  registeredMigrationFiles,
+  canonicalProductionHistory,
+  "The registered repository migration history must exactly match Production before pending release migrations.",
+);
+assert.deepEqual(
+  actualPendingMigrations,
+  pendingMigrations,
+  "Pending release migrations must be explicitly reviewed and listed.",
+);
 assert.deepEqual(
   migrationFiles,
-  canonicalProductionHistory,
-  "The repository migration history must exactly match the versions registered in production.",
+  [...canonicalProductionHistory, ...pendingMigrations].sort(),
+  "No migration may appear outside the registered Production history or reviewed pending release list.",
 );
 
 const versions = migrationFiles.map((name) => name.split("_")[0]);
@@ -183,4 +202,4 @@ for (const featureKey of [
 assert.match(releaseEntitlements, /insert into public\.plan_features/i);
 assert.match(releaseEntitlements, /where plan\.is_active/i);
 
-console.log("Migration history and ordered release domains match Production.");
+console.log("Registered migration history matches Production and reviewed pending migrations are explicit.");

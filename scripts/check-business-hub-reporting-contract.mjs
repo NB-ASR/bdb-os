@@ -61,7 +61,7 @@ for (const api of [hubApi, reportsApi]) {
   assert.doesNotMatch(api, /export async function (POST|PUT|PATCH|DELETE)/, "Business insight APIs must remain read-only.");
 }
 assert.match(hubApi, /business_hub_attention/, "Business Hub API must use the attention read model.");
-assert.match(hubApi, /business_hub_recent_activity/, "Business Hub API must use the activity read model.");
+assert.match(hubApi, /business_hub_recent_activity/, "Business Hub API may preserve the activity read model for other authorised surfaces.");
 assert.match(reportsApi, /business_report_monthly_sales/, "Reports API must use the monthly read model.");
 assert.match(reportsApi, /business_report_customer_sales/, "Reports API must use the Customer read model.");
 
@@ -69,15 +69,16 @@ assert.doesNotMatch(hubPage, /useBdb/, "Business Hub must not calculate from the
 assert.doesNotMatch(reportsPage, /useBdb/, "Reports must not calculate from the legacy shared store.");
 assert.match(hubPage, /\/api\/business-hub/, "Business Hub must use its authoritative API.");
 assert.match(reportsPage, /\/api\/reports/, "Reports must use its authoritative API.");
-assert.match(hubPage, /--angle/, "Business Hub must render circular department navigation.");
-assert.match(hubStyles, /border-radius: 50%/, "Business Hub navigation must retain circular identity.");
-assert.match(hubStyles, /var\(--gold\)/, "Business Hub must retain dark-gold accents.");
+assert.match(hubPage, /Today &amp; Attention/, "Overview must centre the user's permitted work and attention.");
+assert.doesNotMatch(hubPage, /--angle|orbit/i, "Overview must not duplicate sidebar navigation with a decorative department wheel.");
+assert.doesNotMatch(hubPage, /Financial position|Recent activity/i, "Universal Overview must not duplicate role-sensitive Reports or Activity surfaces.");
+assert.match(hubStyles, /var\(--gold\)/, "Business Hub must retain restrained dark-gold identity.");
 assert.match(reportsPage, /selectedCurrency/, "Reports must present one currency at a time.");
 assert.match(reportsPage, /Currencies are reported separately|Each currency remains separate/i, "Reports must state the currency boundary.");
 
 assert.match(cache, /localStorage/, "Business insights must preserve an offline snapshot.");
 assert.match(cache, /workspaceId/, "Offline snapshots must remain workspace-scoped.");
-assert.match(hubPage, /Showing the last trusted Business Hub snapshot while offline/i, "Business Hub must label cached offline data.");
+assert.match(hubPage, /Offline · showing your last saved Overview/i, "Overview must clearly label cached offline data.");
 assert.match(reportsPage, /Showing the last trusted Reporting snapshot while offline/i, "Reports must label cached offline data.");
 
 console.log("Business Hub and Reporting architecture contract passed.");
