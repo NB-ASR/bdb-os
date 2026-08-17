@@ -9,7 +9,7 @@ const [
   overview,
   refinement,
 ] = await Promise.all([
-  readFile("supabase/migrations/20260817193000_custom_business_branding.sql", "utf8"),
+  readFile("supabase/migrations/20260817191500_custom_business_branding.sql", "utf8"),
   readFile("src/app/api/admin/branding/route.ts", "utf8"),
   readFile("src/app/admin/branding/page.tsx", "utf8"),
   readFile("src/components/app-shell.tsx", "utf8"),
