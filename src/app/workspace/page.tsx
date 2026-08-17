@@ -1,34 +1,27 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
   Boxes,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   CircleDollarSign,
   FileText,
   Landmark,
   MessageSquareText,
-  Plus,
-  Search,
   ShoppingBag,
   UsersRound,
   WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { SearchDialog } from "@/components/search-dialog";
 import { formatTimeAgo } from "@/lib/format";
 import {
   readBusinessInsightCache,
   readLastBusinessInsightWorkspace,
   writeBusinessInsightCache,
 } from "@/lib/modules/business-insight-cache";
-import { useBdb } from "@/lib/store";
 import styles from "./business-hub.module.css";
 
 type AmountDetail = { currency: string; amount: number; count: number };
@@ -53,8 +46,6 @@ type AttentionItem = {
   occurred_at: string;
 };
 
-type QuickAction = { key: string; label: string; href: string };
-
 type HubBundle = {
   workspaceId: string;
   workspaceName: string;
@@ -64,7 +55,7 @@ type HubBundle = {
   operational: Record<string, number | string>;
   departments: DepartmentSignal[];
   attention: AttentionItem[];
-  quickActions: QuickAction[];
+  quickActions: Array<{ key: string; label: string; href: string }>;
 };
 
 type FocusItem = {
@@ -133,26 +124,13 @@ function buildFocus(bundle: HubBundle | null): FocusItem[] {
   return [...attention, ...fillers].slice(0, 5);
 }
 
-function firstName(fullName: string) {
-  return fullName.trim().split(/\s+/).filter(Boolean)[0] ?? "";
-}
-
-function actionLabel(label: string) {
-  return label.replace(/^(Add|Create|Record)\s+/i, "");
-}
-
 export default function WorkspacePage() {
-  const { state, mode } = useBdb();
   const [bundle, setBundle] = useState<HubBundle | null>(null);
   const [online, setOnline] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [cachedAt, setCachedAt] = useState<string | null>(null);
-  const [currentUserName, setCurrentUserName] = useState("");
-  const [brandingEnabled, setBrandingEnabled] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError("");
@@ -161,9 +139,6 @@ export default function WorkspacePage() {
     if (!contextResponse.ok || !context.currentWorkspaceId) {
       throw new Error(context.error ?? "The current business could not be resolved.");
     }
-
-    setCurrentUserName(String(context.currentUser?.fullName ?? "").trim());
-    setBrandingEnabled(Boolean(context.features?.custom_branding));
 
     const workspaceId = String(context.currentWorkspaceId);
     const response = await fetch(`/api/business-hub?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
@@ -229,59 +204,9 @@ export default function WorkspacePage() {
     : bundle?.generatedAt
       ? `Updated ${formatTimeAgo(bundle.generatedAt)}`
       : "";
-  const companyName = bundle?.workspaceName || state.settings.businessName || "Your business";
-  const greetingName = firstName(currentUserName || (mode === "demo" ? state.settings.ownerName : ""));
-  const logoUrl = brandingEnabled ? state.theme.clientLogoUrl : undefined;
-  const quickActions = bundle?.quickActions ?? [];
 
   return (
     <main className={styles.shell}>
-      <section className={`${styles.hero} overview-command-surface`} aria-label={`${companyName} Overview`}>
-        <div className={styles.identity}>
-          {logoUrl ? (
-            <div className={styles.companyLogo}>
-              <Image src={logoUrl} alt={`${companyName} logo`} width={112} height={112} unoptimized />
-            </div>
-          ) : null}
-          <div className={styles.identityCopy}>
-            <h1>{companyName}</h1>
-            <p className={styles.welcome}>{greetingName ? `Welcome, ${greetingName}.` : "Welcome."}</p>
-            <p className={styles.intro}>Here&apos;s what needs your attention today.</p>
-          </div>
-        </div>
-
-        <div className={styles.heroCommands}>
-          <button type="button" className={styles.heroSearch} onClick={() => setSearchOpen(true)} aria-label="Search across BDB OS">
-            <Search size={18} />
-            <span>Search across BDB OS…</span>
-            <kbd>⌘K</kbd>
-          </button>
-          <div className={styles.heroCreate}>
-            <button
-              type="button"
-              className={styles.createButton}
-              onClick={() => setCreateOpen((current) => !current)}
-              disabled={!online || quickActions.length === 0}
-              aria-expanded={createOpen}
-            >
-              <Plus size={17} />
-              <span>Create</span>
-              <ChevronDown size={15} />
-            </button>
-            {createOpen ? (
-              <div className={styles.createMenu}>
-                {quickActions.map((action) => (
-                  <Link href={action.href} key={action.key} onClick={() => setCreateOpen(false)}>
-                    <span>{actionLabel(action.label)}</span>
-                    <ChevronRight size={14} />
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
       {(notice || error || !online) ? (
         <div className={`${styles.connectionNote} ${error ? styles.error : ""}`} role={error ? "alert" : "status"}>
           <WifiOff size={15} />
@@ -293,7 +218,8 @@ export default function WorkspacePage() {
       <section className={styles.focusPanel} aria-labelledby="today-attention-title">
         <header className={styles.focusHeader}>
           <div>
-            <h2 id="today-attention-title">Today &amp; Attention</h2>
+            <p className={styles.eyebrow}>Overview</p>
+            <h1 id="today-attention-title">Today &amp; Attention</h1>
             <p>
               {loading && !bundle
                 ? "Checking what needs you now…"
@@ -341,7 +267,6 @@ export default function WorkspacePage() {
       </section>
 
       {bundle && !bundle.cached && statusLine ? <p className={styles.updated}>{statusLine}</p> : null}
-      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />
     </main>
   );
 }

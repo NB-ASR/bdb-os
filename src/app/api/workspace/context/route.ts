@@ -35,19 +35,19 @@ export async function GET() {
     const workspaces = (data ?? []) as LinkedWorkspace[];
     const current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
 
-    const { data: profile, error: profileLookupError } = await admin
-      .from("profiles")
-      .select("active_workspace_id,full_name")
-      .eq("id", userId)
-      .maybeSingle();
-    if (profileLookupError) throw profileLookupError;
-
-    if (current && !profile?.active_workspace_id) {
-      const { error: profileError } = await admin
+    if (current) {
+      const { data: profile } = await admin
         .from("profiles")
-        .update({ active_workspace_id: current.workspace_id })
-        .eq("id", userId);
-      if (profileError) throw profileError;
+        .select("active_workspace_id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!profile?.active_workspace_id) {
+        const { error: profileError } = await admin
+          .from("profiles")
+          .update({ active_workspace_id: current.workspace_id })
+          .eq("id", userId);
+        if (profileError) throw profileError;
+      }
     }
 
     let features: Record<string, boolean> = {};
@@ -65,9 +65,6 @@ export async function GET() {
     const response = Response.json({
       workspaces,
       currentWorkspaceId: current?.workspace_id ?? null,
-      currentUser: {
-        fullName: String(profile?.full_name ?? "").trim(),
-      },
       features,
       supportAccess: false,
       supportAccessMode: null,
