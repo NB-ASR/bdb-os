@@ -63,7 +63,7 @@ const canonicalProductionHistory = [
 // explicitly reviewed pending migration on a release branch without pretending
 // it has already been registered in Production.
 const pendingMigrations = [
-  "20260817193000_custom_business_branding.sql",
+  "20260817191500_custom_business_branding.sql",
 ];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
