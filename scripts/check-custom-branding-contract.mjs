@@ -32,7 +32,7 @@ assert.match(adminBrandingRoute, /2_000_000/, "Founder branding upload must reta
 assert.match(adminBrandingRoute, /logo_removed/, "Logo removal must be audited.");
 
 assert.match(adminPage, /Branding/, "Founder Admin must expose branding inside the selected client record.");
-assert.match(adminPage, /saved logo privately stored/i, "Disable must retain the saved logo.");
+assert.match(adminPage, /saved logo was retained/i, "Disable must retain the saved logo.");
 assert.match(adminPage, /Remove permanently deletes the saved asset/i, "Remove behaviour must be explicit.");
 assert.doesNotMatch(adminPage, /href="\/admin\/branding"/, "Founder Admin must not duplicate branding as a sidebar destination.");
 assert.match(legacyBrandingPage, /redirect\("\/admin"\)/, "Legacy standalone branding route must return users to the client-centred Founder Admin.");
