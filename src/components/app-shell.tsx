@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   BarChart3,
-  BookOpen,
   Boxes,
   Building2,
   CalendarDays,
@@ -17,7 +16,6 @@ import {
   FileCheck2,
   FileText,
   Landmark,
-  Loader2,
   Menu,
   MessageSquareText,
   Package,
@@ -244,7 +242,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => { setCreateOpen(false); }, [pathname]);
+  function closeNavigation() {
+    setMobileOpen(false);
+    setCreateOpen(false);
+  }
 
   function featureVisible(item: NavigationItem) {
     return !item.featureKey || enabledFeatures[item.featureKey];
@@ -254,7 +255,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     const active = pathname === item.href;
     const Icon = item.icon;
     return (
-      <Link key={item.href} href={item.href} className={`${active ? "active" : ""} ${nested && active ? styles.activeChild : ""}`.trim()} onClick={() => setMobileOpen(false)}>
+      <Link key={item.href} href={item.href} className={`${active ? "active" : ""} ${nested && active ? styles.activeChild : ""}`.trim()} onClick={closeNavigation}>
         <Icon size={19} /><span>{item.name}</span>{active ? <ChevronRight size={16} /> : null}
       </Link>
     );
@@ -264,8 +265,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "sidebar-open" : ""}`}>
         <div className="brand-row">
-          <span onClick={() => setMobileOpen(false)}><BdbMonogram href="/workspace" /></span>
-          <button className="icon-button mobile-only" onClick={() => setMobileOpen(false)} aria-label="Close menu"><X size={20} /></button>
+          <span onClick={closeNavigation}><BdbMonogram href="/workspace" /></span>
+          <button className="icon-button mobile-only" onClick={closeNavigation} aria-label="Close menu"><X size={20} /></button>
         </div>
 
         <button className="sidebar-search" onClick={() => setSearchOpen(true)}><Search size={18} /><span>Search</span><kbd>⌘K</kbd></button>
@@ -290,9 +291,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             );
           })}
           <p className="nav-label nav-label-lower">Administration</p>
-          {canManageTeam && <Link href="/team" className={pathname === "/team" ? "active" : ""} onClick={() => setMobileOpen(false)}><UsersRound size={19} /><span>Team</span>{pathname === "/team" ? <ChevronRight size={16} /> : null}</Link>}
-          <Link href="/activity" className={pathname === "/activity" ? "active" : ""} onClick={() => setMobileOpen(false)}><Activity size={19} /><span>Activity</span></Link>
-          <Link href="/settings" className={pathname === "/settings" ? "active" : ""} onClick={() => setMobileOpen(false)}><Settings size={19} /><span>Settings</span></Link>
+          {canManageTeam && <Link href="/team" className={pathname === "/team" ? "active" : ""} onClick={closeNavigation}><UsersRound size={19} /><span>Team</span>{pathname === "/team" ? <ChevronRight size={16} /> : null}</Link>}
+          <Link href="/activity" className={pathname === "/activity" ? "active" : ""} onClick={closeNavigation}><Activity size={19} /><span>Activity</span></Link>
+          <Link href="/settings" className={pathname === "/settings" ? "active" : ""} onClick={closeNavigation}><Settings size={19} /><span>Settings</span></Link>
         </nav>
 
         <div className="sidebar-footer">
@@ -301,7 +302,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <PoweredByBdb />
       </aside>
-      {mobileOpen ? <button className="sidebar-overlay" onClick={() => setMobileOpen(false)} aria-label="Close navigation" /> : null}
+      {mobileOpen ? <button className="sidebar-overlay" onClick={closeNavigation} aria-label="Close navigation" /> : null}
 
       <div className="app-content">
         <header className="topbar">
