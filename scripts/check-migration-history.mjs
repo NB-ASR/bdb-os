@@ -57,14 +57,13 @@ const canonicalProductionHistory = [
   "20260813133451_vanita_release_documents_and_communications.sql",
   "20260813133455_vanita_release_business_hub_workspace_and_admin.sql",
   "20260813143945_unify_sales_service_permission_boundaries.sql",
+  "20260817221033_custom_business_branding.sql",
 ];
 
 // Production remains the immutable registered prefix. New work may add an
 // explicitly reviewed pending migration on a release branch without pretending
 // it has already been registered in Production.
-const pendingMigrations = [
-  "20260817191500_custom_business_branding.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
