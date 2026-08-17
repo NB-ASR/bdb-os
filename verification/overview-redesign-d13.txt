@@ -1,0 +1,2 @@
+Verification-only marker for the approved Overview redesign on main commit d13ced36b75c9101bb061eb9fa885c631a14eb29.
+This file exists only to trigger the pull-request validation suite and must not be merged.
