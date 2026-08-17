@@ -24,7 +24,11 @@ function failure(error: unknown) {
   return Response.json({ error: message, code }, { status });
 }
 
-type LinkedWorkspace = { workspace_id: string; is_active?: boolean };
+type LinkedWorkspace = {
+  workspace_id: string;
+  workspace_name?: string;
+  is_active?: boolean;
+};
 type EffectiveFeature = { feature_key: string; enabled: boolean };
 
 export async function GET() {
@@ -35,22 +39,23 @@ export async function GET() {
     const workspaces = (data ?? []) as LinkedWorkspace[];
     const current = workspaces.find((workspace) => workspace.is_active) ?? workspaces[0];
 
-    if (current) {
-      const { data: profile } = await admin
+    const { data: profile, error: profileLookupError } = await admin
+      .from("profiles")
+      .select("active_workspace_id,full_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileLookupError) throw profileLookupError;
+
+    if (current && !profile?.active_workspace_id) {
+      const { error: profileError } = await admin
         .from("profiles")
-        .select("active_workspace_id")
-        .eq("id", userId)
-        .maybeSingle();
-      if (!profile?.active_workspace_id) {
-        const { error: profileError } = await admin
-          .from("profiles")
-          .update({ active_workspace_id: current.workspace_id })
-          .eq("id", userId);
-        if (profileError) throw profileError;
-      }
+        .update({ active_workspace_id: current.workspace_id })
+        .eq("id", userId);
+      if (profileError) throw profileError;
     }
 
     let features: Record<string, boolean> = {};
+    let clientLogoUrl: string | null = null;
     if (current) {
       const featureResult = await supabase.rpc("get_effective_features", {
         target_workspace_id: current.workspace_id,
@@ -60,12 +65,35 @@ export async function GET() {
         ((featureResult.data ?? []) as EffectiveFeature[])
           .map((feature) => [feature.feature_key, feature.enabled]),
       );
+
+      if (features.custom_branding) {
+        const { data: theme, error: themeError } = await admin
+          .from("workspace_themes")
+          .select("client_logo_path")
+          .eq("workspace_id", current.workspace_id)
+          .maybeSingle();
+        if (themeError) throw themeError;
+        const logoPath = theme?.client_logo_path ? String(theme.client_logo_path) : "";
+        if (logoPath) {
+          const signed = await admin.storage.from("workspace-assets").createSignedUrl(logoPath, 3600);
+          if (signed.error) throw signed.error;
+          clientLogoUrl = signed.data?.signedUrl ?? null;
+        }
+      }
     }
 
     const response = Response.json({
       workspaces,
       currentWorkspaceId: current?.workspace_id ?? null,
+      currentWorkspaceName: String(current?.workspace_name ?? ""),
+      currentUser: {
+        fullName: String(profile?.full_name ?? "").trim(),
+      },
       features,
+      branding: {
+        enabled: Boolean(features.custom_branding),
+        logoUrl: clientLogoUrl,
+      },
       supportAccess: false,
       supportAccessMode: null,
     });
