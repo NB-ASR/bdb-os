@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import "./admin-refined.css";
 
-export default function FounderAdminLayout({ children }: { children: React.ReactNode }) {
+export default function FounderAdminLayout({ children }: { children: ReactNode }) {
   return children;
 }
