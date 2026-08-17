@@ -151,14 +151,6 @@ export default function AdminPage() {
   const brandingPlanEnabled = Boolean(data?.planFeatures.some((item) => item.plan_id === activeWorkspace?.plan_id && item.feature_key === "custom_branding" && item.enabled));
   const brandingEnabled = brandingOverride?.enabled ?? brandingPlanEnabled;
 
-  useEffect(() => {
-    setBillingAmount(contract?.monthly_amount ? String(contract.monthly_amount) : "");
-    setBillingTerm(contract && [3, 6].includes(contract.minimum_term_months) ? String(contract.minimum_term_months) : "6");
-    setBillingTrial("0");
-    setSupportReason("");
-    setBranding(null);
-  }, [activeWorkspace?.id, contract?.minimum_term_months, contract?.monthly_amount]);
-
   const loadBranding = useCallback(async (workspaceId: string) => {
     setBusy("load-branding");
     setError("");
@@ -293,9 +285,24 @@ export default function AdminPage() {
     if (saved) setSupportReason("");
   }
 
+  function openClientSection(section: ClientSection) {
+    if (section === "billing") {
+      setBillingAmount(contract?.monthly_amount ? String(contract.monthly_amount) : "");
+      setBillingTerm(contract && [3, 6].includes(contract.minimum_term_months) ? String(contract.minimum_term_months) : "6");
+      setBillingTrial("0");
+    }
+    if (section === "branding") setBranding(null);
+    setClientSection(section);
+  }
+
   function selectClient(workspaceId: string) {
     setSelected(workspaceId);
     setClientSection("overview");
+    setBillingAmount("");
+    setBillingTerm("6");
+    setBillingTrial("0");
+    setSupportReason("");
+    setBranding(null);
     setError("");
     setNotice("");
   }
@@ -392,7 +399,7 @@ export default function AdminPage() {
 
                 <div className="admin-client-tabs" role="tablist" aria-label={`Manage ${activeWorkspace.name}`}>
                   {clientSections.map((section) => (
-                    <button key={section.key} type="button" role="tab" aria-selected={clientSection === section.key} className={clientSection === section.key ? "active" : ""} onClick={() => setClientSection(section.key)}>{section.label}</button>
+                    <button key={section.key} type="button" role="tab" aria-selected={clientSection === section.key} className={clientSection === section.key ? "active" : ""} onClick={() => openClientSection(section.key)}>{section.label}</button>
                   ))}
                 </div>
 
@@ -434,7 +441,7 @@ export default function AdminPage() {
                         <div className="admin-kv-list">
                           <div className="admin-kv-row"><span>Company logo add-on</span><strong>{brandingEnabled ? "Enabled" : "Disabled"}</strong></div>
                         </div>
-                        <div className="admin-form-actions"><button className="button button-secondary" onClick={() => setClientSection("branding")}><ImageIcon size={15} /> Manage branding</button></div>
+                        <div className="admin-form-actions"><button className="button button-secondary" onClick={() => openClientSection("branding")}><ImageIcon size={15} /> Manage branding</button></div>
                       </article>
                     </div>
                   </section>
