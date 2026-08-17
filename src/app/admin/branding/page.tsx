@@ -47,8 +47,16 @@ export default function CustomBrandingPage() {
     setBranding(result as BrandingState);
   }, []);
 
-  useEffect(() => { const timer = window.setTimeout(() => void loadDashboard(), 0); return () => window.clearTimeout(timer); }, [loadDashboard]);
-  useEffect(() => { if (selected) void loadBranding(selected); }, [selected, loadBranding]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDashboard(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!selected) return;
+    const timer = window.setTimeout(() => void loadBranding(selected), 0);
+    return () => window.clearTimeout(timer);
+  }, [selected, loadBranding]);
 
   const workspace = useMemo(() => data?.workspaces.find((item) => item.id === selected) ?? null, [data, selected]);
   const brandingFeature = data?.features.find((feature) => feature.key === "custom_branding") ?? null;
