@@ -66,7 +66,31 @@ type Membership = {
 };
 type Group = { id: string; name: string; slug: string; created_at: string };
 type GroupLink = { group_id: string; workspace_id: string; created_at: string };
-type Audit = { id: number; action: string; created_at: string; workspace_id: string | null; metadata: Record<string, unknown> };
+type Audit = {
+  id: number;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  actor_is_platform_admin: boolean;
+  action: string;
+  created_at: string;
+  workspace_id: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+};
+type WorkspaceActivitySummary = {
+  workspace_id: string;
+  created_at: string;
+  created_by_user_id: string | null;
+  created_by_name: string | null;
+  created_by_email: string | null;
+  last_modified_at: string | null;
+  last_modified_by_user_id: string | null;
+  last_modified_by_name: string | null;
+  last_modified_by_email: string | null;
+  last_action: string | null;
+};
 type Dashboard = {
   workspaces: Workspace[];
   plans: Plan[];
@@ -80,6 +104,8 @@ type Dashboard = {
   groups: Group[];
   groupLinks: GroupLink[];
   audit: Audit[];
+  workspaceActivity: Record<string, WorkspaceActivitySummary>;
+  auditCursor: number;
 };
 type BrandingState = {
   workspaceId: string;
@@ -99,6 +125,71 @@ const clientSections: Array<{ key: ClientSection; label: string }> = [
   { key: "owner", label: "Owner & Access" },
 ];
 
+function formatMoment(value: string | null | undefined, compact = false) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return compact
+    ? date.toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function actorLabel(name: string | null | undefined, email: string | null | undefined) {
+  return name?.trim() || email?.trim() || "Founder not recorded";
+}
+
+function metadataString(item: Audit, key: string) {
+  const value = item.metadata?.[key];
+  return typeof value === "string" ? value : "";
+}
+
+function describeFounderAction(item: Audit, data: Dashboard) {
+  if (item.action === "workspace.created") return "created this client business";
+  if (item.action === "workspace.manually_provisioned") return "manually provisioned this client business";
+  if (item.action === "admin.workspace-status") {
+    const status = metadataString(item, "status");
+    return `changed client status${status ? ` to ${status}` : ""}`;
+  }
+  if (item.action === "admin.workspace-plan") {
+    const planId = metadataString(item, "planId");
+    const plan = data.plans.find((candidate) => candidate.id === planId);
+    return `changed plan${plan ? ` to ${plan.name}` : ""}`;
+  }
+  if (item.action === "admin.feature-override") {
+    const featureKey = metadataString(item, "featureKey") || item.entity_id || "module";
+    const feature = data.features.find((candidate) => candidate.key === featureKey);
+    const enabled = Boolean(item.metadata?.enabled);
+    const label = featureKey === "custom_branding" ? "Custom Business Branding" : `${feature?.name ?? featureKey} module`;
+    return `${enabled ? "enabled" : "disabled"} ${label}`;
+  }
+  if (item.action === "admin.link-workspace") {
+    const groupId = metadataString(item, "groupId") || item.entity_id || "";
+    const group = data.groups.find((candidate) => candidate.id === groupId);
+    return `linked this business${group ? ` to ${group.name}` : " to a Business Group"}`;
+  }
+  if (item.action === "admin.unlink-workspace") return "removed this business from its Business Group";
+  if (item.action === "admin.resend-owner-invite") return "resent the Business Owner invitation";
+  if (item.action === "admin.support-access") return "recorded an administrative audit reason";
+  if (item.action === "billing.checkout_created") {
+    const amount = Number(item.metadata?.amount);
+    const term = Number(item.metadata?.term_months);
+    const amountText = Number.isFinite(amount) && amount > 0 ? ` · £${amount.toLocaleString()}/month` : "";
+    const termText = Number.isFinite(term) && term > 0 ? ` · ${term} month minimum` : "";
+    return `created a Stripe billing link${amountText}${termText}`;
+  }
+  if (item.action === "admin.custom_branding.logo_updated") {
+    return item.metadata?.previous_logo_path ? "replaced the company logo" : "uploaded the company logo";
+  }
+  if (item.action === "admin.custom_branding.logo_removed") return "removed the company logo";
+  if (item.action === "admin.plan-feature") {
+    const featureKey = metadataString(item, "featureKey") || item.entity_id || "feature";
+    const feature = data.features.find((candidate) => candidate.key === featureKey);
+    return `${Boolean(item.metadata?.enabled) ? "enabled" : "disabled"} ${feature?.name ?? featureKey} on a commercial plan`;
+  }
+  if (item.action === "business_group.created") return "created a Business Group";
+  return item.action.replace(/^admin\./, "").replaceAll(".", " · ").replaceAll("-", " ");
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const [data, setData] = useState<Dashboard | null>(null);
@@ -115,14 +206,16 @@ export default function AdminPage() {
   const [billingTrial, setBillingTrial] = useState("0");
   const [supportReason, setSupportReason] = useState("");
 
-  const load = useCallback(async () => {
-    setError("");
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setError("");
     const response = await fetch("/api/admin", { cache: "no-store" });
     if (response.status === 428) { router.push("/mfa"); return; }
     if (response.status === 401) { router.push("/login?next=/admin"); return; }
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setError(result.error === "NOT_CONFIGURED" ? "Founder Admin is not connected to Supabase in this environment." : result.error ?? "Founder Admin could not be loaded.");
+      if (!silent) {
+        setError(result.error === "NOT_CONFIGURED" ? "Founder Admin is not connected to Supabase in this environment." : result.error ?? "Founder Admin could not be loaded.");
+      }
       return;
     }
     const dashboard = result as Dashboard;
@@ -134,6 +227,32 @@ export default function AdminPage() {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkSharedActivity() {
+      if (document.visibilityState === "hidden") return;
+      const response = await fetch("/api/admin/activity", { cache: "no-store" }).catch(() => null);
+      if (!response || cancelled) return;
+      if (response.status === 428) { router.push("/mfa"); return; }
+      if (response.status === 401) { router.push("/login?next=/admin"); return; }
+      if (!response.ok) return;
+      const result = await response.json().catch(() => ({})) as { cursor?: number };
+      if (Number(result.cursor ?? 0) > Number(data?.auditCursor ?? 0)) {
+        await load(true);
+      }
+    }
+
+    const interval = window.setInterval(() => void checkSharedActivity(), 15_000);
+    const onFocus = () => void checkSharedActivity();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [data?.auditCursor, load, router]);
 
   const activeWorkspace = useMemo(
     () => data?.workspaces.find((workspace) => workspace.id === selected) ?? data?.workspaces[0] ?? null,
@@ -150,6 +269,12 @@ export default function AdminPage() {
   const brandingOverride = data?.overrides.find((item) => item.workspace_id === activeWorkspace?.id && item.feature_key === "custom_branding");
   const brandingPlanEnabled = Boolean(data?.planFeatures.some((item) => item.plan_id === activeWorkspace?.plan_id && item.feature_key === "custom_branding" && item.enabled));
   const brandingEnabled = brandingOverride?.enabled ?? brandingPlanEnabled;
+  const activeActivitySummary = activeWorkspace ? data?.workspaceActivity?.[activeWorkspace.id] : null;
+  const activeFounderActivity = data?.audit.filter((item) =>
+    item.workspace_id === activeWorkspace?.id
+    && item.actor_is_platform_admin
+    && item.action !== "platform.founder_workspace_ready",
+  ).slice(0, 8) ?? [];
 
   const loadBranding = useCallback(async (workspaceId: string) => {
     setBusy("load-branding");
@@ -184,7 +309,7 @@ export default function AdminPage() {
     setBusy("");
     if (!response.ok) { setError(result.error ?? "The change could not be saved."); return false; }
     setNotice(success);
-    await load();
+    await load(true);
     return true;
   }
 
@@ -203,7 +328,7 @@ export default function AdminPage() {
     if (!response.ok) { setError(result.error ?? "The group could not be created."); return; }
     event.currentTarget.reset();
     setNotice("Business Group created.");
-    await load();
+    await load(true);
   }
 
   async function createBillingLink(event: FormEvent<HTMLFormElement>) {
@@ -232,7 +357,7 @@ export default function AdminPage() {
     }
     setNotice("Billing link created. Stripe Checkout opened in a new tab.");
     window.open(result.url, "_blank", "noopener,noreferrer");
-    await load();
+    await load(true);
   }
 
   async function uploadLogo(file?: File) {
@@ -252,6 +377,7 @@ export default function AdminPage() {
     }
     setNotice("Company logo saved. Enable Custom Business Branding when it should appear to the client.");
     await loadBranding(activeWorkspace.id);
+    await load(true);
   }
 
   async function removeLogo() {
@@ -273,6 +399,7 @@ export default function AdminPage() {
     }
     setNotice("Company logo removed.");
     await loadBranding(activeWorkspace.id);
+    await load(true);
   }
 
   async function recordAdministrativeReason() {
@@ -353,6 +480,7 @@ export default function AdminPage() {
                 <span><strong>{data.workspaces.length}</strong> clients</span>
                 <span><strong>{data.workspaces.filter((item) => item.status === "active").length}</strong> active</span>
                 <span><strong>{data.memberships.filter((item) => item.role === "owner" && item.status === "invited").length}</strong> owner invitations pending</span>
+                <span className="admin-shared-room"><i /> Shared control room · auto-updates</span>
               </div>
             ) : null}
           </div>
@@ -370,12 +498,20 @@ export default function AdminPage() {
             <div className="admin-client-list">
               <div className="admin-client-list-header">Client businesses</div>
               {!data.workspaces.length && <p className="muted">No clients have been provisioned.</p>}
-              {data.workspaces.map((workspace) => (
-                <button key={workspace.id} className={workspace.id === activeWorkspace?.id ? "active" : ""} onClick={() => selectClient(workspace.id)}>
-                  <span className="client-initial">{workspace.name.slice(0, 2).toUpperCase()}</span>
-                  <span><strong>{workspace.name}</strong><small>{data.plans.find((plan) => plan.id === workspace.plan_id)?.name ?? "Custom"} · {workspace.status}</small></span>
-                </button>
-              ))}
+              {data.workspaces.map((workspace) => {
+                const summary = data.workspaceActivity?.[workspace.id];
+                return (
+                  <button key={workspace.id} className={workspace.id === activeWorkspace?.id ? "active" : ""} onClick={() => selectClient(workspace.id)}>
+                    <span className="client-initial">{workspace.name.slice(0, 2).toUpperCase()}</span>
+                    <span className="admin-client-list-copy">
+                      <strong>{workspace.name}</strong>
+                      <small>{data.plans.find((plan) => plan.id === workspace.plan_id)?.name ?? "Custom"} · {workspace.status}</small>
+                      <small className="admin-client-audit-line">{summary?.created_by_name ? `Created by ${actorLabel(summary.created_by_name, summary.created_by_email)}` : "Creator not recorded"} · {formatMoment(summary?.created_at ?? workspace.created_at, true)}</small>
+                      <small className="admin-client-audit-line">{summary?.last_modified_by_name || summary?.last_modified_by_email ? `Last modified by ${actorLabel(summary.last_modified_by_name, summary.last_modified_by_email)} · ${formatMoment(summary.last_modified_at, true)}` : "No Founder modification recorded"}</small>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {activeWorkspace ? (
@@ -385,6 +521,10 @@ export default function AdminPage() {
                     <p className="eyebrow">{activeWorkspace.slug}.bdb-os.com</p>
                     <h2>{activeWorkspace.name}</h2>
                     <p className="muted">{activeWorkspace.legal_name || "Client workspace"}</p>
+                    <div className="admin-client-provenance">
+                      <span><strong>Created by</strong> {activeActivitySummary?.created_by_name || activeActivitySummary?.created_by_email ? actorLabel(activeActivitySummary?.created_by_name, activeActivitySummary?.created_by_email) : "Creator not recorded"} · {formatMoment(activeActivitySummary?.created_at ?? activeWorkspace.created_at)}</span>
+                      <span><strong>Last modified</strong> {activeActivitySummary?.last_modified_by_name || activeActivitySummary?.last_modified_by_email ? `by ${actorLabel(activeActivitySummary?.last_modified_by_name, activeActivitySummary?.last_modified_by_email)} · ${formatMoment(activeActivitySummary?.last_modified_at)}` : "No Founder modification recorded"}</span>
+                    </div>
                   </div>
                   <div className="admin-client-status">
                     <label>Status</label>
@@ -444,6 +584,23 @@ export default function AdminPage() {
                         <div className="admin-form-actions"><button className="button button-secondary" onClick={() => openClientSection("branding")}><ImageIcon size={15} /> Manage branding</button></div>
                       </article>
                     </div>
+
+                    <article className="admin-founder-activity-panel">
+                      <div className="admin-founder-activity-heading">
+                        <span><Activity size={16} /><strong>Founder Activity</strong></span>
+                        <small>Recent changes to {activeWorkspace.name}</small>
+                      </div>
+                      <div className="admin-founder-activity-list">
+                        {!activeFounderActivity.length && <p className="muted">No Founder Admin activity has been recorded for this client.</p>}
+                        {activeFounderActivity.map((item) => (
+                          <div className="admin-founder-activity-row" key={item.id}>
+                            <span className="admin-activity-initial">{actorLabel(item.actor_name, item.actor_email).slice(0, 1).toUpperCase()}</span>
+                            <span className="admin-founder-activity-copy"><strong>{actorLabel(item.actor_name, item.actor_email)}</strong><small>{describeFounderAction(item, data)}</small></span>
+                            <time dateTime={item.created_at}>{formatMoment(item.created_at)}</time>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
                   </section>
                 )}
 
@@ -595,15 +752,22 @@ export default function AdminPage() {
         )}
 
         {tab === "audit" && (
-          <div className="audit-table">
-            <div className="audit-row audit-head"><span>Action</span><span>Workspace</span><span>Time</span></div>
+          <div className="audit-table admin-audit-table-shared">
+            <div className="audit-row audit-head"><span>Founder</span><span>Action</span><span>Workspace</span><span>Time</span></div>
             {!data.audit.length && <p className="muted">No founder actions have been recorded.</p>}
-            {data.audit.map((item) => <div className="audit-row" key={item.id}><span><Settings2 size={15} /><strong>{item.action}</strong></span><span>{data.workspaces.find((workspace) => workspace.id === item.workspace_id)?.name ?? "Platform"}</span><span>{new Date(item.created_at).toLocaleString()}</span></div>)}
+            {data.audit.map((item) => (
+              <div className="audit-row" key={item.id}>
+                <span><strong>{actorLabel(item.actor_name, item.actor_email)}</strong></span>
+                <span><Settings2 size={15} /><strong>{describeFounderAction(item, data)}</strong></span>
+                <span>{data.workspaces.find((workspace) => workspace.id === item.workspace_id)?.name ?? "Platform"}</span>
+                <span>{formatMoment(item.created_at)}</span>
+              </div>
+            ))}
           </div>
         )}
       </section>
 
-      {creating && <CreateWorkspace templates={data.templates.filter((template) => template.is_active)} plans={data.plans} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setNotice("Client business created from its workspace template and owner invitation sent."); await load(); }} onError={setError} />}
+      {creating && <CreateWorkspace templates={data.templates.filter((template) => template.is_active)} plans={data.plans} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setNotice("Client business created from its workspace template and owner invitation sent."); await load(true); }} onError={setError} />}
     </main>
   );
 }
