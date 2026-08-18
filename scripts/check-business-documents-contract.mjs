@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const migration = await readFile("supabase/migrations/20260818150236_accounts_business_documents_v1.sql", "utf8");
 const polishMigration = await readFile("supabase/migrations/20260818220613_accounts_invoice_ux_pricing.sql", "utf8");
-const headerReconcileMigration = await readFile("supabase/migrations/20260818222000_accounts_invoice_header_reconcile.sql", "utf8");
+const headerReconcileMigration = await readFile("supabase/migrations/20260818221234_accounts_invoice_header_reconcile.sql", "utf8");
 const accounts = await readFile("src/app/accounts/page.tsx", "utf8");
 const accountsCss = await readFile("src/app/accounts/accounts.module.css", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
