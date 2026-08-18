@@ -176,7 +176,7 @@ function documentPages(document: BusinessDocumentModel) {
     if (first) {
       content.push(textCommand(48, 676, "BILL TO", 9, true));
       content.push(textCommand(48, 660, document.customer.name, 11, true));
-      let customerY = addWrapped(content, 48, 646, document.customer.address, 48, 8, 11, 3);
+      const customerY = addWrapped(content, 48, 646, document.customer.address, 48, 8, 11, 3);
       if (document.customer.vatNumber) content.push(textCommand(48, customerY, `VAT: ${document.customer.vatNumber}`, 8));
 
       content.push(textCommand(360, 676, `${document.title} No.:`, 8, true));
