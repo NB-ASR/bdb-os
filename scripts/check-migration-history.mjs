@@ -63,7 +63,9 @@ const canonicalProductionHistory = [
 // Production remains the immutable registered prefix. New work may add an
 // explicitly reviewed pending migration on a release branch without pretending
 // it has already been registered in Production.
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260818120000_client_usage_metering.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
