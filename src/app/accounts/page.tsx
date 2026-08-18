@@ -302,9 +302,8 @@ export default function AccountsPage() {
 
   useEffect(() => { const update = () => setOnline(navigator.onLine); update(); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
   useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
-  useEffect(() => { if (online && accounts.workspaceId && queue.length) void syncQueue(); }, [online]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const customers = sources.customers.length ? sources.customers : accounts.customerBalances.map((balance) => ({ id: balance.customer_id, code: balance.customer_code, name: balance.customer_name, company: balance.company, email: null }));
+  const customers: Customer[] = sources.customers.length ? sources.customers : accounts.customerBalances.map((balance) => ({ id: balance.customer_id, code: balance.customer_code, name: balance.customer_name, company: balance.company, email: null }));
   const setupComplete = Boolean(business.settings.business_address && business.settings.vat_number);
   const currency = accounts.settings.currency || business.settings.currency || "EUR";
 
