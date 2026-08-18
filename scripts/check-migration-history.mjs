@@ -59,9 +59,10 @@ const canonicalProductionHistory = [
   "20260813143945_unify_sales_service_permission_boundaries.sql",
   "20260817221033_custom_business_branding.sql",
   "20260818124113_client_usage_metering.sql",
+  "20260818150236_accounts_business_documents_v1.sql",
 ];
 
-const pendingMigrations = ["20260818135000_accounts_business_documents_v1.sql"];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
