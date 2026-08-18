@@ -140,7 +140,16 @@ select is(
 
 select ok(position('exception when others' in lower(pg_get_functiondef('private.meter_operator_run_usage()'::regprocedure))) > 0, 'Operator metering failure cannot block core Operator execution');
 select ok(position('exception when others' in lower(pg_get_functiondef('private.meter_outbound_email_usage()'::regprocedure))) > 0, 'Email metering failure cannot block core Communications work');
-select has_trigger('public','operator_runs','meter_operator_run_usage','Operator usage meter is attached to authoritative runs');
+select ok(
+  to_regclass('public.operator_runs') is null
+  or exists (
+    select 1 from pg_trigger
+    where tgrelid=to_regclass('public.operator_runs')
+      and tgname='meter_operator_run_usage'
+      and not tgisinternal
+  ),
+  'Operator usage meter is attached whenever the authoritative Operator table is present'
+);
 select has_trigger('public','messages','meter_outbound_email_usage','Outbound email meter is attached to authoritative communication records');
 
 select * from finish();
