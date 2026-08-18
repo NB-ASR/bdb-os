@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migration = await readFile("supabase/migrations/20260818150236_accounts_business_documents_v1.sql", "utf8");
-const polishMigration = await readFile("supabase/migrations/20260818215000_accounts_invoice_ux_pricing.sql", "utf8");
+const polishMigration = await readFile("supabase/migrations/20260818220613_accounts_invoice_ux_pricing.sql", "utf8");
+const headerReconcileMigration = await readFile("supabase/migrations/20260818222000_accounts_invoice_header_reconcile.sql", "utf8");
 const accounts = await readFile("src/app/accounts/page.tsx", "utf8");
 const accountsCss = await readFile("src/app/accounts/accounts.module.css", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
@@ -38,6 +39,11 @@ assert.match(polishMigration, /net_value \* vat_rate_value \/ 100/);
 assert.match(polishMigration, /total_value := round\(net_value \+ vat_value/);
 assert.doesNotMatch(polishMigration, /\/ \(100 \+ vat_rate_value\)/, "Direct Invoice pricing must not back VAT out of the entered unit price.");
 assert.match(polishMigration, /source_sale_id is null/i, "Draft correction must not rewrite Sale-derived pricing snapshots.");
+assert.match(headerReconcileMigration, /round\(sum\(line\.net_amount\), 4\) as net_amount/);
+assert.match(headerReconcileMigration, /round\(sum\(line\.vat_amount\), 4\) as vat_amount/);
+assert.match(headerReconcileMigration, /round\(sum\(line\.total_amount\), 4\) as total_amount/);
+assert.match(headerReconcileMigration, /invoice\.source_sale_id is null/i, "Header reconciliation must not rewrite Sale-derived Invoice snapshots.");
+assert.match(headerReconcileMigration, /invoice\.status = 'draft'/i, "Header reconciliation must remain draft-only.");
 assert.match(pricing, /vatAmount = moneyRound\(netAmount \* Math\.max\(0, vatRate\) \/ 100\)/);
 
 assert.match(accounts, /New Document/);
@@ -81,4 +87,4 @@ assert.doesNotMatch(renderer, /Due date/);
 assert.doesNotMatch(renderer, /Payment instructions/i);
 assert.doesNotMatch(renderer, /document\.footer \?/, "Permanent footer/payment instructions must not be printed on customer Invoices.");
 
-console.log("Business Documents contract preserves One Engine, VAT-exclusive Invoice pricing, offline commands, document safety and restrained Accounts UX.");
+console.log("Business Documents contract preserves One Engine, VAT-exclusive Invoice pricing, reconciled draft totals, offline commands, document safety and restrained Accounts UX.");
