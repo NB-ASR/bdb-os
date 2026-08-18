@@ -4,6 +4,12 @@ export type AccountsCommandAction =
   | "invoice-update"
   | "invoice-issue"
   | "invoice-void"
+  | "credit-note-create"
+  | "credit-note-update"
+  | "credit-note-issue"
+  | "delivery-note-create"
+  | "delivery-note-update"
+  | "delivery-note-issue"
   | "payment-record"
   | "payment-allocate"
   | "allocation-reverse"
@@ -26,6 +32,12 @@ const ACTIONS = new Set<AccountsCommandAction>([
   "invoice-update",
   "invoice-issue",
   "invoice-void",
+  "credit-note-create",
+  "credit-note-update",
+  "credit-note-issue",
+  "delivery-note-create",
+  "delivery-note-update",
+  "delivery-note-issue",
   "payment-record",
   "payment-allocate",
   "allocation-reverse",
