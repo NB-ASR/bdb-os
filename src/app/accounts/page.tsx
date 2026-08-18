@@ -1,268 +1,115 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  BadgePoundSterling,
   Banknote,
-  CircleCheckBig,
-  Clock3,
-  FilePlus2,
-  Link2,
+  Download,
+  FileMinus2,
+  FileText,
+  Mail,
+  MoreHorizontal,
+  PackageCheck,
   Plus,
-  ReceiptText,
+  Printer,
   RefreshCw,
-  RotateCcw,
+  Settings2,
   TriangleAlert,
-  UserRound,
   X,
 } from "lucide-react";
-import { Badge, Button, Card, Dialog, PageHeader, SectionHeading, StatCard } from "@/components/ui";
+import { Badge, Button, Card, Dialog, PageHeader, SectionHeading } from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   enqueueAccountsCommand,
   flushAccountsQueue,
   readAccountsQueue,
-  removeAccountsCommand,
   type AccountsCommandAction,
   type AccountsQueuedCommand,
 } from "@/lib/modules/accounts-queue";
 import styles from "./accounts.module.css";
 
-type InvoiceDisplayStatus = "draft" | "sent" | "overdue" | "paid" | "void";
-type InvoicePaymentStatus = "draft" | "unpaid" | "partially_paid" | "paid" | "void";
+type Tab = "documents" | "payments" | "customers";
+type DocumentType = "invoice" | "credit_note" | "delivery_note";
 type PaymentMethod = "cash" | "card" | "bank_transfer" | "cheque" | "other";
-type Tab = "overview" | "invoices" | "payments" | "customers";
+type LineType = "product" | "service" | "manual";
 
-type CustomerOption = {
-  id: string;
-  code: string;
-  name: string;
-  company: string | null;
-  email: string | null;
-  phone: string | null;
-  status: string;
-};
-
-type InvoiceLineRow = {
-  id: string;
-  line_number: number;
-  line_type: "product" | "service" | "manual";
-  source_sale_line_id: string | null;
-  code_snapshot: string;
-  description_snapshot: string;
-  quantity: number;
-  unit_price: number;
-  gross_amount: number;
-  discount_amount: number;
-  net_amount: number;
-  vat_rate: number;
-  vat_amount: number;
-  total_amount: number;
-};
-
-type InvoiceRow = {
-  id: string;
-  number: string;
-  customer_id: string;
-  source_sale_id: string | null;
-  issued_at: string;
-  due_at: string;
-  description: string;
-  currency: string;
-  customer_code_snapshot: string;
-  customer_name_snapshot: string;
-  gross_amount: number;
-  discount_amount: number;
-  net_amount: number;
-  vat_amount: number;
-  total_amount: number;
-  notes: string | null;
-  status: InvoiceDisplayStatus;
-  version: number;
-  sent_at: string | null;
-  voided_at: string | null;
-  void_reason: string | null;
-  allocated_amount: number;
-  outstanding_amount: number;
-  payment_status: InvoicePaymentStatus;
-  display_status: InvoiceDisplayStatus;
-  invoice_lines: InvoiceLineRow[];
-};
-
-type PaymentRow = {
-  id: string;
-  reference: string;
-  customer_id: string;
-  customer_name_snapshot: string;
-  currency: string;
-  amount: number;
-  payment_method: PaymentMethod;
-  external_reference: string | null;
-  notes: string | null;
-  received_at: string;
-  status: "posted" | "reversed";
-  version: number;
-  reversal_reason: string | null;
-  allocated_amount: number;
-  unallocated_amount: number;
-};
-
-type AllocationRow = {
-  id: string;
-  payment_id: string;
-  invoice_id: string;
-  allocation_type: "allocation" | "reversal";
-  amount_delta: number;
-  reversal_of_id: string | null;
-  reason: string | null;
-  occurred_at: string;
-};
-
-type CustomerBalance = {
-  customer_id: string;
-  customer_code: string;
-  customer_name: string;
-  company: string | null;
-  issued_amount: number;
-  received_amount: number;
-  allocated_amount: number;
-  outstanding_amount: number;
-  unallocated_credit: number;
-  net_balance: number;
-  balance_status: "amount_due" | "customer_credit" | "clear";
-};
-
-type SaleAccountRow = {
-  sale_id: string;
-  sale_reference: string;
-  customer_id: string | null;
-  currency: string;
-  sale_total_amount: number;
-  invoice_id: string | null;
-  invoice_number: string | null;
-  invoice_status: string | null;
-  allocated_amount: number | null;
-  outstanding_amount: number | null;
-  account_status: "not_invoiced" | "invoiced" | "partially_paid" | "paid" | "invoice_void" | "reversed";
-};
+type Customer = { id: string; code: string; name: string; company: string | null; email: string | null; phone: string | null; address: string | null; vat_number: string | null };
+type Product = { id: string; sku: string; name: string; selling_price: number | null; vat_rate: number; purpose: string };
+type Service = { id: string; code: string; name: string; price: number | null; vat_rate: number };
+type InvoiceLine = { id: string; line_number: number; line_type: LineType; product_id: string | null; service_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number; unit_price: number; discount_amount: number; vat_rate: number; total_amount: number };
+type Invoice = { id: string; number: string; customer_id: string; source_sale_id: string | null; issued_at: string; due_at: string; description: string; notes: string | null; currency: string; status: string; display_status: string; payment_status: string; total_amount: number; adjusted_total_amount: number; credited_amount: number; allocated_amount: number; outstanding_amount: number; version: number; invoice_lines: InvoiceLine[] };
+type CreditNoteLine = { id: string; source_invoice_line_id: string | null; line_number: number; code_snapshot: string; description_snapshot: string; quantity: number; total_amount: number };
+type CreditNote = { id: string; number: string; invoice_id: string; customer_id: string; currency: string; reason: string; status: "draft" | "issued"; total_amount: number; version: number; issued_at: string | null; created_at: string; credit_note_lines: CreditNoteLine[] };
+type DeliveryNoteLine = { id: string; source_invoice_line_id: string | null; source_sale_line_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number };
+type DeliveryNote = { id: string; number: string; source_invoice_id: string | null; source_sale_id: string | null; customer_id: string; customer_name_snapshot: string; delivery_address: string | null; delivery_date: string; status: "draft" | "issued"; version: number; created_at: string; delivery_note_lines: DeliveryNoteLine[] };
+type Payment = { id: string; reference: string; customer_id: string; customer_name_snapshot: string; currency: string; amount: number; payment_method: PaymentMethod; external_reference: string | null; received_at: string; status: "posted" | "reversed"; version: number; allocated_amount: number; unallocated_amount: number };
+type CustomerBalance = { customer_id: string; customer_code: string; customer_name: string; company: string | null; outstanding_amount: number; unallocated_credit: number; net_balance: number; balance_status: "amount_due" | "customer_credit" | "clear" };
+type DocumentIndex = { workspace_id: string; document_type: DocumentType; id: string; number: string; customer_id: string; customer_name: string; document_date: string; status: string; currency: string | null; total_amount: number | null; balance_amount: number | null; source_invoice_id: string | null; source_sale_id: string | null; reason: string | null };
+type SaleSource = { id: string; reference: string; customer_id: string; total_amount: number; sale_lines: Array<{ id: string; code_snapshot: string; description_snapshot: string; quantity: number }> };
 
 type AccountsBundle = {
   workspaceId: string;
-  settings: {
-    currency: string;
-    invoice_prefix: string;
-    vat_rate: number;
-    timezone: string;
-  };
-  invoices: InvoiceRow[];
-  payments: PaymentRow[];
-  allocations: AllocationRow[];
+  settings: { currency: string; invoice_prefix: string; vat_rate: number; timezone: string; business_address: string | null; vat_number: string | null; company_registration_number: string | null; credit_note_prefix: string; delivery_note_prefix: string; payment_terms_days: number; document_footer: string | null };
+  invoices: Invoice[];
+  payments: Payment[];
   customerBalances: CustomerBalance[];
-  customers: CustomerOption[];
-  sales: SaleAccountRow[];
+  customers: Customer[];
+  products: Product[];
+  services: Service[];
+  creditNotes: CreditNote[];
+  deliveryNotes: DeliveryNote[];
+  documents: DocumentIndex[];
 };
 
-type ManualLineDraft = {
-  id: string;
-  code: string;
-  description: string;
-  quantity: string;
-  unitPrice: string;
-  discountAmount: string;
-  vatRate: string;
-};
-
-type ReversalTarget = {
-  kind: "invoice" | "payment" | "allocation";
-  id: string;
-  label: string;
-} | null;
+type DraftLine = { id: string; lineType: LineType; sourceId: string; description: string; quantity: string; unitPrice: string; discountAmount: string; vatRate: string };
+type CreditDraftLine = { id: string; sourceInvoiceLineId: string; description: string; selected: boolean; quantity: string };
+type DeliveryDraftLine = { id: string; sourceLineId: string; description: string; selected: boolean; quantity: string };
 
 const emptyBundle: AccountsBundle = {
   workspaceId: "",
-  settings: { currency: "EUR", invoice_prefix: "INV", vat_rate: 0, timezone: "UTC" },
-  invoices: [],
-  payments: [],
-  allocations: [],
-  customerBalances: [],
-  customers: [],
-  sales: [],
+  settings: { currency: "EUR", invoice_prefix: "INV", vat_rate: 0, timezone: "Europe/Malta", business_address: null, vat_number: null, company_registration_number: null, credit_note_prefix: "CN", delivery_note_prefix: "DN", payment_terms_days: 14, document_footer: null },
+  invoices: [], payments: [], customerBalances: [], customers: [], products: [], services: [], creditNotes: [], deliveryNotes: [], documents: [],
 };
-
-const CACHE_PREFIX = "bdb-accounts-cache-v1";
-const LAST_WORKSPACE_KEY = "bdb-accounts-last-workspace-v1";
+const CACHE_PREFIX = "bdb-accounts-cache-v2";
+const LAST_WORKSPACE_KEY = "bdb-accounts-last-workspace-v2";
 const cacheKey = (workspaceId: string) => `${CACHE_PREFIX}:${workspaceId}`;
 
-function localDateTime() {
+function isoDate(offsetDays = 0) {
   const date = new Date();
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function defaultDueDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 14);
+  date.setDate(date.getDate() + offsetDays);
   return date.toISOString().slice(0, 10);
 }
-
-function readCachedBundle(workspaceId: string): AccountsBundle | null {
-  if (typeof window === "undefined") return null;
+function localDateTime() {
+  const date = new Date();
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+function draftLine(vat = 0): DraftLine {
+  return { id: crypto.randomUUID(), lineType: "manual", sourceId: "", description: "", quantity: "1", unitPrice: "", discountAmount: "0", vatRate: String(vat) };
+}
+function documentLabel(type: DocumentType) {
+  return type === "invoice" ? "Invoice" : type === "credit_note" ? "Credit Note" : "Delivery Note";
+}
+function readCache(workspaceId: string): AccountsBundle | null {
   try {
-    const value = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "null") as AccountsBundle | null;
-    return value && Array.isArray(value.invoices) && Array.isArray(value.payments) ? value : null;
-  } catch {
-    window.localStorage.removeItem(cacheKey(workspaceId));
-    return null;
-  }
+    const parsed = JSON.parse(localStorage.getItem(cacheKey(workspaceId)) ?? "null") as AccountsBundle | null;
+    return parsed?.workspaceId === workspaceId ? parsed : null;
+  } catch { return null; }
 }
-
-function writeCachedBundle(bundle: AccountsBundle) {
-  if (typeof window === "undefined" || !bundle.workspaceId) return;
-  window.localStorage.setItem(cacheKey(bundle.workspaceId), JSON.stringify(bundle));
-  window.localStorage.setItem(LAST_WORKSPACE_KEY, bundle.workspaceId);
+function writeCache(bundle: AccountsBundle) {
+  localStorage.setItem(cacheKey(bundle.workspaceId), JSON.stringify(bundle));
+  localStorage.setItem(LAST_WORKSPACE_KEY, bundle.workspaceId);
 }
-
-function blankLine(vatRate: number): ManualLineDraft {
-  return {
-    id: crypto.randomUUID(),
-    code: "",
-    description: "",
-    quantity: "1",
-    unitPrice: "",
-    discountAmount: "0",
-    vatRate: String(vatRate),
-  };
-}
-
-function lineTotal(line: ManualLineDraft) {
-  const quantity = Number(line.quantity) || 0;
-  const price = Number(line.unitPrice) || 0;
-  const discount = Number(line.discountAmount) || 0;
-  return Math.max(quantity * price - discount, 0);
-}
-
-function invoiceTone(status: InvoiceDisplayStatus): "neutral" | "gold" | "green" | "red" {
-  if (status === "paid") return "green";
-  if (status === "overdue") return "red";
-  if (status === "sent") return "gold";
-  return "neutral";
-}
-
-function methodLabel(method: PaymentMethod) {
-  return method.replaceAll("_", " ");
+function businessDocumentUrl(workspaceId: string, type: DocumentType, id: string, format: "html" | "pdf", print = false) {
+  const params = new URLSearchParams({ workspaceId, type, id, format });
+  if (print) params.set("print", "1");
+  return `/api/business-documents/render?${params.toString()}`;
 }
 
 export default function AccountsPage() {
   const [bundle, setBundle] = useState<AccountsBundle>(emptyBundle);
   const bundleRef = useRef(bundle);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("documents");
+  const [filter, setFilter] = useState<"all" | DocumentType>("all");
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
   const [supportReadOnly, setSupportReadOnly] = useState(false);
@@ -270,756 +117,356 @@ export default function AccountsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [queue, setQueue] = useState<AccountsQueuedCommand[]>([]);
-  const [query, setQuery] = useState("");
 
+  const [newMenu, setNewMenu] = useState(false);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null);
   const [invoiceCustomerId, setInvoiceCustomerId] = useState("");
-  const [invoiceDueAt, setInvoiceDueAt] = useState(defaultDueDate());
+  const [invoiceDueAt, setInvoiceDueAt] = useState(isoDate(14));
   const [invoiceDescription, setInvoiceDescription] = useState("");
   const [invoiceNotes, setInvoiceNotes] = useState("");
-  const [invoiceLines, setInvoiceLines] = useState<ManualLineDraft[]>([]);
+  const [invoiceLines, setInvoiceLines] = useState<DraftLine[]>([]);
 
-  const [saleInvoiceOpen, setSaleInvoiceOpen] = useState(false);
-  const [saleId, setSaleId] = useState("");
-  const [saleInvoiceDueAt, setSaleInvoiceDueAt] = useState(defaultDueDate());
-  const [saleInvoiceNotes, setSaleInvoiceNotes] = useState("");
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditInvoiceId, setCreditInvoiceId] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [creditLines, setCreditLines] = useState<CreditDraftLine[]>([]);
+  const [legacyCreditAmount, setLegacyCreditAmount] = useState("");
+
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliverySourceType, setDeliverySourceType] = useState<"invoice" | "sale">("invoice");
+  const [deliverySourceId, setDeliverySourceId] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState(isoDate());
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [deliveryLines, setDeliveryLines] = useState<DeliveryDraftLine[]>([]);
+  const [saleSources, setSaleSources] = useState<SaleSource[]>([]);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentCustomerId, setPaymentCustomerId] = useState("");
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
-  const [paymentReceivedAt, setPaymentReceivedAt] = useState(localDateTime());
-  const [paymentExternalReference, setPaymentExternalReference] = useState("");
-  const [paymentNotes, setPaymentNotes] = useState("");
   const [paymentInvoiceId, setPaymentInvoiceId] = useState("");
-  const [paymentAllocationAmount, setPaymentAllocationAmount] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
+  const [paymentReceivedAt, setPaymentReceivedAt] = useState(localDateTime());
+  const [paymentReference, setPaymentReference] = useState("");
 
-  const [allocationOpen, setAllocationOpen] = useState(false);
-  const [allocationPaymentId, setAllocationPaymentId] = useState("");
-  const [allocationInvoiceId, setAllocationInvoiceId] = useState("");
-  const [allocationAmount, setAllocationAmount] = useState("");
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const [identity, setIdentity] = useState({ businessAddress: "", vatNumber: "", companyRegistrationNumber: "", creditNotePrefix: "CN", deliveryNotePrefix: "DN", paymentTermsDays: "14", documentFooter: "" });
 
-  const [reversal, setReversal] = useState<ReversalTarget>(null);
-  const [reversalReason, setReversalReason] = useState("");
-
+  useEffect(() => { bundleRef.current = bundle; }, [bundle]);
   useEffect(() => {
-    bundleRef.current = bundle;
-  }, [bundle]);
+    const update = () => setOnline(navigator.onLine);
+    update(); window.addEventListener("online", update); window.addEventListener("offline", update);
+    return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+  }, []);
+
+  const refreshQueue = useCallback((workspaceId = bundleRef.current.workspaceId) => {
+    if (workspaceId) setQueue(readAccountsQueue(workspaceId));
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
       const context = await contextResponse.json().catch(() => ({}));
-      if (!contextResponse.ok || !context.currentWorkspaceId) {
-        throw new Error(context.error ?? "The current workspace could not be resolved.");
-      }
+      if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current workspace could not be resolved.");
       const workspaceId = String(context.currentWorkspaceId);
       const response = await fetch(`/api/accounts?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error ?? "Accounts could not be loaded.");
-      }
-      const next = result.result as AccountsBundle;
-      setBundle(next);
-      bundleRef.current = next;
-      writeCachedBundle(next);
-      setQueue(readAccountsQueue(workspaceId));
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) throw new Error(json.error ?? "Accounts could not be loaded.");
+      const next = json.result as AccountsBundle;
+      setBundle(next); bundleRef.current = next; writeCache(next); refreshQueue(workspaceId);
       setSupportReadOnly(Boolean(context.supportAccess && context.supportAccessMode !== "test_write"));
-      setNotice("");
     } catch (loadError) {
-      const lastWorkspace = typeof window === "undefined"
-        ? null
-        : window.localStorage.getItem(LAST_WORKSPACE_KEY);
-      const cached = lastWorkspace ? readCachedBundle(lastWorkspace) : null;
+      const last = localStorage.getItem(LAST_WORKSPACE_KEY) ?? "";
+      const cached = last ? readCache(last) : null;
       if (cached) {
-        setBundle(cached);
-        bundleRef.current = cached;
-        setQueue(readAccountsQueue(cached.workspaceId));
-        setNotice("Showing the last verified Accounts snapshot. Financial commands remain queued until the server accepts them.");
-      } else {
-        setError(loadError instanceof Error ? loadError.message : "Accounts could not be loaded.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        setBundle(cached); bundleRef.current = cached; refreshQueue(cached.workspaceId);
+        setNotice("Showing the last verified Accounts snapshot. Draft changes can remain queued until reconnection.");
+      } else setError(loadError instanceof Error ? loadError.message : "Accounts could not be loaded.");
+    } finally { setLoading(false); }
+  }, [refreshQueue]);
 
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
   useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    if (!online || !bundle.workspaceId || queue.length === 0) return;
+    const timer = window.setTimeout(async () => {
+      const result = await flushAccountsQueue(bundle.workspaceId, () => refreshQueue(bundle.workspaceId));
+      refreshQueue(bundle.workspaceId);
+      if (result.completed) { setNotice(`${result.completed} queued Accounts change${result.completed === 1 ? "" : "s"} synchronised.`); await load(); }
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [bundle.workspaceId, load, online, queue.length, refreshQueue]);
 
+  async function dispatch(action: AccountsCommandAction, payload: Record<string, unknown>, requiresOnline = false) {
+    if (supportReadOnly || !bundle.workspaceId) return setError("This Accounts workspace is read-only for the current session."), false;
+    if (requiresOnline && !online) return setError("Reconnect before issuing a numbered business document."), false;
+    const command = enqueueAccountsCommand(bundle.workspaceId, action, payload);
+    refreshQueue();
+    if (!online) { setNotice("Draft saved locally and queued for safe synchronisation."); return true; }
+    setBusy(action);
+    const result = await flushAccountsQueue(bundle.workspaceId, () => refreshQueue());
+    setBusy(""); refreshQueue();
+    if (result.remaining) {
+      const failed = readAccountsQueue(bundle.workspaceId).find((item) => item.id === command.id);
+      setError(failed?.lastError ?? "Accounts synchronisation stopped for review."); return false;
+    }
+    await load(); return true;
+  }
+
+  const documents = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return bundle.documents.filter((document) => (filter === "all" || document.document_type === filter)
+      && (!needle || [document.number, document.customer_name, document.status, documentLabel(document.document_type)].join(" ").toLowerCase().includes(needle)));
+  }, [bundle.documents, filter, query]);
+
+  const selectedCreditInvoice = bundle.invoices.find((invoice) => invoice.id === creditInvoiceId) ?? null;
+  const selectedDeliveryInvoice = bundle.invoices.find((invoice) => invoice.id === deliverySourceId) ?? null;
+  const selectedSale = saleSources.find((sale) => sale.id === deliverySourceId) ?? null;
   const currency = bundle.settings.currency || "EUR";
-  const canWrite = Boolean(bundle.workspaceId) && !supportReadOnly;
 
-  const outstandingTotal = useMemo(
-    () => bundle.invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0),
-    [bundle.invoices],
-  );
-  const receivedTotal = useMemo(
-    () => bundle.payments.filter((payment) => payment.status === "posted").reduce((sum, payment) => sum + Number(payment.amount), 0),
-    [bundle.payments],
-  );
-  const unallocatedTotal = useMemo(
-    () => bundle.payments.reduce((sum, payment) => sum + Number(payment.unallocated_amount || 0), 0),
-    [bundle.payments],
-  );
-  const overdueCount = useMemo(
-    () => bundle.invoices.filter((invoice) => invoice.display_status === "overdue").length,
-    [bundle.invoices],
-  );
-
-  const activeAllocations = useMemo(() => {
-    const reversed = new Set(
-      bundle.allocations.filter((allocation) => allocation.reversal_of_id).map((allocation) => allocation.reversal_of_id as string),
-    );
-    return bundle.allocations.filter(
-      (allocation) => allocation.allocation_type === "allocation" && !reversed.has(allocation.id),
-    );
-  }, [bundle.allocations]);
-
-  const availableSales = useMemo(
-    () => bundle.sales.filter((sale) => sale.customer_id && ["not_invoiced", "invoice_void"].includes(sale.account_status)),
-    [bundle.sales],
-  );
-
-  const filteredInvoices = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return bundle.invoices;
-    return bundle.invoices.filter((invoice) => [
-      invoice.number,
-      invoice.customer_name_snapshot,
-      invoice.customer_code_snapshot,
-      invoice.description,
-      invoice.display_status,
-    ].join(" ").toLowerCase().includes(needle));
-  }, [bundle.invoices, query]);
-
-  const filteredPayments = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return bundle.payments;
-    return bundle.payments.filter((payment) => [
-      payment.reference,
-      payment.customer_name_snapshot,
-      payment.payment_method,
-      payment.external_reference,
-      payment.status,
-    ].join(" ").toLowerCase().includes(needle));
-  }, [bundle.payments, query]);
-
-  const paymentCustomerInvoices = useMemo(
-    () => bundle.invoices.filter(
-      (invoice) => invoice.customer_id === paymentCustomerId
-        && !["draft", "void", "paid"].includes(invoice.display_status)
-        && Number(invoice.outstanding_amount) > 0,
-    ),
-    [bundle.invoices, paymentCustomerId],
-  );
-
-  const selectedPayment = bundle.payments.find((payment) => payment.id === allocationPaymentId) ?? null;
-  const allocationInvoices = useMemo(
-    () => bundle.invoices.filter(
-      (invoice) => invoice.customer_id === selectedPayment?.customer_id
-        && invoice.currency === selectedPayment?.currency
-        && !["draft", "void", "paid"].includes(invoice.display_status)
-        && Number(invoice.outstanding_amount) > 0,
-    ),
-    [bundle.invoices, selectedPayment],
-  );
-
-  function refreshQueue(workspaceId = bundleRef.current.workspaceId) {
-    if (workspaceId) setQueue(readAccountsQueue(workspaceId));
-  }
-
-  async function syncCommands(workspaceId = bundleRef.current.workspaceId) {
-    if (!workspaceId || !navigator.onLine) return;
-    setBusy("sync");
-    const result = await flushAccountsQueue(workspaceId, () => refreshQueue(workspaceId));
-    refreshQueue(workspaceId);
-    setBusy("");
-    if (result.remaining === 0) {
-      setNotice(`${result.completed} financial command${result.completed === 1 ? "" : "s"} synchronised.`);
-      await load();
-    } else {
-      const failed = readAccountsQueue(workspaceId)[0];
-      setError(failed?.lastError ?? "Financial synchronisation stopped for review.");
-    }
-  }
-
-  async function dispatch(action: AccountsCommandAction, payload: Record<string, unknown>) {
-    if (!canWrite) {
-      setError("This Accounts workspace is read-only for the current access mode.");
-      return false;
-    }
-    const workspaceId = bundleRef.current.workspaceId;
-    if (!workspaceId) return false;
-    enqueueAccountsCommand(workspaceId, action, payload);
-    refreshQueue(workspaceId);
-    setNotice(navigator.onLine
-      ? "Financial command queued for authoritative server validation."
-      : "Financial command stored offline and will be revalidated after reconnection.");
-    if (navigator.onLine) await syncCommands(workspaceId);
-    return true;
-  }
-
-  function resetInvoiceForm() {
-    setEditingInvoice(null);
+  function openInvoice() {
     setInvoiceCustomerId(bundle.customers[0]?.id ?? "");
-    setInvoiceDueAt(defaultDueDate());
-    setInvoiceDescription("");
-    setInvoiceNotes("");
-    setInvoiceLines([blankLine(bundle.settings.vat_rate)]);
+    setInvoiceDueAt(isoDate(Number(bundle.settings.payment_terms_days ?? 14)));
+    setInvoiceDescription(""); setInvoiceNotes(""); setInvoiceLines([draftLine(bundle.settings.vat_rate)]); setInvoiceOpen(true); setNewMenu(false);
   }
 
-  function openNewInvoice() {
-    resetInvoiceForm();
-    setInvoiceOpen(true);
-  }
-
-  function openEditInvoice(invoice: InvoiceRow) {
-    setEditingInvoice(invoice);
-    setInvoiceCustomerId(invoice.customer_id);
-    setInvoiceDueAt(invoice.due_at);
-    setInvoiceDescription(invoice.description);
-    setInvoiceNotes(invoice.notes ?? "");
-    setInvoiceLines(invoice.invoice_lines.map((line) => ({
-      id: line.id,
-      code: line.code_snapshot,
-      description: line.description_snapshot,
-      quantity: String(line.quantity),
-      unitPrice: String(line.unit_price),
-      discountAmount: String(line.discount_amount),
-      vatRate: String(line.vat_rate),
-    })));
-    setInvoiceOpen(true);
+  function catalogueChange(index: number, sourceId: string) {
+    setInvoiceLines((current) => current.map((line, itemIndex) => {
+      if (itemIndex !== index) return line;
+      if (line.lineType === "product") {
+        const product = bundle.products.find((item) => item.id === sourceId);
+        return { ...line, sourceId, description: product?.name ?? "", unitPrice: product?.selling_price == null ? "" : String(product.selling_price), vatRate: String(product?.vat_rate ?? 0) };
+      }
+      if (line.lineType === "service") {
+        const service = bundle.services.find((item) => item.id === sourceId);
+        return { ...line, sourceId, description: service?.name ?? "", unitPrice: service?.price == null ? "" : String(service.price), vatRate: String(service?.vat_rate ?? 0) };
+      }
+      return { ...line, sourceId: "" };
+    }));
   }
 
   async function saveInvoice(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy("invoice");
-    const payloadLines = invoiceLines.map((line) => ({
-      id: line.id,
-      code: line.code || null,
-      description: line.description,
-      quantity: Number(line.quantity),
-      unitPrice: Number(line.unitPrice),
-      discountAmount: Number(line.discountAmount || 0),
-      vatRate: Number(line.vatRate || 0),
+    const lines = invoiceLines.map((line) => ({
+      id: line.id, lineType: line.lineType,
+      productId: line.lineType === "product" ? line.sourceId : null,
+      serviceId: line.lineType === "service" ? line.sourceId : null,
+      description: line.description, quantity: Number(line.quantity), unitPrice: line.unitPrice === "" ? null : Number(line.unitPrice),
+      discountAmount: Number(line.discountAmount || 0), vatRate: line.vatRate === "" ? null : Number(line.vatRate),
     }));
-    const accepted = await dispatch(
-      editingInvoice ? "invoice-update" : "invoice-create-manual",
-      editingInvoice
-        ? {
-            id: editingInvoice.id,
-            expectedVersion: editingInvoice.version,
-            dueAt: invoiceDueAt,
-            description: invoiceDescription,
-            notes: invoiceNotes,
-            lines: editingInvoice.source_sale_id ? undefined : payloadLines,
-          }
-        : {
-            id: crypto.randomUUID(),
-            customerId: invoiceCustomerId,
-            dueAt: invoiceDueAt,
-            description: invoiceDescription,
-            notes: invoiceNotes,
-            lines: payloadLines,
-          },
-    );
-    setBusy("");
-    if (accepted) setInvoiceOpen(false);
+    const ok = await dispatch("invoice-create-manual", { id: crypto.randomUUID(), customerId: invoiceCustomerId, dueAt: invoiceDueAt, description: invoiceDescription || "Invoice", notes: invoiceNotes, lines });
+    if (ok) setInvoiceOpen(false);
   }
 
-  async function createSaleInvoice(event: FormEvent) {
+  function setCreditInvoice(invoice: Invoice) {
+    setCreditInvoiceId(invoice.id); setCreditReason(""); setLegacyCreditAmount("");
+    setCreditLines(invoice.invoice_lines.map((line) => ({ id: crypto.randomUUID(), sourceInvoiceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+  }
+  function openCredit(invoice?: Invoice) {
+    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void"].includes(item.display_status));
+    if (!target) return setError("Create and issue an Invoice before creating a Credit Note.");
+    setCreditInvoice(target); setCreditOpen(true); setNewMenu(false);
+  }
+  async function saveCredit(event: FormEvent) {
     event.preventDefault();
-    if (busy || !saleId) return;
-    setBusy("sale-invoice");
-    const accepted = await dispatch("invoice-create-sale", {
-      id: crypto.randomUUID(),
-      saleId,
-      dueAt: saleInvoiceDueAt,
-      notes: saleInvoiceNotes,
-    });
-    setBusy("");
-    if (accepted) setSaleInvoiceOpen(false);
+    if (!selectedCreditInvoice) return;
+    const lines = selectedCreditInvoice.invoice_lines.length
+      ? creditLines.filter((line) => line.selected).map((line) => ({ id: line.id, sourceInvoiceLineId: line.sourceInvoiceLineId, quantity: Number(line.quantity) }))
+      : [{ id: crypto.randomUUID(), amount: Number(legacyCreditAmount) }];
+    const ok = await dispatch("credit-note-create", { id: crypto.randomUUID(), invoiceId: selectedCreditInvoice.id, reason: creditReason, lines });
+    if (ok) setCreditOpen(false);
   }
 
-  async function issueInvoice(invoice: InvoiceRow) {
-    if (busy) return;
-    setBusy(invoice.id);
-    await dispatch("invoice-issue", { id: invoice.id, expectedVersion: invoice.version });
-    setBusy("");
+  async function loadSaleSources() {
+    if (!bundle.workspaceId || !online) return;
+    const response = await fetch(`/api/accounts/delivery-sources?workspaceId=${encodeURIComponent(bundle.workspaceId)}`, { cache: "no-store" });
+    const json = await response.json().catch(() => ({}));
+    if (response.ok && json.ok) setSaleSources(json.result?.sales ?? []);
   }
-
-  async function recordPayment(event: FormEvent) {
+  function populateDelivery(type: "invoice" | "sale", sourceId: string) {
+    setDeliverySourceType(type); setDeliverySourceId(sourceId);
+    if (type === "invoice") {
+      const invoice = bundle.invoices.find((item) => item.id === sourceId);
+      const customer = bundle.customers.find((item) => item.id === invoice?.customer_id);
+      setDeliveryAddress(customer?.address ?? "");
+      setDeliveryLines((invoice?.invoice_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+    } else {
+      const sale = saleSources.find((item) => item.id === sourceId);
+      const customer = bundle.customers.find((item) => item.id === sale?.customer_id);
+      setDeliveryAddress(customer?.address ?? "");
+      setDeliveryLines((sale?.sale_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+    }
+  }
+  async function openDelivery(invoice?: Invoice) {
+    await loadSaleSources();
+    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void"].includes(item.display_status) && item.invoice_lines.length > 0);
+    if (target) populateDelivery("invoice", target.id);
+    else { setDeliverySourceType("sale"); setDeliverySourceId(""); setDeliveryLines([]); setDeliveryAddress(""); }
+    setDeliveryDate(isoDate()); setDeliveryNotes(""); setDeliveryOpen(true); setNewMenu(false);
+  }
+  async function saveDelivery(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    const lines = deliveryLines.filter((line) => line.selected).map((line) => ({ id: line.id, sourceLineId: line.sourceLineId, quantity: Number(line.quantity) }));
+    const ok = await dispatch("delivery-note-create", { id: crypto.randomUUID(), sourceType: deliverySourceType, sourceId: deliverySourceId, deliveryDate, deliveryAddress, notes: deliveryNotes, lines });
+    if (ok) setDeliveryOpen(false);
+  }
+
+  function openPayment(invoice?: Invoice) {
+    const customerId = invoice?.customer_id ?? bundle.customers[0]?.id ?? "";
+    setPaymentCustomerId(customerId); setPaymentInvoiceId(invoice?.id ?? "");
+    setPaymentAmount(invoice ? String(invoice.outstanding_amount) : ""); setPaymentMethod("bank_transfer"); setPaymentReceivedAt(localDateTime()); setPaymentReference(""); setPaymentOpen(true);
+  }
+  async function savePayment(event: FormEvent) {
+    event.preventDefault();
     const amount = Number(paymentAmount);
-    const allocation = paymentInvoiceId && Number(paymentAllocationAmount) > 0
-      ? [{ id: crypto.randomUUID(), invoiceId: paymentInvoiceId, amount: Number(paymentAllocationAmount) }]
-      : [];
-    setBusy("payment");
-    const accepted = await dispatch("payment-record", {
-      id: crypto.randomUUID(),
-      customerId: paymentCustomerId,
-      amount,
-      paymentMethod,
-      receivedAt: new Date(paymentReceivedAt).toISOString(),
-      externalReference: paymentExternalReference,
-      notes: paymentNotes,
-      allocations: allocation,
-    });
-    setBusy("");
-    if (accepted) setPaymentOpen(false);
+    const allocations = paymentInvoiceId ? [{ id: crypto.randomUUID(), invoiceId: paymentInvoiceId, amount }] : [];
+    const ok = await dispatch("payment-record", { id: crypto.randomUUID(), customerId: paymentCustomerId, amount, paymentMethod, receivedAt: new Date(paymentReceivedAt).toISOString(), externalReference: paymentReference, notes: "", allocations });
+    if (ok) setPaymentOpen(false);
   }
 
-  function openAllocation(payment: PaymentRow) {
-    setAllocationPaymentId(payment.id);
-    const firstInvoice = bundle.invoices.find(
-      (invoice) => invoice.customer_id === payment.customer_id
-        && invoice.currency === payment.currency
-        && Number(invoice.outstanding_amount) > 0
-        && !["draft", "void", "paid"].includes(invoice.display_status),
-    );
-    setAllocationInvoiceId(firstInvoice?.id ?? "");
-    setAllocationAmount(String(Math.min(Number(payment.unallocated_amount), Number(firstInvoice?.outstanding_amount ?? 0)) || ""));
-    setAllocationOpen(true);
+  async function openIdentity() {
+    if (!bundle.workspaceId || !online) return setError("Reconnect before changing business document identity.");
+    setBusy("identity-load");
+    const response = await fetch(`/api/workspace/document-identity?workspaceId=${encodeURIComponent(bundle.workspaceId)}`, { cache: "no-store" });
+    const json = await response.json().catch(() => ({})); setBusy("");
+    if (!response.ok || !json.ok) return setError(json.error ?? "Document identity could not be loaded.");
+    const value = json.result;
+    setIdentity({ businessAddress: value.businessAddress ?? "", vatNumber: value.vatNumber ?? "", companyRegistrationNumber: value.companyRegistrationNumber ?? "", creditNotePrefix: value.creditNotePrefix ?? "CN", deliveryNotePrefix: value.deliveryNotePrefix ?? "DN", paymentTermsDays: String(value.paymentTermsDays ?? 14), documentFooter: value.documentFooter ?? "" });
+    setIdentityOpen(true);
+  }
+  async function saveIdentity(event: FormEvent) {
+    event.preventDefault(); if (!bundle.workspaceId) return;
+    setBusy("identity");
+    const response = await fetch("/api/workspace/document-identity", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ workspaceId: bundle.workspaceId, ...identity, paymentTermsDays: Number(identity.paymentTermsDays) }) });
+    const json = await response.json().catch(() => ({})); setBusy("");
+    if (!response.ok || !json.ok) return setError(json.error ?? "Document identity could not be saved.");
+    setIdentityOpen(false); setNotice("Business document identity updated."); await load();
   }
 
-  async function allocatePayment(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy("allocation");
-    const accepted = await dispatch("payment-allocate", {
-      id: crypto.randomUUID(),
-      paymentId: allocationPaymentId,
-      invoiceId: allocationInvoiceId,
-      amount: Number(allocationAmount),
-      occurredAt: new Date().toISOString(),
-    });
-    setBusy("");
-    if (accepted) setAllocationOpen(false);
-  }
-
-  async function submitReversal(event: FormEvent) {
-    event.preventDefault();
-    if (!reversal || busy) return;
-    setBusy("reversal");
-    const action: AccountsCommandAction = reversal.kind === "invoice"
-      ? "invoice-void"
-      : reversal.kind === "payment"
-        ? "payment-reverse"
-        : "allocation-reverse";
-    const invoice = reversal.kind === "invoice"
-      ? bundle.invoices.find((item) => item.id === reversal.id)
-      : null;
-    const payload = reversal.kind === "invoice"
-      ? { id: reversal.id, expectedVersion: invoice?.version, reason: reversalReason }
-      : reversal.kind === "payment"
-        ? { paymentId: reversal.id, reason: reversalReason }
-        : { id: crypto.randomUUID(), allocationId: reversal.id, reason: reversalReason, occurredAt: new Date().toISOString() };
-    const accepted = await dispatch(action, payload);
-    setBusy("");
-    if (accepted) {
-      setReversal(null);
-      setReversalReason("");
+  async function issueDocument(document: DocumentIndex) {
+    if (document.document_type === "invoice") {
+      const invoice = bundle.invoices.find((item) => item.id === document.id); if (!invoice) return;
+      await dispatch("invoice-issue", { id: invoice.id, expectedVersion: invoice.version }, true);
+    } else if (document.document_type === "credit_note") {
+      const note = bundle.creditNotes.find((item) => item.id === document.id); if (!note) return;
+      await dispatch("credit-note-issue", { id: note.id, expectedVersion: note.version }, true);
+    } else {
+      const note = bundle.deliveryNotes.find((item) => item.id === document.id); if (!note) return;
+      await dispatch("delivery-note-issue", { id: note.id, expectedVersion: note.version }, true);
     }
   }
 
-  function discardCommand(commandId: string) {
-    if (!bundle.workspaceId) return;
-    removeAccountsCommand(bundle.workspaceId, commandId);
-    refreshQueue();
+  function emailDocument(document: DocumentIndex) {
+    const customer = bundle.customers.find((item) => item.id === document.customer_id);
+    if (!customer?.email) return setError("This Customer does not have an email address recorded.");
+    const subject = `${documentLabel(document.document_type)} ${document.status === "draft" ? "Draft" : document.number}`;
+    const body = `Hello ${customer.name},\n\nPlease find your ${documentLabel(document.document_type).toLowerCase()} attached.\n\nBDB OS does not yet send external email automatically, so download the PDF and attach it in your email application.`;
+    window.location.href = `mailto:${encodeURIComponent(customer.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    setNotice("Email composer opened. Attach the downloaded PDF before sending; BDB OS has not recorded external delivery.");
   }
 
-  const paymentInvoice = bundle.invoices.find((invoice) => invoice.id === paymentInvoiceId) ?? null;
-  const allocationInvoice = bundle.invoices.find((invoice) => invoice.id === allocationInvoiceId) ?? null;
-  const manualInvoiceTotal = invoiceLines.reduce((sum, line) => sum + lineTotal(line), 0);
+  const canWrite = Boolean(bundle.workspaceId) && !supportReadOnly;
+  const identityIncomplete = !bundle.settings.business_address;
 
   return (
     <>
       <PageHeader
-        eyebrow="Finance workspace"
+        eyebrow="Business documents & balances"
         title="Accounts"
-        description="Issue invoices, record money received, allocate Payments and derive every customer balance from the ledger."
-        action={(
-          <div className={styles.toolbarActions}>
-            <Button
-              variant="secondary"
-              disabled={!canWrite || bundle.customers.length === 0}
-              onClick={() => {
-                setPaymentCustomerId(bundle.customers[0]?.id ?? "");
-                setPaymentAmount("");
-                setPaymentMethod("card");
-                setPaymentReceivedAt(localDateTime());
-                setPaymentExternalReference("");
-                setPaymentNotes("");
-                setPaymentInvoiceId("");
-                setPaymentAllocationAmount("");
-                setPaymentOpen(true);
-              }}
-            >
-              <Banknote size={17} /> Record Payment
-            </Button>
-            <Button disabled={!canWrite || bundle.customers.length === 0} onClick={openNewInvoice}>
-              <Plus size={17} /> New invoice
-            </Button>
-          </div>
-        )}
+        description="Create the documents customers expect, then keep Payments and balances connected underneath."
+        action={<div className={styles.headerActions}><Button variant="quiet" onClick={() => void openIdentity()}><Settings2 size={16} /> Document setup</Button><div className={styles.newWrap}><Button disabled={!canWrite || bundle.customers.length === 0} onClick={() => setNewMenu((value) => !value)}><Plus size={17} /> New Document</Button>{newMenu ? <div className={styles.newMenu}><button onClick={openInvoice}><FileText size={17} /><span><strong>Invoice</strong><small>Bill a Customer</small></span></button><button onClick={() => openCredit()}><FileMinus2 size={17} /><span><strong>Credit Note</strong><small>Credit an issued Invoice</small></span></button><button onClick={() => void openDelivery()}><PackageCheck size={17} /><span><strong>Delivery Note</strong><small>Record goods delivered</small></span></button></div> : null}</div></div>}
       />
 
-      <div className={styles.tabs} role="tablist" aria-label="Accounts workspace sections">
-        {(["overview", "invoices", "payments", "customers"] as const).map((item) => (
-          <button key={item} role="tab" data-active={tab === item} onClick={() => setTab(item)}>
-            {item}
-          </button>
-        ))}
-      </div>
+      <nav className={styles.tabs} aria-label="Accounts sections">
+        {(["documents", "payments", "customers"] as const).map((item) => <button key={item} data-active={tab === item} onClick={() => setTab(item)}>{item}</button>)}
+      </nav>
 
-      <div className="stat-grid">
-        <StatCard label="Outstanding" value={formatMoney(outstandingTotal, currency)} detail="Issued invoices still due" icon={<Clock3 size={19} />} />
-        <StatCard label="Received" value={formatMoney(receivedTotal, currency)} detail="Posted Payments, before Banking" icon={<CircleCheckBig size={19} />} />
-        <StatCard label="Unallocated credit" value={formatMoney(unallocatedTotal, currency)} detail="Money received not yet assigned" icon={<Banknote size={19} />} />
-        <StatCard label="Overdue" value={String(overdueCount)} detail="Derived from due dates and allocations" icon={<TriangleAlert size={19} />} />
-      </div>
+      {!online ? <div className={styles.attention}><TriangleAlert size={17} /><div><strong>Offline</strong><span>Drafts can be queued. Issuing final numbered documents waits for reconnection.</span></div></div> : null}
+      {queue.length > 0 ? <div className={styles.attention}><RefreshCw size={17} /><div><strong>{queue.length} change{queue.length === 1 ? "" : "s"} waiting to synchronise</strong><span>Commands replay in order and stop safely at the first conflict.</span></div></div> : null}
+      {identityIncomplete ? <div className={styles.quietNotice}><span>Before real client use, complete the business address and any VAT/company details that apply under <button onClick={() => void openIdentity()}>Document setup</button>.</span></div> : null}
+      {error ? <div className="review-callout"><TriangleAlert size={18} /><div><strong>Accounts needs attention</strong><p>{error}</p></div></div> : null}
+      {notice ? <div className={styles.quietNotice}><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={14} /></button></div> : null}
 
-      <div className={styles.callout}>
-        <strong>Finance boundary</strong>
-        <span className={styles.muted}>Recording a Payment does not create or match a bank transaction. Banking reconciliation remains a separate controlled integration.</span>
-      </div>
-
-      {supportReadOnly ? (
-        <div className={styles.callout}>
-          <strong>Read-only access</strong>
-          <span className={styles.muted}>No financial command will be queued in this mode.</span>
+      {tab === "documents" ? <section className={styles.section}>
+        <div className={styles.documentToolbar}>
+          <div className={styles.filters}>{(["all", "invoice", "credit_note", "delivery_note"] as const).map((item) => <button key={item} data-active={filter === item} onClick={() => setFilter(item)}>{item === "all" ? "All" : `${documentLabel(item)}s`}</button>)}</div>
+          <input className="filter-input" placeholder="Search documents or Customers…" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
-      ) : null}
-      {notice ? <div className={styles.callout}><strong>Accounts status</strong><span className={styles.muted}>{notice}</span></div> : null}
-      {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Accounts needs attention</strong><p>{error}</p></div></div> : null}
-
-      {queue.length > 0 ? (
-        <div className={styles.queue}>
-          <SectionHeading
-            title={`${queue.length} queued financial command${queue.length === 1 ? "" : "s"}`}
-            description="Commands replay in order and stop at the first server conflict."
-            action={<Button variant="secondary" disabled={!online || busy === "sync"} onClick={() => void syncCommands()}><RefreshCw size={16} /> Synchronise</Button>}
-          />
-          {queue.map((command) => (
-            <div className={styles.queueRow} key={command.id}>
-              <div className={styles.queueMeta}>
-                <strong>{command.action.replaceAll("-", " ")}</strong>
-                <span className={styles.muted}>{formatDate(command.createdAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{command.lastError ? ` · ${command.lastError}` : ""}</span>
-              </div>
-              <Button variant="quiet" onClick={() => discardCommand(command.id)}><X size={15} /> Discard</Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      <div className={styles.toolbar}>
-        <input
-          className="filter-input"
-          placeholder="Search invoices, Payments or customers…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className={styles.toolbarActions}>
-          <Badge tone={online ? "green" : "gold"}>{online ? "Online" : "Offline"}</Badge>
-          <Button variant="quiet" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>
-        </div>
-      </div>
-
-      {loading && !bundle.workspaceId ? <Card><div className={styles.empty}>Loading Accounts…</div></Card> : null}
-
-      {tab === "overview" ? (
-        <div className={styles.stack}>
-          <Card className="table-card">
-            <SectionHeading
-              title="Sales awaiting an invoice"
-              description="A completed Sale remains commercially separate until Accounts creates and issues its invoice."
-              action={availableSales.length > 0 && canWrite ? (
-                <Button variant="secondary" onClick={() => {
-                  setSaleId(availableSales[0]?.sale_id ?? "");
-                  setSaleInvoiceDueAt(defaultDueDate());
-                  setSaleInvoiceNotes("");
-                  setSaleInvoiceOpen(true);
-                }}><FilePlus2 size={16} /> Invoice a Sale</Button>
-              ) : undefined}
-            />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Sale</th><th>Customer</th><th>Status</th><th className={styles.money}>Value</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {availableSales.slice(0, 12).map((sale) => {
-                    const customer = bundle.customers.find((item) => item.id === sale.customer_id);
-                    return (
-                      <tr key={sale.sale_id}>
-                        <td className={styles.referenceCell}><strong>{sale.sale_reference}</strong><span>{sale.account_status.replaceAll("_", " ")}</span></td>
-                        <td>{customer?.name ?? "Customer unavailable"}</td>
-                        <td><Badge tone="gold">Not invoiced</Badge></td>
-                        <td className={styles.money}>{formatMoney(Number(sale.sale_total_amount), sale.currency)}</td>
-                        <td><Button variant="quiet" disabled={!canWrite} onClick={() => {
-                          setSaleId(sale.sale_id);
-                          setSaleInvoiceDueAt(defaultDueDate());
-                          setSaleInvoiceNotes("");
-                          setSaleInvoiceOpen(true);
-                        }}><Link2 size={15} /> Create draft</Button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {availableSales.length === 0 ? <div className={styles.empty}>No completed Sales are waiting for an active invoice.</div> : null}
-          </Card>
-
-          <Card className="table-card">
-            <SectionHeading title="Customer balances" description="Outstanding invoices minus unallocated customer credit." />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Customer</th><th className={styles.money}>Issued</th><th className={styles.money}>Received</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Credit</th><th className={styles.money}>Net balance</th></tr></thead>
-                <tbody>
-                  {bundle.customerBalances.slice(0, 12).map((customer) => (
-                    <tr key={customer.customer_id}>
-                      <td className={styles.customerCell}><strong>{customer.customer_name}</strong><span>{customer.customer_code}{customer.company ? ` · ${customer.company}` : ""}</span></td>
-                      <td className={styles.money}>{formatMoney(Number(customer.issued_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.received_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.outstanding_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.unallocated_credit), currency)}</td>
-                      <td className={`${styles.money} ${Number(customer.net_balance) > 0 ? styles.balancePositive : Number(customer.net_balance) < 0 ? styles.balanceCredit : ""}`}><strong>{formatMoney(Number(customer.net_balance), currency)}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      ) : null}
-
-      {tab === "invoices" ? (
         <Card className="table-card">
-          <SectionHeading
-            title="Invoices"
-            description="Drafts are editable. Issued invoices are immutable and corrected through allocation reversals or voiding."
-            action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={openNewInvoice}><Plus size={16} /> Manual invoice</Button>}
-          />
-          <div className={styles.tableScroll}>
-            <table>
-              <thead><tr><th>Invoice</th><th>Customer</th><th>Due</th><th>Status</th><th className={styles.money}>Total</th><th className={styles.money}>Allocated</th><th className={styles.money}>Outstanding</th><th aria-label="Actions" /></tr></thead>
-              <tbody>
-                {filteredInvoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td className={styles.referenceCell}><strong>{invoice.number}</strong><span>{invoice.source_sale_id ? "From completed Sale" : invoice.description}</span></td>
-                    <td className={styles.customerCell}><strong>{invoice.customer_name_snapshot}</strong><span>{invoice.customer_code_snapshot}</span></td>
-                    <td>{formatDate(`${invoice.due_at}T00:00:00Z`)}</td>
-                    <td><Badge tone={invoiceTone(invoice.display_status)}>{invoice.payment_status.replaceAll("_", " ")}</Badge></td>
-                    <td className={styles.money}>{formatMoney(Number(invoice.total_amount), invoice.currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(invoice.allocated_amount), invoice.currency)}</td>
-                    <td className={styles.money}><strong>{formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</strong></td>
-                    <td>
-                      <div className={styles.rowActions}>
-                        {invoice.display_status === "draft" ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => openEditInvoice(invoice)}>Edit</Button> : null}
-                        {invoice.display_status === "draft" ? <Button variant="secondary" disabled={!canWrite || Boolean(busy)} onClick={() => void issueInvoice(invoice)}>Issue</Button> : null}
-                        {["draft", "sent", "overdue"].includes(invoice.display_status) ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => { setReversal({ kind: "invoice", id: invoice.id, label: invoice.number }); setReversalReason(""); }}>Void</Button> : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filteredInvoices.length === 0 ? <div className={styles.empty}>No invoices match the current search.</div> : null}
+          <div className={styles.tableScroll}><table><thead><tr><th>Document</th><th>Customer</th><th>Date</th><th>Status</th><th className={styles.money}>Total</th><th className={styles.money}>Balance</th><th aria-label="Actions" /></tr></thead><tbody>
+            {documents.map((document) => {
+              const isDraft = document.status === "draft";
+              const invoice = document.document_type === "invoice" ? bundle.invoices.find((item) => item.id === document.id) : null;
+              return <tr key={`${document.document_type}-${document.id}`}>
+                <td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Draft" : document.number}</small></span></div></td>
+                <td>{document.customer_name}</td><td>{formatDate(document.document_date)}</td><td><Badge tone={isDraft ? "neutral" : document.status === "paid" ? "green" : document.status === "overdue" ? "red" : "gold"}>{document.status.replaceAll("_", " ")}</Badge></td>
+                <td className={styles.money}>{document.document_type === "delivery_note" ? "—" : formatMoney(Number(document.total_amount ?? 0), document.currency ?? currency)}</td>
+                <td className={styles.money}>{document.document_type === "invoice" ? formatMoney(Number(document.balance_amount ?? 0), document.currency ?? currency) : "—"}</td>
+                <td><div className={styles.rowActions}>
+                  <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html"), "_blank")}><MoreHorizontal size={15} /> View</Button>
+                  <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html", true), "_blank")}><Printer size={15} /> Print</Button>
+                  <a className={styles.actionLink} href={businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "pdf")}><Download size={15} /> PDF</a>
+                  {!isDraft ? <Button variant="quiet" onClick={() => emailDocument(document)}><Mail size={15} /> Email</Button> : null}
+                  {isDraft ? <Button variant="secondary" disabled={!online || Boolean(busy)} onClick={() => void issueDocument(document)}>Issue</Button> : null}
+                  {invoice && !isDraft && !["void"].includes(invoice.display_status) ? <><Button variant="quiet" onClick={() => openCredit(invoice)}>Credit</Button>{invoice.invoice_lines.length ? <Button variant="quiet" onClick={() => void openDelivery(invoice)}>Deliver</Button> : null}{invoice.outstanding_amount > 0 ? <Button variant="quiet" onClick={() => openPayment(invoice)}>Payment</Button> : null}</> : null}
+                </div></td>
+              </tr>;
+            })}
+          </tbody></table></div>
+          {!documents.length ? <div className={styles.empty}><FileText size={26} /><strong>No business documents yet</strong><span>Create an Invoice, Credit Note or Delivery Note from one place.</span></div> : null}
         </Card>
-      ) : null}
+      </section> : null}
 
-      {tab === "payments" ? (
-        <div className={styles.stack}>
-          <Card className="table-card">
-            <SectionHeading
-              title="Payments received"
-              description="A Payment is money received. It only reduces an invoice after allocation."
-              action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={() => {
-                setPaymentCustomerId(bundle.customers[0]?.id ?? "");
-                setPaymentAmount("");
-                setPaymentMethod("card");
-                setPaymentReceivedAt(localDateTime());
-                setPaymentExternalReference("");
-                setPaymentNotes("");
-                setPaymentInvoiceId("");
-                setPaymentAllocationAmount("");
-                setPaymentOpen(true);
-              }}><Plus size={16} /> Record Payment</Button>}
-            />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Payment</th><th>Customer</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Allocated</th><th className={styles.money}>Unallocated</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {filteredPayments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td className={styles.referenceCell}><strong>{payment.reference}</strong><span>{formatDate(payment.received_at, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></td>
-                      <td>{payment.customer_name_snapshot}</td>
-                      <td>{methodLabel(payment.payment_method)}</td>
-                      <td><Badge tone={payment.status === "posted" ? "green" : "neutral"}>{payment.status}</Badge></td>
-                      <td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(payment.allocated_amount), payment.currency)}</td>
-                      <td className={styles.money}><strong>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</strong></td>
-                      <td><div className={styles.rowActions}>
-                        {payment.status === "posted" && Number(payment.unallocated_amount) > 0 ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => openAllocation(payment)}>Allocate</Button> : null}
-                        {payment.status === "posted" && Number(payment.allocated_amount) === 0 ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => { setReversal({ kind: "payment", id: payment.id, label: payment.reference }); setReversalReason(""); }}><RotateCcw size={15} /> Reverse</Button> : null}
-                      </div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filteredPayments.length === 0 ? <div className={styles.empty}>No Payments match the current search.</div> : null}
-          </Card>
+      {tab === "payments" ? <section className={styles.section}>
+        <SectionHeading title="Payments" description="Money received stays simple here; allocations and ledger safeguards remain underneath." action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={() => openPayment()}><Banknote size={16} /> Record Payment</Button>} />
+        <Card className="table-card"><div className={styles.tableScroll}><table><thead><tr><th>Reference</th><th>Customer</th><th>Date</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Unallocated</th></tr></thead><tbody>{bundle.payments.map((payment) => <tr key={payment.id}><td><strong>{payment.reference}</strong>{payment.external_reference ? <small className={styles.subtle}>{payment.external_reference}</small> : null}</td><td>{payment.customer_name_snapshot}</td><td>{formatDate(payment.received_at)}</td><td>{payment.payment_method.replaceAll("_", " ")}</td><td><Badge tone={payment.status === "posted" ? "green" : "neutral"}>{payment.status}</Badge></td><td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</td></tr>)}</tbody></table></div>{!bundle.payments.length ? <div className={styles.empty}><Banknote size={24} /><strong>No Payments recorded</strong></div> : null}</Card>
+      </section> : null}
 
-          <Card className="table-card">
-            <SectionHeading title="Active allocations" description="Allocations are append-only. Corrections create a linked negative reversal." />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Payment</th><th>Invoice</th><th>Date</th><th className={styles.money}>Amount</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {activeAllocations.map((allocation) => {
-                    const payment = bundle.payments.find((item) => item.id === allocation.payment_id);
-                    const invoice = bundle.invoices.find((item) => item.id === allocation.invoice_id);
-                    return (
-                      <tr key={allocation.id}>
-                        <td>{payment?.reference ?? allocation.payment_id}</td>
-                        <td>{invoice?.number ?? allocation.invoice_id}</td>
-                        <td>{formatDate(allocation.occurred_at, { day: "numeric", month: "short", year: "numeric" })}</td>
-                        <td className={styles.money}>{formatMoney(Number(allocation.amount_delta), payment?.currency ?? currency)}</td>
-                        <td><Button variant="quiet" disabled={!canWrite || Boolean(busy) || payment?.status !== "posted"} onClick={() => { setReversal({ kind: "allocation", id: allocation.id, label: `${payment?.reference ?? "Payment"} → ${invoice?.number ?? "Invoice"}` }); setReversalReason(""); }}><RotateCcw size={15} /> Reverse</Button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {activeAllocations.length === 0 ? <div className={styles.empty}>No active Payment allocations.</div> : null}
-          </Card>
-        </div>
-      ) : null}
+      {tab === "customers" ? <section className={styles.section}>
+        <SectionHeading title="Customer balances" description="What each Customer owes or holds as credit, derived from issued documents and Payments." />
+        <Card className="table-card"><div className={styles.tableScroll}><table><thead><tr><th>Customer</th><th>Code</th><th>Status</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Credit</th><th className={styles.money}>Net balance</th></tr></thead><tbody>{bundle.customerBalances.map((balance) => <tr key={balance.customer_id}><td><strong>{balance.customer_name}</strong>{balance.company ? <small className={styles.subtle}>{balance.company}</small> : null}</td><td>{balance.customer_code}</td><td><Badge tone={balance.balance_status === "amount_due" ? "gold" : balance.balance_status === "customer_credit" ? "green" : "neutral"}>{balance.balance_status.replaceAll("_", " ")}</Badge></td><td className={styles.money}>{formatMoney(Number(balance.outstanding_amount), currency)}</td><td className={styles.money}>{formatMoney(Number(balance.unallocated_credit), currency)}</td><td className={styles.money}><strong>{formatMoney(Number(balance.net_balance), currency)}</strong></td></tr>)}</tbody></table></div></Card>
+      </section> : null}
 
-      {tab === "customers" ? (
-        <Card className="table-card">
-          <SectionHeading title="Customer account balances" description="Balances are calculated from issued invoices and posted Payment allocations." />
-          <div className={styles.tableScroll}>
-            <table>
-              <thead><tr><th>Customer</th><th>Status</th><th className={styles.money}>Issued</th><th className={styles.money}>Payments</th><th className={styles.money}>Allocated</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Unallocated credit</th><th className={styles.money}>Net balance</th></tr></thead>
-              <tbody>
-                {bundle.customerBalances.map((customer) => (
-                  <tr key={customer.customer_id}>
-                    <td className={styles.customerCell}><strong>{customer.customer_name}</strong><span>{customer.customer_code}{customer.company ? ` · ${customer.company}` : ""}</span></td>
-                    <td><Badge tone={customer.balance_status === "amount_due" ? "gold" : customer.balance_status === "customer_credit" ? "green" : "neutral"}>{customer.balance_status.replaceAll("_", " ")}</Badge></td>
-                    <td className={styles.money}>{formatMoney(Number(customer.issued_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.received_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.allocated_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.outstanding_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.unallocated_credit), currency)}</td>
-                    <td className={`${styles.money} ${Number(customer.net_balance) > 0 ? styles.balancePositive : Number(customer.net_balance) < 0 ? styles.balanceCredit : ""}`}><strong>{formatMoney(Number(customer.net_balance), currency)}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {bundle.customerBalances.length === 0 ? <div className={styles.empty}>No Customer account balances are available.</div> : null}
-        </Card>
-      ) : null}
+      {loading && !bundle.workspaceId ? <Card><div className={styles.empty}>Opening Accounts…</div></Card> : null}
 
-      <Dialog
-        open={invoiceOpen}
-        onClose={() => { if (!busy) setInvoiceOpen(false); }}
-        title={editingInvoice ? `Edit ${editingInvoice.number}` : "Create manual invoice"}
-        description={editingInvoice?.source_sale_id ? "Sale-derived lines are fixed. Only the due date, description and notes can be reviewed." : "Build the draft from explicit VAT-inclusive lines, then issue it separately."}
-      >
-        <form onSubmit={saveInvoice}>
-          <div className={styles.formGrid}>
-            <div className="field"><label htmlFor="invoice-customer">Customer</label><select id="invoice-customer" required disabled={Boolean(editingInvoice)} value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.code}</option>)}</select></div>
-            <div className="field"><label htmlFor="invoice-due">Due date</label><input id="invoice-due" required type="date" value={invoiceDueAt} onChange={(event) => setInvoiceDueAt(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="invoice-description">Description</label><input id="invoice-description" required value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="invoice-notes">Notes</label><textarea id="invoice-notes" value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} /></div>
-          </div>
-
-          {!editingInvoice?.source_sale_id ? (
-            <div className={styles.lineEditor}>
-              <SectionHeading title="Invoice lines" description={`Draft total: ${formatMoney(manualInvoiceTotal, currency)}`} action={<Button type="button" variant="secondary" onClick={() => setInvoiceLines((lines) => [...lines, blankLine(bundle.settings.vat_rate)])}><Plus size={15} /> Add line</Button>} />
-              {invoiceLines.map((line, index) => (
-                <div className={styles.lineRow} key={line.id}>
-                  <label>Description<input required value={line.description} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, description: event.target.value } : item))} /></label>
-                  <label>Quantity<input required min="0.001" step="0.001" type="number" value={line.quantity} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, quantity: event.target.value } : item))} /></label>
-                  <label>Unit price<input required min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, unitPrice: event.target.value } : item))} /></label>
-                  <label>Discount<input required min="0" step="0.01" type="number" value={line.discountAmount} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, discountAmount: event.target.value } : item))} /></label>
-                  <label>VAT %<input required min="0" max="100" step="0.01" type="number" value={line.vatRate} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, vatRate: event.target.value } : item))} /></label>
-                  <Button type="button" variant="quiet" disabled={invoiceLines.length === 1} onClick={() => setInvoiceLines((lines) => lines.filter((item) => item.id !== line.id))}><X size={15} /> {index + 1}</Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.callout}><strong>{editingInvoice.invoice_lines.length} Sale line{editingInvoice.invoice_lines.length === 1 ? "" : "s"}</strong><span className={styles.muted}>The commercial snapshots are fixed and cannot be edited from Accounts.</span></div>
-          )}
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>{busy === "invoice" ? "Saving…" : "Save draft"}</Button></div>
+      <Dialog open={invoiceOpen} onClose={() => { if (!busy) setInvoiceOpen(false); }} title="New Invoice" description="Build the draft from the shared Product & Service catalogue or a manual line. The final sequential number is assigned only when you issue it online.">
+        <form onSubmit={saveInvoice} className={styles.formStack}>
+          <div className={styles.formGrid}><div className="field"><label>Customer</label><select required value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div><div className="field"><label>Due date</label><input required type="date" value={invoiceDueAt} onChange={(event) => setInvoiceDueAt(event.target.value)} /></div><div className={`field ${styles.full}`}><label>Description</label><input required value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} placeholder="What is this Invoice for?" /></div></div>
+          <div className={styles.lineList}>{invoiceLines.map((line, index) => <div className={styles.lineRow} key={line.id}>
+            <div className="field"><label>Type</label><select value={line.lineType} onChange={(event) => { const lineType = event.target.value as LineType; setInvoiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...draftLine(bundle.settings.vat_rate), id: item.id, lineType } : item)); }}><option value="product">Product</option><option value="service">Service</option><option value="manual">Manual</option></select></div>
+            {line.lineType !== "manual" ? <div className={`field ${styles.lineDescription}`}><label>{line.lineType === "product" ? "Product" : "Service"}</label><select required value={line.sourceId} onChange={(event) => catalogueChange(index, event.target.value)}><option value="">Choose…</option>{line.lineType === "product" ? bundle.products.map((item) => <option key={item.id} value={item.id}>{item.sku} · {item.name}</option>) : bundle.services.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></div> : <div className={`field ${styles.lineDescription}`}><label>Description</label><input required value={line.description} onChange={(event) => setInvoiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} /></div>}
+            <div className="field"><label>Qty</label><input required type="number" min="0.001" step="0.001" value={line.quantity} onChange={(event) => setInvoiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></div><div className="field"><label>Unit price</label><input required type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => setInvoiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, unitPrice: event.target.value } : item))} /></div><div className="field"><label>VAT %</label><input type="number" min="0" max="100" step="0.01" value={line.vatRate} onChange={(event) => setInvoiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, vatRate: event.target.value } : item))} /></div><button type="button" className={styles.removeLine} aria-label="Remove line" disabled={invoiceLines.length === 1} onClick={() => setInvoiceLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
+          </div>)}</div>
+          <Button type="button" variant="quiet" onClick={() => setInvoiceLines((current) => [...current, draftLine(bundle.settings.vat_rate)])}><Plus size={15} /> Add line</Button>
+          <div className="field"><label>Notes</label><textarea rows={3} value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} /></div>
+          <div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Save Draft</Button></div>
         </form>
       </Dialog>
 
-      <Dialog open={saleInvoiceOpen} onClose={() => { if (!busy) setSaleInvoiceOpen(false); }} title="Create invoice from Sale" description="The Sale lines and values are copied into a reviewable invoice draft. No Payment is implied.">
-        <form onSubmit={createSaleInvoice}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="sale-invoice-sale">Completed Sale</label><select id="sale-invoice-sale" required value={saleId} onChange={(event) => setSaleId(event.target.value)}>{availableSales.map((sale) => <option key={sale.sale_id} value={sale.sale_id}>{sale.sale_reference} · {formatMoney(Number(sale.sale_total_amount), sale.currency)}</option>)}</select></div>
-            <div className="field"><label htmlFor="sale-invoice-due">Due date</label><input id="sale-invoice-due" required type="date" value={saleInvoiceDueAt} onChange={(event) => setSaleInvoiceDueAt(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="sale-invoice-notes">Notes</label><textarea id="sale-invoice-notes" value={saleInvoiceNotes} onChange={(event) => setSaleInvoiceNotes(event.target.value)} /></div>
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setSaleInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || !saleId}>{busy === "sale-invoice" ? "Creating…" : "Create draft"}</Button></div>
+      <Dialog open={creditOpen} onClose={() => { if (!busy) setCreditOpen(false); }} title="New Credit Note" description="Credit an issued Invoice without deleting or rewriting its history. You can credit all or part of it.">
+        <form onSubmit={saveCredit} className={styles.formStack}>
+          <div className="field"><label>Invoice</label><select value={creditInvoiceId} onChange={(event) => { const invoice = bundle.invoices.find((item) => item.id === event.target.value); if (invoice) setCreditInvoice(invoice); }}>{bundle.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {formatMoney(Number(invoice.adjusted_total_amount ?? invoice.total_amount), invoice.currency)}</option>)}</select></div>
+          <div className="field"><label>Reason</label><textarea required minLength={5} rows={3} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Why is this amount being credited?" /></div>
+          {selectedCreditInvoice?.invoice_lines.length ? <div className={styles.selectionList}>{creditLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity to credit</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div> : <div className="field"><label>Credit amount</label><input required type="number" min="0.01" step="0.01" max={selectedCreditInvoice?.adjusted_total_amount ?? selectedCreditInvoice?.total_amount} value={legacyCreditAmount} onChange={(event) => setLegacyCreditAmount(event.target.value)} /><small className={styles.subtle}>This historical Invoice has no stored line detail, so BDB OS preserves it and records the Credit Note as an explicit adjustment.</small></div>}
+          <div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Save Draft</Button></div>
         </form>
       </Dialog>
 
-      <Dialog open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false); }} title="Record Payment" description="Record the money received first. Allocation to an issued invoice is optional and may be partial.">
-        <form onSubmit={recordPayment}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-customer">Customer</label><select id="payment-customer" required value={paymentCustomerId} onChange={(event) => { setPaymentCustomerId(event.target.value); setPaymentInvoiceId(""); setPaymentAllocationAmount(""); }}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.code}</option>)}</select></div>
-            <div className="field"><label htmlFor="payment-amount">Amount</label><input id="payment-amount" required min="0.01" step="0.01" type="number" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} /></div>
-            <div className="field"><label htmlFor="payment-method">Method</label><select id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div>
-            <div className="field"><label htmlFor="payment-date">Received at</label><input id="payment-date" required type="datetime-local" value={paymentReceivedAt} onChange={(event) => setPaymentReceivedAt(event.target.value)} /></div>
-            <div className="field"><label htmlFor="payment-reference">External reference</label><input id="payment-reference" value={paymentExternalReference} onChange={(event) => setPaymentExternalReference(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-notes">Notes</label><textarea id="payment-notes" value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-invoice">Allocate immediately (optional)</label><select id="payment-invoice" value={paymentInvoiceId} onChange={(event) => { const nextId = event.target.value; const invoice = paymentCustomerInvoices.find((item) => item.id === nextId); setPaymentInvoiceId(nextId); setPaymentAllocationAmount(nextId ? String(Math.min(Number(paymentAmount) || 0, Number(invoice?.outstanding_amount ?? 0))) : ""); }}><option value="">Leave unallocated</option>{paymentCustomerInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · due {formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</option>)}</select></div>
-            {paymentInvoiceId ? <div className="field"><label htmlFor="payment-allocation">Allocation amount</label><input id="payment-allocation" required min="0.01" max={Math.min(Number(paymentAmount) || 0, Number(paymentInvoice?.outstanding_amount ?? 0))} step="0.01" type="number" value={paymentAllocationAmount} onChange={(event) => setPaymentAllocationAmount(event.target.value)} /></div> : null}
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setPaymentOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>{busy === "payment" ? "Recording…" : "Record Payment"}</Button></div>
+      <Dialog open={deliveryOpen} onClose={() => { if (!busy) setDeliveryOpen(false); }} title="New Delivery Note" description="Delivery Notes record fulfilment only. They never change an Invoice balance or create a Payment.">
+        <form onSubmit={saveDelivery} className={styles.formStack}>
+          <div className={styles.formGrid}><div className="field"><label>Source</label><select value={deliverySourceType} onChange={(event) => { const type = event.target.value as "invoice" | "sale"; setDeliverySourceType(type); setDeliverySourceId(""); setDeliveryLines([]); }}><option value="invoice">Issued Invoice</option><option value="sale">Completed Sale</option></select></div><div className="field"><label>{deliverySourceType === "invoice" ? "Invoice" : "Sale"}</label><select required value={deliverySourceId} onChange={(event) => populateDelivery(deliverySourceType, event.target.value)}><option value="">Choose…</option>{deliverySourceType === "invoice" ? bundle.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status) && invoice.invoice_lines.length).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number}</option>) : saleSources.filter((sale) => sale.sale_lines.length).map((sale) => <option key={sale.id} value={sale.id}>{sale.reference}</option>)}</select></div><div className="field"><label>Delivery date</label><input type="date" required value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} /></div><div className="field"><label>Delivery address</label><input value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} /></div></div>
+          <div className={styles.selectionList}>{deliveryLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity delivered</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div>
+          <div className="field"><label>Notes</label><textarea rows={3} value={deliveryNotes} onChange={(event) => setDeliveryNotes(event.target.value)} /></div>
+          <div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setDeliveryOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || deliveryLines.every((line) => !line.selected)}>Save Draft</Button></div>
         </form>
       </Dialog>
 
-      <Dialog open={allocationOpen} onClose={() => { if (!busy) setAllocationOpen(false); }} title="Allocate Payment" description={selectedPayment ? `${selectedPayment.reference} has ${formatMoney(Number(selectedPayment.unallocated_amount), selectedPayment.currency)} unallocated.` : undefined}>
-        <form onSubmit={allocatePayment}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="allocation-invoice">Issued invoice</label><select id="allocation-invoice" required value={allocationInvoiceId} onChange={(event) => { const nextId = event.target.value; const invoice = allocationInvoices.find((item) => item.id === nextId); setAllocationInvoiceId(nextId); setAllocationAmount(String(Math.min(Number(selectedPayment?.unallocated_amount ?? 0), Number(invoice?.outstanding_amount ?? 0)))); }}>{allocationInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · due {formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</option>)}</select></div>
-            <div className="field"><label htmlFor="allocation-amount">Amount</label><input id="allocation-amount" required min="0.01" max={Math.min(Number(selectedPayment?.unallocated_amount ?? 0), Number(allocationInvoice?.outstanding_amount ?? 0))} step="0.01" type="number" value={allocationAmount} onChange={(event) => setAllocationAmount(event.target.value)} /></div>
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setAllocationOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || !allocationInvoiceId}>{busy === "allocation" ? "Allocating…" : "Allocate"}</Button></div>
-        </form>
+      <Dialog open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false); }} title="Record Payment" description="Record money received. When opened from an Invoice, the Payment is allocated to it automatically.">
+        <form onSubmit={savePayment} className={styles.formStack}><div className={styles.formGrid}><div className="field"><label>Customer</label><select required value={paymentCustomerId} disabled={Boolean(paymentInvoiceId)} onChange={(event) => setPaymentCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div><div className="field"><label>Amount</label><input required type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} /></div><div className="field"><label>Method</label><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div className="field"><label>Received</label><input type="datetime-local" required value={paymentReceivedAt} onChange={(event) => setPaymentReceivedAt(event.target.value)} /></div><div className={`field ${styles.full}`}><label>Reference</label><input value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} placeholder="Bank / card / cheque reference" /></div></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setPaymentOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Record Payment</Button></div></form>
       </Dialog>
 
-      <Dialog open={Boolean(reversal)} onClose={() => { if (!busy) setReversal(null); }} title={reversal?.kind === "invoice" ? "Void invoice" : reversal?.kind === "payment" ? "Reverse Payment" : "Reverse allocation"} description={reversal ? `${reversal.label} will remain visible in the immutable history.` : undefined}>
-        <form onSubmit={submitReversal}>
-          <div className="field"><label htmlFor="reversal-reason">Reason</label><textarea id="reversal-reason" required minLength={5} maxLength={500} value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} /></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setReversal(null)}>Cancel</Button><Button type="submit" variant="danger" disabled={Boolean(busy)}>{busy === "reversal" ? "Saving…" : "Confirm correction"}</Button></div>
-        </form>
+      <Dialog open={identityOpen} onClose={() => { if (!busy) setIdentityOpen(false); }} title="Business Document Setup" description="These workspace details are used on future issued Invoices and Credit Notes. Complete only the legal/tax identifiers that apply to the business.">
+        <form onSubmit={saveIdentity} className={styles.formStack}><div className={styles.formGrid}><div className={`field ${styles.full}`}><label>Business address</label><textarea rows={3} value={identity.businessAddress} onChange={(event) => setIdentity({ ...identity, businessAddress: event.target.value })} /></div><div className="field"><label>VAT number</label><input value={identity.vatNumber} onChange={(event) => setIdentity({ ...identity, vatNumber: event.target.value })} /></div><div className="field"><label>Company registration number</label><input value={identity.companyRegistrationNumber} onChange={(event) => setIdentity({ ...identity, companyRegistrationNumber: event.target.value })} /></div><div className="field"><label>Credit Note prefix</label><input value={identity.creditNotePrefix} onChange={(event) => setIdentity({ ...identity, creditNotePrefix: event.target.value.toUpperCase() })} /></div><div className="field"><label>Delivery Note prefix</label><input value={identity.deliveryNotePrefix} onChange={(event) => setIdentity({ ...identity, deliveryNotePrefix: event.target.value.toUpperCase() })} /></div><div className="field"><label>Default payment terms (days)</label><input type="number" min="0" max="365" value={identity.paymentTermsDays} onChange={(event) => setIdentity({ ...identity, paymentTermsDays: event.target.value })} /></div><div className={`field ${styles.full}`}><label>Document footer</label><textarea rows={3} value={identity.documentFooter} onChange={(event) => setIdentity({ ...identity, documentFooter: event.target.value })} placeholder="Payment instructions, registration wording or other footer text" /></div></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setIdentityOpen(false)}>Cancel</Button><Button type="submit" disabled={busy === "identity"}>Save Setup</Button></div></form>
       </Dialog>
     </>
   );
