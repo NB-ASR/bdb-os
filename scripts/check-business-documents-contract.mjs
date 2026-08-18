@@ -47,7 +47,7 @@ assert.match(renderRoute, /custom_branding/);
 assert.match(renderRoute, /application\/pdf/);
 assert.match(renderer, /businessDocumentHtml/);
 assert.match(renderer, /businessDocumentPdf/);
-assert.match(renderer, /Delivery Note/);
+assert.match(renderer, /delivery_note/);
 assert.match(renderer, /Print \/ Save as PDF/);
 
 console.log("Business Documents contract preserves One Engine, offline commands, document safety and restrained Accounts UX.");
