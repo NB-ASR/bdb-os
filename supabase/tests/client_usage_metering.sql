@@ -37,22 +37,20 @@ values
 on conflict (plan_id, metric_key) do update
 set included_quantity=excluded.included_quantity, warning_threshold_percent=excluded.warning_threshold_percent;
 
+-- Create August first, then inspect it in separate statements so the assertions
+-- observe the row written by the side-effecting helper.
+select public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-31 23:59:59+00');
+
 select is(
-  (select period_start from public.workspace_usage_periods where id=public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-31 23:59:59+00')),
+  (select period_start from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-08-01 00:00:00+00'),
   '2026-08-01 00:00:00+00'::timestamptz,
   'Usage period starts at the UTC month boundary'
 );
 
 select is(
-  (select period_end from public.workspace_usage_periods where id=public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-31 23:59:59+00')),
+  (select period_end from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-08-01 00:00:00+00'),
   '2026-09-01 00:00:00+00'::timestamptz,
   'Usage period ends at the next UTC month boundary'
-);
-
-select isnt(
-  public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-31 23:59:59+00'),
-  public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-09-01 00:00:00+00'),
-  'Adjacent billing months use different immutable usage periods'
 );
 
 select is(
@@ -73,10 +71,20 @@ select is(
   'Changing a plan later does not rewrite the existing period allowance snapshot'
 );
 
+-- September is first observed only after the plan allowance changes, so it must
+-- receive the new value while August remains frozen.
+select public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-09-02 12:00:00+00');
+
 select is(
-  (select (allowances_snapshot #>> '{automation_executions,included_quantity}')::numeric from public.workspace_usage_periods where id=public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-09-02 12:00:00+00')),
+  (select (allowances_snapshot #>> '{automation_executions,included_quantity}')::numeric from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-09-01 00:00:00+00'),
   200::numeric,
   'A new usage period receives the updated allowance'
+);
+
+select isnt(
+  (select id from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-08-01 00:00:00+00'),
+  (select id from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-09-01 00:00:00+00'),
+  'Adjacent billing months use different immutable usage periods'
 );
 
 select public.record_workspace_usage_event(
