@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   Archive,
@@ -197,6 +198,7 @@ function applyCommand(customers: readonly CustomerRow[], command: CustomerQueued
 
 export default function CustomersPage() {
   const { mode } = useBdb();
+  const router = useRouter();
   const importInputRef = useRef<HTMLInputElement>(null);
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -347,17 +349,19 @@ export default function CustomersPage() {
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Customer change could not be saved.";
       const code = String((commandError as { code?: unknown })?.code ?? "");
-      if (code === "CUSTOMER_DUPLICATE_REVIEW") {
+
+      if (code) {
         removeCustomerCommand(workspaceId, command.id);
         setPendingCount(readCustomerQueue(workspaceId).length);
         await loadCloud().catch(() => undefined);
-        setDuplicateReview(true);
+        if (code === "CUSTOMER_DUPLICATE_REVIEW") setDuplicateReview(true);
         setError(message);
         return { ok: false, code };
       }
+
       failCustomerCommand(workspaceId, command.id, message);
       setPendingCount(readCustomerQueue(workspaceId).length);
-      setError(`${message} The change remains in the local retry queue.`);
+      setError(`${message} This Customer has not been confirmed by BDB OS yet; the change remains queued for retry.`);
       return { ok: false, code };
     }
   }, [loadCloud, mode, workspaceId]);
@@ -401,6 +405,7 @@ export default function CustomersPage() {
   async function persistCustomer(allowDuplicate: boolean) {
     if (saving || supportMode) return;
     setSaving(true);
+    const isNewCustomer = !editing;
     const id = editing?.id ?? crypto.randomUUID();
     const result = await submitCommand(editing ? "update" : "create", {
       id,
@@ -421,6 +426,10 @@ export default function CustomersPage() {
     setEditing(null);
     setForm(emptyForm);
     setDuplicateReview(false);
+
+    if (isNewCustomer && mode === "cloud" && navigator.onLine) {
+      router.push(`/customers/${id}`);
+    }
   }
 
   async function saveCustomer(event: FormEvent) {
