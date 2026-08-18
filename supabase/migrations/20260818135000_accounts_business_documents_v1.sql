@@ -929,6 +929,8 @@ revoke all on function public.apply_delivery_note_command(uuid,uuid,text,text,uu
 grant execute on function public.apply_delivery_note_command(uuid,uuid,text,text,uuid,uuid,integer,text,uuid,date,text,text,jsonb) to service_role;
 
 -- Credit Notes reduce receivables. Excess prior Payment allocation becomes Customer credit.
+-- The first columns intentionally preserve the existing invoice_account_balances view contract.
+-- Newly added legal/credit columns are appended after the established derived columns.
 create or replace view public.invoice_account_balances
 with (security_invoker = true)
 as
@@ -943,7 +945,36 @@ with allocation_totals as (
   select workspace_id,invoice_id,round(coalesce(sum(total_amount),0),4) as credited_amount
   from public.credit_notes where status='issued' group by workspace_id,invoice_id
 )
-select invoice.*,
+select
+       invoice.id,
+       invoice.workspace_id,
+       invoice.number,
+       invoice.customer_id,
+       invoice.issued_at,
+       invoice.due_at,
+       invoice.description,
+       invoice.amount,
+       invoice.status,
+       invoice.created_at,
+       invoice.updated_at,
+       invoice.source_sale_id,
+       invoice.currency,
+       invoice.customer_code_snapshot,
+       invoice.customer_name_snapshot,
+       invoice.gross_amount,
+       invoice.discount_amount,
+       invoice.net_amount,
+       invoice.vat_amount,
+       invoice.total_amount,
+       invoice.notes,
+       invoice.version,
+       invoice.created_by,
+       invoice.updated_by,
+       invoice.issued_by,
+       invoice.sent_at,
+       invoice.voided_at,
+       invoice.voided_by,
+       invoice.void_reason,
        coalesce(allocation.allocated_amount,0)::numeric(14,4) as allocated_amount,
        case when invoice.status::text in ('draft','void') then 0
             else greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0)-coalesce(allocation.allocated_amount,0),4),0)
@@ -958,6 +989,15 @@ select invoice.*,
             when greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0)-coalesce(allocation.allocated_amount,0),4),0)=0 then 'paid'
             when invoice.due_at<current_date then 'overdue'
             else 'sent' end as display_status,
+       invoice.supplier_name_snapshot,
+       invoice.supplier_address_snapshot,
+       invoice.supplier_vat_number_snapshot,
+       invoice.supplier_registration_number_snapshot,
+       invoice.customer_address_snapshot,
+       invoice.customer_vat_number_snapshot,
+       invoice.supply_date,
+       invoice.legal_snapshot_at,
+       invoice.final_number_assigned_at,
        coalesce(credit.credited_amount,0)::numeric(14,4) as credited_amount,
        greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0),4),0)::numeric(14,4) as adjusted_total_amount,
        case when invoice.status::text in ('draft','void') then 0
