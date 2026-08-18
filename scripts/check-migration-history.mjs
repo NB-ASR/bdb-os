@@ -63,6 +63,7 @@ const canonicalProductionHistory = [
 
 const pendingMigrations = [
   "20260818155000_accounts_business_documents_v1.sql",
+  "20260818155500_accounts_business_documents_hardening.sql",
 ];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
@@ -84,52 +85,18 @@ assert.deepEqual(
 );
 
 const versions = migrationFiles.map((name) => name.split("_")[0]);
-assert.equal(
-  new Set(versions).size,
-  versions.length,
-  "Every migration version must be unique.",
-);
+assert.equal(new Set(versions).size, versions.length, "Every migration version must be unique.");
 
 const obsoleteVersions = new Set([
-  "20260714080000",
-  "20260714090000",
-  "20260714093000",
-  "20260714100000",
-  "20260714231500",
-  "20260715150000",
-  "20260715160000",
-  "20260715161000",
-  "20260715162000",
-  "20260717115900",
-  "20260717120000",
-  "20260717172000",
+  "20260714080000","20260714090000","20260714093000","20260714100000","20260714231500","20260715150000","20260715160000","20260715161000","20260715162000","20260717115900","20260717120000","20260717172000",
 ]);
+assert.equal(migrationFiles.some((name) => obsoleteVersions.has(name.split("_")[0])), false, "Obsolete parallel migration versions must not return.");
+assert.ok(migrationFiles.includes("20260718193000_quality_foundation_security.sql"), "Quality Foundation security migration is missing.");
+assert.ok(migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"), "Invitation expiry migration is missing.");
 
-assert.equal(
-  migrationFiles.some((name) => obsoleteVersions.has(name.split("_")[0])),
-  false,
-  "Obsolete parallel migration versions must not return.",
-);
-
-assert.ok(
-  migrationFiles.includes("20260718193000_quality_foundation_security.sql"),
-  "Quality Foundation security migration is missing.",
-);
-assert.ok(
-  migrationFiles.includes("20260718193500_invitation_expiry_guard.sql"),
-  "Invitation expiry migration is missing.",
-);
-
-const featureReleaseMarker = await readFile(
-  "supabase/migrations/20260813125602_vanita_integration_feature_release.sql",
-  "utf8",
-);
+const featureReleaseMarker = await readFile("supabase/migrations/20260813125602_vanita_integration_feature_release.sql", "utf8");
 assert.match(featureReleaseMarker, /Production feature-release marker/);
-assert.doesNotMatch(
-  featureReleaseMarker,
-  /\b(create|alter|drop|insert|update|delete|truncate)\s+(table|type|view|function|policy|into|from)\b/i,
-  "The Production feature-release marker must not replay feature SQL.",
-);
+assert.doesNotMatch(featureReleaseMarker, /\b(create|alter|drop|insert|update|delete|truncate)\s+(table|type|view|function|policy|into|from)\b/i, "The Production feature-release marker must not replay feature SQL.");
 
 const assignedReleaseSources = [];
 for (const group of domainMigrations) {
@@ -138,37 +105,15 @@ for (const group of domainMigrations) {
   assert.notEqual(firstIndex, -1, `Missing first source ${group.firstSource}.`);
   assert.notEqual(lastIndex, -1, `Missing last source ${group.lastSource}.`);
   assert.ok(lastIndex >= firstIndex, `Invalid source range for ${group.file}.`);
-
   const groupSources = releaseSourceFiles.slice(firstIndex, lastIndex + 1);
   assignedReleaseSources.push(...groupSources);
-  const sourceSql = await Promise.all(
-    groupSources.map((name) =>
-      readFile(path.join(releaseSourceDirectory, name), "utf8"),
-    ),
-  );
-  const expectedSql =
-    domainMigrationHeader(group, groupSources) + sourceSql.join("\n\n");
-  const actualSql = await readFile(
-    path.join("supabase/migrations", group.file),
-    "utf8",
-  );
-
-  assert.equal(
-    actualSql,
-    expectedSql,
-    `${group.file} must exactly preserve its ordered source SQL.`,
-  );
-  assert.ok(
-    Buffer.byteLength(actualSql) < 128 * 1024,
-    `${group.file} must remain smaller than 128 KiB.`,
-  );
+  const sourceSql = await Promise.all(groupSources.map((name) => readFile(path.join(releaseSourceDirectory, name), "utf8")));
+  const expectedSql = domainMigrationHeader(group, groupSources) + sourceSql.join("\n\n");
+  const actualSql = await readFile(path.join("supabase/migrations", group.file), "utf8");
+  assert.equal(actualSql, expectedSql, `${group.file} must exactly preserve its ordered source SQL.`);
+  assert.ok(Buffer.byteLength(actualSql) < 128 * 1024, `${group.file} must remain smaller than 128 KiB.`);
 }
-
-assert.deepEqual(
-  assignedReleaseSources,
-  releaseSourceFiles,
-  "Every preserved release source must be assigned once in chronological order.",
-);
+assert.deepEqual(assignedReleaseSources, releaseSourceFiles, "Every preserved release source must be assigned once in chronological order.");
 
 for (const [file, message] of [
   ["20260727152000_product_catalogue_foundation.sql", "Product catalogue foundation migration is missing."],
@@ -178,24 +123,10 @@ for (const [file, message] of [
   ["20260727161500_supplier_document_reference_indexes.sql", "Supplier document reference indexes are missing."],
   ["20260727190000_inventory_movement_ledger.sql", "Inventory movement ledger migration is missing."],
   ["20260727190500_inventory_reference_indexes.sql", "Inventory reference indexes are missing."],
-]) {
-  assert.ok(releaseSourceFiles.includes(file), message);
-}
+]) assert.ok(releaseSourceFiles.includes(file), message);
 
-const releaseEntitlements = await readFile(
-  "supabase/release-sources/vanita-integration-20260813/20260805131000_revoke_anonymous_operational_settings.sql",
-  "utf8",
-);
-for (const featureKey of [
-  "products",
-  "services",
-  "suppliers",
-  "sales",
-  "inventory",
-  "purchasing",
-  "timesheets",
-  "meetings",
-]) {
+const releaseEntitlements = await readFile("supabase/release-sources/vanita-integration-20260813/20260805131000_revoke_anonymous_operational_settings.sql", "utf8");
+for (const featureKey of ["products","services","suppliers","sales","inventory","purchasing","timesheets","meetings"]) {
   assert.match(releaseEntitlements, new RegExp(`'${featureKey}'`), `${featureKey} must be enabled for existing Main plans.`);
 }
 assert.match(releaseEntitlements, /insert into public\.plan_features/i);
