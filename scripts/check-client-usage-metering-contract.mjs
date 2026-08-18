@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const [migration, usageApi, adminPage, usageComponent, architecture] = await Promise.all([
-  readFile("supabase/migrations/20260818120000_client_usage_metering.sql", "utf8"),
+  readFile("supabase/migrations/20260818124113_client_usage_metering.sql", "utf8"),
   readFile("src/app/api/admin/usage/route.ts", "utf8"),
   readFile("src/app/admin/page.tsx", "utf8"),
   readFile("src/components/founder-client-usage.tsx", "utf8"),
