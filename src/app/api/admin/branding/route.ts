@@ -40,6 +40,11 @@ async function signedLogo(admin: ReturnType<typeof adminClient>, path: string | 
   return signed.data?.signedUrl ?? null;
 }
 
+async function writeAudit(admin: ReturnType<typeof adminClient>, record: Record<string, unknown>) {
+  const { error } = await admin.from("audit_logs").insert(record);
+  if (error) throw error;
+}
+
 function brandingError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (message === "INVALID_WORKSPACE") return Response.json({ error: "Choose a valid client business." }, { status: 400 });
@@ -129,7 +134,7 @@ export async function POST(request: Request) {
       await admin.storage.from("workspace-assets").remove([previousPath]).catch(() => undefined);
     }
 
-    await admin.from("audit_logs").insert({
+    await writeAudit(admin, {
       actor_user_id: identity.userId,
       workspace_id: id,
       action: "admin.custom_branding.logo_updated",
@@ -176,7 +181,7 @@ export async function DELETE(request: Request) {
       await admin.storage.from("workspace-assets").remove([previousPath]).catch(() => undefined);
     }
 
-    await admin.from("audit_logs").insert({
+    await writeAudit(admin, {
       actor_user_id: identity.userId,
       workspace_id: id,
       action: "admin.custom_branding.logo_removed",
