@@ -67,9 +67,11 @@ assert.match(queue, /bdb-accounts-queue-v1/i, "Accounts queue must be workspace-
 assert.match(queue, /for \(const command of readAccountsQueue/i, "Accounts queue must replay sequentially.");
 assert.match(queue, /break;/i, "Accounts synchronisation must stop on the first failure.");
 assert.match(page, /enqueueAccountsCommand/i, "Accounts UI must use the offline command queue.");
-assert.match(page, /Unallocated credit/i, "Accounts UI must expose customer credit.");
-assert.match(page, /Recording a Payment does not create or match a bank transaction/i, "Accounts UI must preserve the Banking boundary.");
+assert.match(page, /holds as credit/i, "Accounts UI must explain Customer credit in business language.");
+assert.match(page, /unallocated_credit/i, "Accounts UI must render the derived Customer credit balance.");
+assert.match(page, /ledger safeguards remain underneath/i, "Accounts UI must keep financial safeguards while hiding implementation clutter.");
+assert.doesNotMatch(page, /reconcile|bank transaction/i, "The simplified Accounts surface must not imply or perform Banking reconciliation.");
 assert.doesNotMatch(page, /markInvoicePaid|Approve paid/i, "The legacy mark-paid shortcut must not return.");
 assert.match(salesLayout, /Invoices & Payments/i, "Accounts must be discoverable from Sales.");
 
-console.log("Accounts, Invoice, Payment and balance contracts are intact.");
+console.log("Accounts, Invoice, Payment and balance contracts are intact under the simplified document-centred UX.");
