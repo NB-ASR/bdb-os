@@ -82,9 +82,11 @@ export function FounderClientUsage({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadUsage() {
-      setLoading(true);
-      setError("");
+    async function loadUsage(silent = false) {
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
       const response = await fetch(`/api/admin/usage?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }).catch(() => null);
       if (!response || cancelled) return;
       if (response.status === 428) { router.push("/mfa"); return; }
@@ -93,15 +95,28 @@ export function FounderClientUsage({
       if (cancelled) return;
       setLoading(false);
       if (!response.ok) {
-        setUsage(null);
-        setError(result.error ?? "Usage measurement could not be loaded.");
+        if (!silent) {
+          setUsage(null);
+          setError(result.error ?? "Usage measurement could not be loaded.");
+        }
         return;
       }
       setUsage(result as UsageState);
+      setError("");
     }
 
     void loadUsage();
-    return () => { cancelled = true; };
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadUsage(true);
+    }, 30_000);
+    const onFocus = () => void loadUsage(true);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refreshToken, router, workspaceId]);
 
   if (loading && !usage) {
