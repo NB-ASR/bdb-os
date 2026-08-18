@@ -1,40 +1,4 @@
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 18px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--panel);
-}
-
-.tabs button {
-  border: 0;
-  border-radius: 12px;
-  padding: 9px 13px;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.tabs button[data-active="true"] {
-  color: var(--gold);
-  background: var(--gold-soft);
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 18px 0 12px;
-}
-
-.toolbarActions,
+.headerActions,
 .rowActions,
 .dialogActions {
   display: flex;
@@ -43,90 +7,204 @@
   align-items: center;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+.newWrap {
+  position: relative;
 }
 
-.stack {
-  display: grid;
-  gap: 16px;
-}
-
-.tableScroll {
-  overflow-x: auto;
-}
-
-.tableScroll table {
-  min-width: 920px;
-}
-
-.money {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.customerCell,
-.referenceCell {
-  display: grid;
-  gap: 3px;
-}
-
-.customerCell span,
-.referenceCell span,
-.muted {
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.balancePositive {
-  color: var(--warning, #d6a94f);
-}
-
-.balanceCredit {
-  color: var(--success, #73bd87);
-}
-
-.queue {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0;
-  padding: 14px;
+.newMenu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 210px;
+  padding: 7px;
   border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
+  border-radius: 10px;
+  background: #171715;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.35);
 }
 
-.queueRow {
+.newMenu button {
+  width: 100%;
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.queueMeta {
+.newMenu button:hover:not(:disabled) {
+  background: rgba(211, 168, 75, 0.08);
+  color: var(--gold);
+}
+
+.newMenu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tabs {
+  display: flex;
+  gap: 22px;
+  margin: 4px 0 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  position: relative;
+  padding: 10px 1px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 700;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.tabs button[data-active="true"] {
+  color: var(--text);
+}
+
+.tabs button[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--gold);
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notice > div {
+  flex: 1;
   display: grid;
   gap: 2px;
 }
 
-.callout {
-  margin: 14px 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
+.notice span,
+.quietNotice {
+  color: var(--muted);
+  font-size: 0.86rem;
 }
 
-.callout strong {
-  display: block;
-  margin-bottom: 4px;
+.quietNotice {
+  margin: 0 0 14px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.toolbar input {
+  max-width: 440px;
+}
+
+.documentTable {
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.documentTable table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+
+.documentTable th {
+  padding: 11px 10px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.documentTable td {
+  padding: 13px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  vertical-align: middle;
+}
+
+.documentTable tbody tr:hover {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.money {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.reference {
+  display: grid;
+  gap: 2px;
+}
+
+.reference span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.rowActions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+}
+
+.empty {
+  padding: 34px 12px;
+  text-align: center;
+  color: var(--muted);
 }
 
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 13px;
+}
+
+.formGrid label,
+.longField {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.longField textarea,
+.lineRow input,
+.lineRow select,
+.creditLines input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text);
+  padding: 10px 11px;
+  font: inherit;
 }
 
 .full {
@@ -135,44 +213,86 @@
 
 .lineEditor {
   display: grid;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin: 16px 0 10px;
 }
 
 .lineRow {
   display: grid;
-  grid-template-columns: minmax(160px, 2fr) repeat(4, minmax(90px, 1fr)) auto;
+  grid-template-columns: 110px minmax(160px, 1.5fr) 85px 105px 85px auto;
   gap: 8px;
   align-items: end;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .lineRow label {
   display: grid;
   gap: 5px;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
 }
 
-.empty {
-  padding: 28px;
-  text-align: center;
+.creditLines {
+  display: grid;
+  gap: 0;
+  margin: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.creditLines label {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.creditLines label > span {
+  display: grid;
+  gap: 3px;
+}
+
+.creditLines small {
   color: var(--muted);
 }
 
-@media (max-width: 900px) {
-  .grid,
-  .formGrid {
-    grid-template-columns: 1fr;
-  }
+.longField {
+  margin-top: 14px;
+}
 
-  .full {
-    grid-column: auto;
+.dialogActions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+@media (max-width: 1050px) {
+  .rowActions {
+    flex-wrap: wrap;
   }
 
   .lineRow {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .headerActions,
+  .toolbar,
+  .notice {
+    align-items: stretch;
+  }
+
+  .headerActions,
+  .toolbar,
+  .notice,
+  .formGrid {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .full {
+    grid-column: auto;
   }
 }
