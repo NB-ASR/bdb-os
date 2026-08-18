@@ -1,9 +1,10 @@
 begin;
 
 -- Accounts Invoice polish V1
--- New Invoice unit prices are VAT-exclusive. VAT is added on top after discount.
+-- New direct-Invoice unit prices are VAT-exclusive. VAT is added on top after discount.
 -- Due dates remain available on historical records, but new BDB OS Invoice drafts no
 -- longer invent payment terms when the user did not specify any.
+-- Sale-derived Invoices preserve the authoritative Sale pricing snapshots unchanged.
 
 alter table public.invoices
   alter column due_at drop not null;
@@ -29,8 +30,8 @@ create trigger invoices_default_without_due_date
 before insert on public.invoices
 for each row execute function private.default_invoice_without_due_date();
 
--- Drafts are editable/non-authoritative, so correct any drafts produced under the
--- former VAT-inclusive interpretation. Issued historical records are untouched.
+-- Drafts are editable/non-authoritative, so remove the old invented due date.
+-- Issued historical records are untouched.
 update public.invoices
 set due_at = null
 where status = 'draft'::public.invoice_status;
@@ -172,6 +173,8 @@ begin
 end;
 $$;
 
+-- Correct only direct draft Invoices created under the former VAT-inclusive
+-- interpretation. Sale-derived drafts retain the Sale's authoritative snapshot.
 with recalculated as (
   select
     line.workspace_id,
@@ -185,6 +188,7 @@ with recalculated as (
     on invoice.workspace_id = line.workspace_id
    and invoice.id = line.invoice_id
   where invoice.status = 'draft'::public.invoice_status
+    and invoice.source_sale_id is null
 ), updated_lines as (
   update public.invoice_lines line
   set gross_amount = recalculated.gross_amount,
@@ -222,6 +226,7 @@ set gross_amount = totals.gross_amount,
 from draft_totals totals
 where invoice.workspace_id = totals.workspace_id
   and invoice.id = totals.invoice_id
-  and invoice.status = 'draft'::public.invoice_status;
+  and invoice.status = 'draft'::public.invoice_status
+  and invoice.source_sale_id is null;
 
 commit;
