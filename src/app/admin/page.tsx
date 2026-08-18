@@ -25,6 +25,7 @@ import {
   Unlink,
 } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
+import { FounderClientUsage } from "@/components/founder-client-usage";
 
 type Plan = { id: string; code: string; name: string; description: string; is_active: boolean };
 type Feature = { key: string; name: string; description: string; category: string; route: string | null };
@@ -115,11 +116,12 @@ type BrandingState = {
   updatedAt: string | null;
 };
 type Tab = "clients" | "groups" | "plans" | "audit";
-type ClientSection = "overview" | "access" | "billing" | "branding" | "owner";
+type ClientSection = "overview" | "access" | "usage" | "billing" | "branding" | "owner";
 
 const clientSections: Array<{ key: ClientSection; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "access", label: "Access & Modules" },
+  { key: "usage", label: "Usage" },
   { key: "billing", label: "Billing" },
   { key: "branding", label: "Branding" },
   { key: "owner", label: "Owner & Access" },
@@ -622,6 +624,10 @@ export default function AdminPage() {
                       })}
                     </div>
                   </section>
+                )}
+
+                {clientSection === "usage" && (
+                  <FounderClientUsage workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} refreshToken={data.auditCursor} />
                 )}
 
                 {clientSection === "billing" && (
