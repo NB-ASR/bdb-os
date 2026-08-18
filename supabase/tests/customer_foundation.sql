@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(33);
 
 select has_table('public', 'customers', 'Canonical Customers table exists');
 select has_table('public', 'customer_command_receipts', 'Customer command receipts exist');
@@ -10,8 +10,13 @@ select has_table('public', 'customer_import_receipts', 'Customer import receipts
 select has_function(
   'public',
   'apply_customer_command',
-  array['uuid','uuid','text','text','uuid','uuid','integer','text','text','text','text','text','text','text','jsonb','boolean'],
+  array['uuid','uuid','text','text','uuid','uuid','integer','text','text','text','text','text','text','text','jsonb','boolean','text'],
   'trusted Customer lifecycle command exists'
+);
+select is(
+  (select count(*) from pg_proc where pronamespace='public'::regnamespace and proname='apply_customer_command'),
+  1::bigint,
+  'Customer lifecycle command exposes one unambiguous RPC signature'
 );
 select has_function(
   'public',
@@ -60,10 +65,10 @@ select ok(
 );
 
 select ok(position('actor_has_workspace_permission' in lower(pg_get_functiondef('private.customer_actor_can_write(uuid,uuid,text)'::regprocedure))) > 0, 'Customer writes use the shared support-aware permission boundary');
-select ok(position('customer_command_receipts' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0, 'Customer lifecycle commands store idempotency receipts');
-select ok(position('potential duplicate customer requires review' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0, 'Customer commands require explicit duplicate review');
+select ok(position('customer_command_receipts' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean,text)'::regprocedure))) > 0, 'Customer lifecycle commands store idempotency receipts');
+select ok(position('potential duplicate customer requires review' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean,text)'::regprocedure))) > 0, 'Customer commands require explicit duplicate review');
 select ok(
-  position('right(replace(p_customer_id::text' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean)'::regprocedure))) > 0
+  position('right(replace(p_customer_id::text' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean,text)'::regprocedure))) > 0
   and position('right(replace(new_customer_id::text' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0,
   'Customer codes use the final 64 UUID bits to avoid prefix collisions'
 );
