@@ -1,9 +1,18 @@
 export type AccountsCommandAction =
   | "invoice-create-manual"
   | "invoice-create-sale"
+  | "invoice-create"
   | "invoice-update"
   | "invoice-issue"
   | "invoice-void"
+  | "credit-note-create"
+  | "credit-note-update"
+  | "credit-note-issue"
+  | "credit-note-void"
+  | "delivery-note-create"
+  | "delivery-note-update"
+  | "delivery-note-issue"
+  | "delivery-note-void"
   | "payment-record"
   | "payment-allocate"
   | "allocation-reverse"
@@ -23,13 +32,37 @@ const QUEUE_PREFIX = "bdb-accounts-queue-v1";
 const ACTIONS = new Set<AccountsCommandAction>([
   "invoice-create-manual",
   "invoice-create-sale",
+  "invoice-create",
   "invoice-update",
   "invoice-issue",
   "invoice-void",
+  "credit-note-create",
+  "credit-note-update",
+  "credit-note-issue",
+  "credit-note-void",
+  "delivery-note-create",
+  "delivery-note-update",
+  "delivery-note-issue",
+  "delivery-note-void",
   "payment-record",
   "payment-allocate",
   "allocation-reverse",
   "payment-reverse",
+]);
+
+const BUSINESS_DOCUMENT_ACTIONS = new Set<AccountsCommandAction>([
+  "invoice-create",
+  "invoice-update",
+  "invoice-issue",
+  "invoice-void",
+  "credit-note-create",
+  "credit-note-update",
+  "credit-note-issue",
+  "credit-note-void",
+  "delivery-note-create",
+  "delivery-note-update",
+  "delivery-note-issue",
+  "delivery-note-void",
 ]);
 
 const storageKey = (workspaceId: string) => `${QUEUE_PREFIX}:${workspaceId}`;
@@ -102,7 +135,10 @@ export function failAccountsCommand(workspaceId: string, commandId: string, erro
 }
 
 export async function submitAccountsCommand(command: AccountsQueuedCommand) {
-  const response = await fetch("/api/accounts", {
+  const endpoint = BUSINESS_DOCUMENT_ACTIONS.has(command.action)
+    ? "/api/accounts/business-documents"
+    : "/api/accounts";
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
