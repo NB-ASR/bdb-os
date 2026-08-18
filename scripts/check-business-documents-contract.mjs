@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migration = await readFile("supabase/migrations/20260818135000_accounts_business_documents_v1.sql", "utf8");
+const migration = await readFile("supabase/migrations/20260818150236_accounts_business_documents_v1.sql", "utf8");
 const accounts = await readFile("src/app/accounts/page.tsx", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
 const renderRoute = await readFile("src/app/api/business-documents/render/route.ts", "utf8");
