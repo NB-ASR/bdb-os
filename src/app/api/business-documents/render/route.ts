@@ -61,7 +61,8 @@ export async function GET(request: Request) {
       const lines = ((row.invoice_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
         kind: "invoice", title: "Invoice", number: String(row.number), draft: String(row.status) === "draft",
-        date: String(row.issued_at), dueDate: String(row.due_at), supplyDate: row.supply_date ? String(row.supply_date) : null,
+        date: String(row.issued_at), supplyDate: row.supply_date ? String(row.supply_date) : null,
+        description: String(row.description ?? "") || null,
         currency: String(row.currency),
         supplier: {
           name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
