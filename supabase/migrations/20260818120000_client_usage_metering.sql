@@ -47,6 +47,7 @@ create table public.workspace_usage_periods (
   measurement_started_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   unique (workspace_id, period_start),
+  unique (id, workspace_id),
   constraint workspace_usage_periods_bounds_check check (period_end > period_start),
   constraint workspace_usage_periods_allowances_check check (jsonb_typeof(allowances_snapshot) = 'object')
 );
@@ -57,7 +58,7 @@ comment on table public.workspace_usage_periods is
 create table public.workspace_usage_events (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  usage_period_id uuid not null references public.workspace_usage_periods(id) on delete cascade,
+  usage_period_id uuid not null,
   metric_key text not null,
   quantity numeric not null,
   unit text not null,
@@ -67,6 +68,10 @@ create table public.workspace_usage_events (
   occurred_at timestamptz not null,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
+  constraint workspace_usage_events_period_workspace_fkey
+    foreign key (usage_period_id, workspace_id)
+    references public.workspace_usage_periods(id, workspace_id)
+    on delete cascade,
   constraint workspace_usage_events_metric_check check (
     metric_key in ('storage_bytes','active_users','automation_executions','outbound_emails','sms_segments')
   ),
@@ -306,7 +311,7 @@ declare
   v_execution_states constant text[] := array['running','succeeded','simulated','exception','failed'];
 begin
   if new.status = any(v_execution_states)
-    and (tg_op = 'INSERT' or old.status <> all(v_execution_states))
+    and (tg_op = 'INSERT' or not (old.status = any(v_execution_states)))
   then
     begin
       perform public.record_workspace_usage_event(
@@ -333,10 +338,18 @@ begin
 end;
 $function$;
 
-drop trigger if exists meter_operator_run_usage on public.operator_runs;
-create trigger meter_operator_run_usage
-after insert or update of status on public.operator_runs
-for each row execute function private.meter_operator_run_usage();
+-- Production contains the authoritative Operator execution table. Some older
+-- repository history entries are intentionally Production markers, so a fresh
+-- disposable replay may not contain operator_runs. Attach the meter whenever
+-- the authoritative table exists without inventing a duplicate Operator schema.
+do $operator_trigger$
+begin
+  if to_regclass('public.operator_runs') is not null then
+    execute 'drop trigger if exists meter_operator_run_usage on public.operator_runs';
+    execute 'create trigger meter_operator_run_usage after insert or update of status on public.operator_runs for each row execute function private.meter_operator_run_usage()';
+  end if;
+end;
+$operator_trigger$;
 
 create or replace function private.meter_outbound_email_usage()
 returns trigger
@@ -395,28 +408,30 @@ begin
   v_period_start := date_trunc('month', p_at at time zone 'UTC') at time zone 'UTC';
   v_period_end := v_period_start + interval '1 month';
 
-  insert into public.workspace_usage_events (
-    workspace_id, usage_period_id, metric_key, quantity, unit,
-    idempotency_key, source_type, source_id, occurred_at, metadata
-  )
-  select
-    run.workspace_id,
-    public.ensure_workspace_usage_period(run.workspace_id, coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at)),
-    'automation_executions',
-    1,
-    'executions',
-    'operator-run:' || run.id::text,
-    'operator_run',
-    run.id::text,
-    coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at),
-    jsonb_build_object('workflow_key', run.workflow_key, 'provider_mode', run.provider_mode, 'status', run.status, 'reconciled', true)
-  from public.operator_runs run
-  where run.workspace_id = p_workspace_id
-    and run.status in ('running','succeeded','simulated','exception','failed')
-    and coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at) >= v_period_start
-    and coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at) < v_period_end
-  on conflict (workspace_id, metric_key, idempotency_key) do nothing;
-  get diagnostics v_automation_count = row_count;
+  if to_regclass('public.operator_runs') is not null then
+    insert into public.workspace_usage_events (
+      workspace_id, usage_period_id, metric_key, quantity, unit,
+      idempotency_key, source_type, source_id, occurred_at, metadata
+    )
+    select
+      run.workspace_id,
+      public.ensure_workspace_usage_period(run.workspace_id, coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at)),
+      'automation_executions',
+      1,
+      'executions',
+      'operator-run:' || run.id::text,
+      'operator_run',
+      run.id::text,
+      coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at),
+      jsonb_build_object('workflow_key', run.workflow_key, 'provider_mode', run.provider_mode, 'status', run.status, 'reconciled', true)
+    from public.operator_runs run
+    where run.workspace_id = p_workspace_id
+      and run.status in ('running','succeeded','simulated','exception','failed')
+      and coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at) >= v_period_start
+      and coalesce(run.started_at, run.completed_at, run.updated_at, run.created_at) < v_period_end
+    on conflict (workspace_id, metric_key, idempotency_key) do nothing;
+    get diagnostics v_automation_count = row_count;
+  end if;
 
   insert into public.workspace_usage_events (
     workspace_id, usage_period_id, metric_key, quantity, unit,
@@ -473,6 +488,8 @@ declare
   v_automation numeric := 0;
   v_emails numeric := 0;
   v_sms numeric := 0;
+  v_operator_runs numeric := 0;
+  v_operator_source text := 'operator_runs_not_replayed';
   v_baselines jsonb := '{}'::jsonb;
   v_indicators jsonb := '{}'::jsonb;
 begin
@@ -526,6 +543,13 @@ begin
   from public.workspace_usage_baselines baseline
   where baseline.workspace_id = p_workspace_id;
 
+  if to_regclass('public.operator_runs') is not null then
+    execute 'select count(*) from public.operator_runs where workspace_id = $1 and created_at >= $2 and created_at < $3'
+      into v_operator_runs
+      using p_workspace_id, v_period.period_start, v_period.period_end;
+    v_operator_source := 'operator_runs';
+  end if;
+
   select jsonb_build_object(
     'customers_total', (select count(*) from public.customers customer where customer.workspace_id = p_workspace_id),
     'documents_total', (select count(*) from public.documents document where document.workspace_id = p_workspace_id),
@@ -533,7 +557,7 @@ begin
     'invoices_in_period', (select count(*) from public.invoices invoice where invoice.workspace_id = p_workspace_id and invoice.created_at >= v_period.period_start and invoice.created_at < v_period.period_end),
     'appointments_in_period', (select count(*) from public.bookings booking where booking.workspace_id = p_workspace_id and booking.created_at >= v_period.period_start and booking.created_at < v_period.period_end),
     'communications_in_period', (select count(*) from public.messages message where message.workspace_id = p_workspace_id and message.created_at >= v_period.period_start and message.created_at < v_period.period_end),
-    'operator_runs_in_period', (select count(*) from public.operator_runs run where run.workspace_id = p_workspace_id and run.created_at >= v_period.period_start and run.created_at < v_period.period_end)
+    'operator_runs_in_period', v_operator_runs
   ) into v_indicators;
 
   return jsonb_build_object(
@@ -561,7 +585,7 @@ begin
     'sources', jsonb_build_object(
       'storage_bytes', 'live_private_storage_objects',
       'active_users', 'live_workspace_memberships',
-      'automation_executions', 'operator_runs',
+      'automation_executions', v_operator_source,
       'outbound_emails', 'recorded_outbound_email_messages',
       'sms_segments', 'not_connected'
     )
