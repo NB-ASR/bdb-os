@@ -24,8 +24,8 @@ assert.match(migration, /unique \(workspace_id, metric_key, idempotency_key\)/i,
 assert.match(migration, /allowances_snapshot jsonb/i, "Each period must freeze its allowance snapshot.");
 assert.match(migration, /plan_id_snapshot/i, "Each period must freeze its plan identity.");
 assert.match(migration, /private\.is_platform_admin\(\)/i, "Usage table visibility must reuse the Platform Admin boundary.");
-assert.match(migration, /grant execute on function public\.record_workspace_usage_event[\s\S]*to service_role/i, "Usage event writes must be service-role only.");
-assert.doesNotMatch(migration, /grant execute on function public\.record_workspace_usage_event[\s\S]*to authenticated/i, "Workspace browser users must not be able to forge usage events.");
+assert.match(migration, /grant execute on function public\.record_workspace_usage_event\([^;]+\) to service_role/i, "Usage event writes must be service-role only.");
+assert.doesNotMatch(migration, /grant execute on function public\.record_workspace_usage_event\([^;]+\) to authenticated/i, "Workspace browser users must not be able to forge usage events.");
 assert.match(migration, /meter_operator_run_usage[\s\S]*exception when others[\s\S]*null/i, "Automation metering must be recoverable and non-blocking.");
 assert.match(migration, /meter_outbound_email_usage[\s\S]*exception when others[\s\S]*null/i, "Email metering must be recoverable and non-blocking.");
 assert.match(migration, /operator-run:' \|\| new\.id/i, "Operator usage must use a deterministic source idempotency key.");
