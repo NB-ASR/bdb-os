@@ -25,6 +25,7 @@ type CustomerCommandBody = {
   notes?: unknown;
   preferences?: unknown;
   allowDuplicate?: unknown;
+  vatNumber?: unknown;
 };
 
 function uuid(value: unknown, field: string) {
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
         notes: optionalText(body.notes, 4000),
         preferences: preferences(body.preferences),
         allowDuplicate: body.allowDuplicate === true,
+        vatNumber: optionalText(body.vatNumber, 64),
       }
       : {
         code: null,
@@ -152,6 +154,7 @@ export async function POST(request: Request) {
         notes: null,
         preferences: {},
         allowDuplicate: false,
+        vatNumber: null,
       };
 
     const admin = createAdminClient();
@@ -174,6 +177,7 @@ export async function POST(request: Request) {
       p_notes: values.notes,
       p_preferences: values.preferences,
       p_allow_duplicate: values.allowDuplicate,
+      p_vat_number: values.vatNumber,
     });
     if (error) throw friendlyCustomerError(error);
 
