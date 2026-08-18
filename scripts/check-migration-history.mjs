@@ -60,11 +60,10 @@ const canonicalProductionHistory = [
   "20260817221033_custom_business_branding.sql",
   "20260818124113_client_usage_metering.sql",
   "20260818150236_accounts_business_documents_v1.sql",
+  "20260818200136_customer_command_unification.sql",
 ];
 
-const pendingMigrations = [
-  "20260818205500_customer_command_unification.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
