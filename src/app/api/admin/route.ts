@@ -4,6 +4,24 @@ import { adminErrorResponse, requirePlatformAdmin } from "@/lib/admin-auth";
 import { activationRedirectUrl, invitationExpiresAt } from "@/lib/auth/invitations";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
+type AuditRow = {
+  id: number;
+  actor_user_id: string | null;
+  workspace_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+type WorkspaceRow = {
+  id: string;
+  created_at: string;
+  [key: string]: unknown;
+};
+
+const WORKSPACE_CREATION_ACTIONS = new Set(["workspace.created", "workspace.manually_provisioned"]);
+const NON_MODIFYING_FOUNDER_ACTIONS = new Set(["platform.founder_workspace_ready", "admin.support-access"]);
 
 async function listUsers(admin: AdminClient) {
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -30,6 +48,41 @@ async function sendExistingUserInvite(email: string, redirectTo: string) {
   if (error) throw error;
 }
 
+async function writeAudit(admin: AdminClient, record: Record<string, unknown>) {
+  const { error } = await admin.from("audit_logs").insert(record);
+  if (error) throw error;
+}
+
+function actorDetails(
+  userId: string | null,
+  profilesById: Map<string, string>,
+  usersById: Map<string, User>,
+) {
+  if (!userId) return { name: null, email: null };
+  const user = usersById.get(userId);
+  const metadataName = typeof user?.user_metadata?.full_name === "string" ? user.user_metadata.full_name.trim() : "";
+  return {
+    name: profilesById.get(userId) || metadataName || user?.email || null,
+    email: user?.email ?? null,
+  };
+}
+
+function enrichAudit(
+  row: AuditRow,
+  profilesById: Map<string, string>,
+  usersById: Map<string, User>,
+  platformAdminIds: Set<string>,
+) {
+  const actor = actorDetails(row.actor_user_id, profilesById, usersById);
+  return {
+    ...row,
+    metadata: row.metadata ?? {},
+    actor_name: actor.name,
+    actor_email: actor.email,
+    actor_is_platform_admin: Boolean(row.actor_user_id && platformAdminIds.has(row.actor_user_id)),
+  };
+}
+
 async function dashboard(admin: AdminClient) {
   const [
     workspaces,
@@ -43,7 +96,10 @@ async function dashboard(admin: AdminClient) {
     memberships,
     groups,
     groupLinks,
-    audit,
+    recentAudit,
+    workspaceAudit,
+    profiles,
+    platformAdmins,
     users,
   ] = await Promise.all([
     admin.from("workspaces").select("*").order("created_at", { ascending: false }),
@@ -59,7 +115,10 @@ async function dashboard(admin: AdminClient) {
       .select("workspace_id,user_id,role,access_profile,status,created_at,joined_at,invitation_expires_at,invitation_last_sent_at,profiles(full_name)"),
     admin.from("business_groups").select("*").order("name"),
     admin.from("business_group_workspaces").select("group_id,workspace_id,created_at"),
-    admin.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(100),
+    admin.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(250),
+    admin.from("audit_logs").select("*").not("workspace_id", "is", null).order("created_at", { ascending: false }).limit(2000),
+    admin.from("profiles").select("id,full_name"),
+    admin.from("platform_admins").select("user_id,role,active"),
     listUsers(admin),
   ]);
   const results = [
@@ -74,11 +133,54 @@ async function dashboard(admin: AdminClient) {
     memberships,
     groups,
     groupLinks,
-    audit,
+    recentAudit,
+    workspaceAudit,
+    profiles,
+    platformAdmins,
   ];
   const failed = results.find((result) => result.error);
   if (failed?.error) throw failed.error;
+
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const profilesById = new Map(
+    (profiles.data ?? [])
+      .filter((profile) => profile.id && profile.full_name)
+      .map((profile) => [String(profile.id), String(profile.full_name).trim()]),
+  );
+  const platformAdminIds = new Set((platformAdmins.data ?? []).map((record) => String(record.user_id)));
+  const enrichedRecentAudit = ((recentAudit.data ?? []) as AuditRow[]).map((row) =>
+    enrichAudit(row, profilesById, usersById, platformAdminIds),
+  );
+  const founderWorkspaceAudit = ((workspaceAudit.data ?? []) as AuditRow[])
+    .filter((row) => Boolean(row.actor_user_id && platformAdminIds.has(row.actor_user_id)))
+    .map((row) => enrichAudit(row, profilesById, usersById, platformAdminIds));
+
+  const workspaceActivity = Object.fromEntries(
+    ((workspaces.data ?? []) as WorkspaceRow[]).map((workspace) => {
+      const rows = founderWorkspaceAudit.filter((row) => row.workspace_id === workspace.id);
+      const creator = [...rows]
+        .reverse()
+        .find((row) => WORKSPACE_CREATION_ACTIONS.has(row.action));
+      const lastModified = rows.find((row) => !NON_MODIFYING_FOUNDER_ACTIONS.has(row.action)) ?? creator ?? null;
+      return [
+        workspace.id,
+        {
+          workspace_id: workspace.id,
+          created_at: creator?.created_at ?? workspace.created_at,
+          created_by_user_id: creator?.actor_user_id ?? null,
+          created_by_name: creator?.actor_name ?? null,
+          created_by_email: creator?.actor_email ?? null,
+          last_modified_at: lastModified?.created_at ?? null,
+          last_modified_by_user_id: lastModified?.actor_user_id ?? null,
+          last_modified_by_name: lastModified?.actor_name ?? null,
+          last_modified_by_email: lastModified?.actor_email ?? null,
+          last_action: lastModified?.action ?? null,
+        },
+      ];
+    }),
+  );
+
+  const auditCursor = enrichedRecentAudit.find((row) => row.actor_is_platform_admin)?.id ?? 0;
 
   return {
     workspaces: workspaces.data ?? [],
@@ -95,7 +197,9 @@ async function dashboard(admin: AdminClient) {
     })),
     groups: groups.data ?? [],
     groupLinks: groupLinks.data ?? [],
-    audit: audit.data ?? [],
+    audit: enrichedRecentAudit,
+    workspaceActivity,
+    auditCursor,
   };
 }
 
@@ -117,7 +221,7 @@ export async function GET() {
     await requirePlatformAdmin();
     const admin = createAdminClient();
     if (!admin) throw new Error("NOT_CONFIGURED");
-    return Response.json(await dashboard(admin));
+    return Response.json(await dashboard(admin), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return adminErrorResponse(error);
   }
@@ -142,7 +246,7 @@ export async function POST(request: Request) {
         .select("id")
         .single();
       if (error) throw error;
-      await admin.from("audit_logs").insert({
+      await writeAudit(admin, {
         actor_user_id: identity.userId,
         action: "business_group.created",
         entity_type: "business_group",
@@ -232,7 +336,7 @@ export async function POST(request: Request) {
       const setupFailure = setupResults.find((result) => result.error);
       if (setupFailure?.error) throw setupFailure.error;
 
-      await admin.from("audit_logs").insert({
+      await writeAudit(admin, {
         actor_user_id: identity.userId,
         workspace_id: workspaceId,
         action: "workspace.created",
@@ -311,7 +415,8 @@ export async function PATCH(request: Request) {
       const { error } = await admin.from("workspaces").update({ status: body.status }).eq("id", body.workspaceId);
       if (error) throw error;
     } else if (body.action === "link-workspace" && body.workspaceId && body.groupId) {
-      await admin.from("business_group_workspaces").delete().eq("workspace_id", body.workspaceId);
+      const removeExisting = await admin.from("business_group_workspaces").delete().eq("workspace_id", body.workspaceId);
+      if (removeExisting.error) throw removeExisting.error;
       const { error } = await admin.from("business_group_workspaces").insert({
         group_id: body.groupId,
         workspace_id: body.workspaceId,
@@ -344,12 +449,12 @@ export async function PATCH(request: Request) {
       }).eq("workspace_id", body.workspaceId).eq("user_id", membership.user_id);
       if (error) throw error;
     } else if (body.action === "support-access" && body.workspaceId && body.reason?.trim()) {
-      // The audit record below is mandatory before any administrative workflow.
+      // The audit record below is the intended operation for an administrative reason.
     } else {
       return Response.json({ error: "Invalid action." }, { status: 400 });
     }
 
-    await admin.from("audit_logs").insert({
+    await writeAudit(admin, {
       actor_user_id: identity.userId,
       workspace_id: body.workspaceId ?? null,
       action: `admin.${body.action}`,
