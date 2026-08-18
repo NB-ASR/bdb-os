@@ -52,6 +52,7 @@ assert.match(api, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(api, /optionalEmail/);
 assert.match(api, /createAdminClient/);
 assert.match(api, /apply_customer_command/);
+assert.match(api, /p_vat_number: values\.vatNumber/, "Customer API must explicitly select the VAT-aware command overload added by Business Documents V1.");
 assert.doesNotMatch(api, /\.from\("customers"\)\.insert/);
 
 assert.match(importApi, /import_vanita_customers/);
@@ -72,6 +73,10 @@ assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(page, /archive/);
 assert.match(page, /restore/);
 assert.match(page, /slice\(-16\)/);
+assert.match(page, /useRouter/);
+assert.match(page, /router\.push\(`\/customers\/\$\{id\}`\)/, "A confirmed new Customer must land on its Customer profile.");
+assert.match(page, /This Customer has not been confirmed by BDB OS yet/, "Failed online creates must not masquerade as confirmed Customers.");
+assert.match(page, /if \(code\) \{[\s\S]*removeCustomerCommand/, "Deterministic server rejections must roll back the optimistic Customer row.");
 assert.doesNotMatch(page, /addCustomer/);
 
 assert.match(databaseTest, /Customer commands are idempotent/i);
@@ -80,4 +85,4 @@ assert.match(databaseTest, /browser clients cannot insert Customers directly/i);
 assert.match(databaseTest, /final 64 UUID bits/i);
 assert.match(databaseTest, /covering indexes/i);
 
-console.log("Customer foundation, offline queue and Vanita migration contracts are internally consistent.");
+console.log("Customer foundation, offline queue and confirmed-create navigation contracts are internally consistent.");
