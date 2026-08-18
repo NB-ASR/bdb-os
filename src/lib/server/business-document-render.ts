@@ -17,7 +17,7 @@ export type BusinessDocumentModel = {
   number: string;
   draft: boolean;
   date: string;
-  dueDate?: string | null;
+  description?: string | null;
   supplyDate?: string | null;
   originalInvoiceNumber?: string | null;
   reason?: string | null;
@@ -64,9 +64,11 @@ function quantity(value: number) {
   return Number.isInteger(value) ? String(value) : Number(value).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
-function detail(label: string, value?: string | null) {
-  if (!value) return "";
-  return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+function supplierContact(document: BusinessDocumentModel) {
+  return [
+    document.supplier.phone ? `Tel: ${document.supplier.phone}` : "",
+    document.supplier.email ? `Email: ${document.supplier.email}` : "",
+  ].filter(Boolean).join("<br>");
 }
 
 export function businessDocumentHtml(document: BusinessDocumentModel, printOnLoad = false) {
@@ -74,34 +76,37 @@ export function businessDocumentHtml(document: BusinessDocumentModel, printOnLoa
   const rows = document.lines.map((line) => `
     <tr>
       <td class="code">${escapeHtml(line.code)}</td>
-      <td>${escapeHtml(line.description)}</td>
-      <td class="number">${quantity(line.quantity)}</td>
-      ${priced ? `<td class="number">${money(line.unitPrice, document.currency)}</td><td class="number">${line.vatRate == null ? "—" : `${Number(line.vatRate).toFixed(2)}%`}</td><td class="number">${money(line.totalAmount, document.currency)}</td>` : ""}
+      <td class="description">${escapeHtml(line.description)}</td>
+      <td class="numeric">${quantity(line.quantity)}</td>
+      ${priced ? `<td class="numeric">${money(line.unitPrice, document.currency)}</td><td class="numeric">${line.vatRate == null ? "—" : `${Number(line.vatRate).toFixed(2)}%`}</td><td class="numeric amount">${money(line.totalAmount, document.currency)}</td>` : ""}
     </tr>`).join("");
 
   const totals = priced ? `
     <section class="totals">
-      <div><span>Net</span><strong>${money(document.netAmount, document.currency)}</strong></div>
+      <div><span>${document.kind === "credit_note" ? "Credit subtotal" : "Subtotal"}</span><strong>${money(document.netAmount, document.currency)}</strong></div>
       <div><span>VAT</span><strong>${money(document.vatAmount, document.currency)}</strong></div>
       <div class="grand"><span>${document.kind === "credit_note" ? "Credit total" : "Total"}</span><strong>${money(document.totalAmount, document.currency)}</strong></div>
-      ${document.kind === "invoice" && document.balanceAmount != null ? `<div><span>Balance due</span><strong>${money(document.balanceAmount, document.currency)}</strong></div>` : ""}
+      ${document.kind === "invoice" ? `<div><span>Paid</span><strong>${money(document.paidAmount ?? 0, document.currency)}</strong></div><div class="balance"><span>Balance due</span><strong>${money(document.balanceAmount ?? document.totalAmount, document.currency)}</strong></div>` : ""}
     </section>` : "";
 
   const legalWarning = document.draft ? `<div class="draft">DRAFT · Not an issued business document</div>` : "";
+  const customerBlock = `<section class="bill-block"><div><p class="block-label">Bill To</p><strong>${escapeHtml(document.customer.name)}</strong><p>${escapeHtml(document.customer.address ?? "")}</p>${document.customer.vatNumber ? `<p>VAT: ${escapeHtml(document.customer.vatNumber)}</p>` : ""}</div><div class="facts"><div><span>${escapeHtml(document.title)} No.</span><strong>${escapeHtml(document.draft ? "Draft" : document.number)}</strong></div><div><span>${document.kind === "delivery_note" ? "Delivery date" : `${escapeHtml(document.title)} date`}</span><strong>${escapeHtml(document.date)}</strong></div>${document.originalInvoiceNumber ? `<div><span>Original Invoice</span><strong>${escapeHtml(document.originalInvoiceNumber)}</strong></div>` : ""}${document.kind === "delivery_note" && document.deliveryAddress ? `<div><span>Deliver to</span><strong>${escapeHtml(document.deliveryAddress)}</strong></div>` : ""}</div></section>`;
+  const customerFacingDescription = document.kind === "invoice" && document.description ? `<section class="invoice-description"><p class="block-label">Description</p><p>${escapeHtml(document.description)}</p></section>` : "";
+  const creditReason = document.kind === "credit_note" && document.reason ? `<section class="invoice-description"><p class="block-label">Reason for credit</p><p>${escapeHtml(document.reason)}</p></section>` : "";
+  const signature = document.kind === "invoice" ? `<section class="closing"><div class="powered"><img src="/bdb-mark.svg" alt=""><span>Powered by BDB</span></div><div class="signature"><div class="signature-line"></div><strong>Client signature</strong><span>Payment acknowledgement</span><div class="date-line"><span>Date</span><i></i></div></div></section>` : `<section class="closing"><div class="powered"><img src="/bdb-mark.svg" alt=""><span>Powered by BDB</span></div></section>`;
+
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(document.title)} ${escapeHtml(document.number)}</title>
 <style>
-@page{size:A4;margin:14mm}*{box-sizing:border-box}body{margin:0;background:#ece9e0;color:#191917;font-family:Arial,Helvetica,sans-serif}.sheet{width:210mm;min-height:297mm;margin:22px auto;background:#fff;padding:18mm;box-shadow:0 18px 60px rgba(0,0,0,.14)}header{display:flex;justify-content:space-between;gap:24px;border-bottom:2px solid #9a7a32;padding-bottom:22px}.brand{display:flex;gap:16px;align-items:flex-start}.logo{max-width:135px;max-height:65px;object-fit:contain}.brand h1{font-size:21px;margin:0 0 7px}.brand p,.muted{margin:2px 0;color:#666;font-size:12px;white-space:pre-line}.document-title{text-align:right}.document-title h2{font-size:28px;letter-spacing:.03em;margin:0 0 8px}.document-title strong{font-size:15px}.draft{margin:18px 0;padding:9px 12px;border:1px dashed #9a7a32;background:#faf6ea;color:#715717;font-weight:700;font-size:12px}.parties{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin:28px 0}.parties h3{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#806428;margin:0 0 10px}.parties strong{font-size:15px}.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}.meta div{border-top:1px solid #ddd;padding-top:8px}.meta span{display:block;color:#777;font-size:10px;text-transform:uppercase;letter-spacing:.08em}.meta strong{display:block;margin-top:4px;font-size:12px}table{width:100%;border-collapse:collapse;margin-top:26px;font-size:11px}th{padding:9px 7px;border-bottom:1px solid #9a7a32;text-align:left;text-transform:uppercase;letter-spacing:.06em;font-size:9px;color:#6e5724}td{padding:10px 7px;border-bottom:1px solid #e8e5dc;vertical-align:top}.code{width:15%;color:#666}.number{text-align:right;white-space:nowrap}.totals{width:45%;margin:26px 0 0 auto}.totals div{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #e6e2d7;font-size:12px}.totals .grand{font-size:15px;border-bottom:2px solid #9a7a32;padding:11px 0}.note{margin-top:30px;font-size:11px;white-space:pre-line}.footer{position:relative;margin-top:46px;padding-top:14px;border-top:1px solid #ddd;color:#777;font-size:10px;white-space:pre-line}.actions{position:fixed;right:18px;bottom:18px}.actions button{border:0;background:#171715;color:#d4b15d;padding:11px 16px;border-radius:7px;font-weight:700;cursor:pointer}@media print{body{background:white}.sheet{width:auto;min-height:auto;margin:0;padding:0;box-shadow:none}.actions{display:none}}@media(max-width:800px){.sheet{width:100%;min-height:100vh;margin:0;padding:24px}.parties,.meta{grid-template-columns:1fr}.totals{width:100%}}
+@page{size:A4;margin:10mm}*{box-sizing:border-box}body{margin:0;background:#eceae4;color:#161615;font-family:Arial,Helvetica,sans-serif}.sheet{position:relative;width:210mm;min-height:297mm;margin:20px auto;background:#fff;padding:15mm 16mm 13mm;box-shadow:0 18px 60px rgba(0,0,0,.14)}.document-heading{margin:0 0 25px;text-align:center;font-size:31px;font-weight:900;letter-spacing:.025em;text-transform:uppercase}.issuer-row{display:flex;align-items:flex-start;justify-content:space-between;gap:28px;min-height:105px}.issuer h1{margin:0 0 7px;font-size:20px}.issuer p{margin:2px 0;color:#4f4f4b;font-size:11px;line-height:1.45;white-space:pre-line}.business-logo{display:block;max-width:145px;max-height:78px;object-fit:contain}.rule{height:1px;margin:3px 0 17px;background:#d7d4cc}.draft{margin:0 0 17px;padding:8px 11px;border:1px dashed #aa8236;background:#fbf7ed;color:#745817;font-size:10px;font-weight:800}.bill-block{display:grid;grid-template-columns:1.2fr 1fr;gap:48px;margin-bottom:20px}.block-label{margin:0 0 7px!important;color:#171715!important;font-size:13px!important;font-weight:850;text-transform:none!important;letter-spacing:0!important}.bill-block strong{font-size:14px}.bill-block p{margin:3px 0;color:#4d4d49;font-size:11px;white-space:pre-line}.facts{display:grid;gap:7px;align-content:start}.facts div{display:grid;grid-template-columns:minmax(115px,1fr) minmax(110px,1.15fr);gap:14px;align-items:start}.facts span{text-align:right;color:#4e4e49;font-size:10px;font-weight:700}.facts strong{text-align:right;font-size:12px;white-space:pre-line}.invoice-description{margin:11px 0 18px;padding:11px 13px;border-left:3px solid #b58b35;background:#faf9f6}.invoice-description p{margin:0;color:#3e3e3a;font-size:10.5px;line-height:1.55;white-space:pre-line}.invoice-description .block-label{margin-bottom:4px!important}table{width:100%;border-collapse:collapse;margin-top:10px;font-size:10px}th{padding:8px 7px;background:#1c1c1a;color:#fff;text-align:left;font-size:8px;font-weight:800;letter-spacing:.055em;text-transform:uppercase}th.numeric{text-align:right}td{padding:9px 7px;border-bottom:1px solid #dedbd3;vertical-align:top}.code{width:14%;color:#45453f;font-weight:700}.description{width:36%}.numeric{text-align:right;white-space:nowrap}.amount{font-weight:700}.table-note{margin:6px 0 0;color:#74716a;font-size:8px;text-align:right}.totals{width:43%;margin:22px 0 0 auto}.totals div{display:flex;justify-content:space-between;gap:18px;padding:6px 2px;border-bottom:1px solid #dedbd3;font-size:10.5px}.totals .grand{padding:9px 2px;border-bottom:2px solid #1c1c1a;font-size:13px}.totals .balance{font-size:12px;font-weight:800}.closing{display:flex;align-items:flex-end;justify-content:space-between;gap:30px;margin-top:48px;min-height:100px}.powered{display:flex;align-items:center;gap:6px;color:#9a978f;font-size:7.5px;letter-spacing:.025em}.powered img{width:15px;height:15px;opacity:.58}.signature{width:245px;text-align:center}.signature-line{height:42px;border-bottom:1px solid #454540}.signature strong{display:block;margin-top:7px;font-size:10px}.signature>span{display:block;margin-top:2px;color:#7b786f;font-size:7.5px}.date-line{display:flex;align-items:flex-end;gap:8px;margin-top:15px;color:#77736b;font-size:7.5px;text-align:left}.date-line i{flex:1;border-bottom:1px solid #bbb7ae}.actions{position:fixed;right:18px;bottom:18px}.actions button{border:0;background:#171715;color:#d4b15d;padding:11px 16px;border-radius:7px;font-weight:700;cursor:pointer}@media print{body{background:white}.sheet{width:auto;min-height:277mm;margin:0;padding:5mm 6mm 4mm;box-shadow:none}.actions{display:none}.business-logo{max-width:135px;max-height:70px}}@media(max-width:800px){.sheet{width:100%;min-height:100vh;margin:0;padding:26px}.bill-block{grid-template-columns:1fr;gap:22px}.facts div{grid-template-columns:1fr 1fr}.totals{width:100%}.closing{align-items:flex-start;flex-direction:column-reverse}.signature{width:100%;max-width:280px;margin-left:auto}.business-logo{max-width:115px}table{font-size:9px}th,td{padding-left:5px;padding-right:5px}}
 </style></head><body>
 <main class="sheet">
-<header><div class="brand">${document.logoUrl ? `<img class="logo" src="${escapeHtml(document.logoUrl)}" alt="Business logo">` : ""}<div><h1>${escapeHtml(document.supplier.name)}</h1><p>${escapeHtml(document.supplier.address ?? "")}</p><p>${document.supplier.vatNumber ? `VAT: ${escapeHtml(document.supplier.vatNumber)}` : ""}${document.supplier.registrationNumber ? `<br>Company: ${escapeHtml(document.supplier.registrationNumber)}` : ""}</p></div></div><div class="document-title"><h2>${escapeHtml(document.title)}</h2><strong>${escapeHtml(document.draft ? "Draft" : document.number)}</strong></div></header>
-${legalWarning}
-<section class="parties"><div><h3>Customer</h3><strong>${escapeHtml(document.customer.name)}</strong><p class="muted">${escapeHtml(document.customer.address ?? "")}</p>${document.customer.vatNumber ? `<p class="muted">VAT: ${escapeHtml(document.customer.vatNumber)}</p>` : ""}</div><div><h3>${document.kind === "delivery_note" ? "Delivery" : "Document details"}</h3>${document.kind === "delivery_note" ? `<strong>${escapeHtml(document.deliveryAddress ?? document.customer.address ?? "")}</strong>` : `<p class="muted">${document.originalInvoiceNumber ? `Original Invoice: ${escapeHtml(document.originalInvoiceNumber)}` : ""}</p>`}</div></section>
-<section class="meta">${detail("Date", document.date)}${detail("Due date", document.dueDate)}${detail("Supply date", document.supplyDate)}${detail("Reference", document.originalInvoiceNumber)}${detail("Reason", document.reason)}</section>
-<table><thead><tr><th>Code</th><th>Description</th><th class="number">Qty</th>${priced ? '<th class="number">Unit price</th><th class="number">VAT</th><th class="number">Total</th>' : ""}</tr></thead><tbody>${rows}</tbody></table>
-${totals}
-${document.reason && document.kind === "credit_note" ? `<div class="note"><strong>Reason for credit</strong><br>${escapeHtml(document.reason)}</div>` : ""}
-${document.footer ? `<footer class="footer">${escapeHtml(document.footer)}</footer>` : ""}
+<h1 class="document-heading">${escapeHtml(document.title)}</h1>
+<section class="issuer-row"><div class="issuer"><h1>${escapeHtml(document.supplier.name)}</h1><p>${escapeHtml(document.supplier.address ?? "")}</p>${document.supplier.vatNumber ? `<p>VAT: ${escapeHtml(document.supplier.vatNumber)}</p>` : ""}${document.supplier.registrationNumber ? `<p>Company: ${escapeHtml(document.supplier.registrationNumber)}</p>` : ""}${supplierContact(document) ? `<p>${supplierContact(document)}</p>` : ""}</div>${document.logoUrl ? `<img class="business-logo" src="${escapeHtml(document.logoUrl)}" alt="Business logo">` : ""}</section>
+<div class="rule"></div>${legalWarning}${customerBlock}${customerFacingDescription}${creditReason}
+<table><thead><tr><th>SKU / Code</th><th>Description</th><th class="numeric">Qty</th>${priced ? '<th class="numeric">Unit Price</th><th class="numeric">VAT</th><th class="numeric">Amount</th>' : ""}</tr></thead><tbody>${rows}</tbody></table>
+${priced ? '<p class="table-note">Unit prices are shown exclusive of VAT.</p>' : ""}
+${totals}${signature}
 </main><div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>${printOnLoad ? '<script>window.addEventListener("load",()=>setTimeout(()=>window.print(),150))</script>' : ""}</body></html>`;
 }
 
@@ -119,53 +124,138 @@ function textCommand(x: number, y: number, text: string, size = 10, bold = false
   return `BT /${bold ? "F2" : "F1"} ${size} Tf ${x} ${y} Td (${pdfSafe(text)}) Tj ET`;
 }
 
+function wrapped(value: string | null | undefined, maxChars: number, maxLines = 4) {
+  const words = String(value ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) current = next;
+    else {
+      if (current) lines.push(current);
+      current = word.slice(0, maxChars);
+      if (lines.length >= maxLines - 1) break;
+    }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  return lines;
+}
+
+function addWrapped(content: string[], x: number, y: number, value: string | null | undefined, maxChars: number, size = 8, leading = 11, maxLines = 4, bold = false) {
+  const lines = wrapped(value, maxChars, maxLines);
+  lines.forEach((line, index) => content.push(textCommand(x, y - index * leading, line, size, bold)));
+  return y - Math.max(lines.length, 1) * leading;
+}
+
+function addPoweredByBdb(content: string[]) {
+  content.push("0.07 0.07 0.06 rg 48 27 13 13 re f");
+  content.push("0.72 0.55 0.20 RG 0.7 w 48 27 13 13 re S");
+  content.push(textCommand(52, 31, "B", 6.5, true));
+  content.push("0.55 g");
+  content.push(textCommand(67, 31, "Powered by BDB", 6.5));
+  content.push("0 g");
+}
+
 function documentPages(document: BusinessDocumentModel) {
   const pages: string[][] = [];
-  const pageLines = 31;
-  for (let start = 0; start < Math.max(document.lines.length, 1); start += pageLines) {
+  const priced = document.kind !== "delivery_note";
+  const pageLines = 24;
+  const totalPages = Math.max(1, Math.ceil(Math.max(document.lines.length, 1) / pageLines));
+
+  for (let page = 0; page < totalPages; page += 1) {
+    const start = page * pageLines;
     const content: string[] = [];
-    const first = start === 0;
-    content.push("0.58 0.45 0.17 RG 1.4 w 48 770 m 547 770 l S");
-    content.push(textCommand(48, 795, document.supplier.name, 15, true));
-    content.push(textCommand(48, 779, document.supplier.address ?? "", 8));
-    content.push(textCommand(547, 795, document.title.toUpperCase(), 19, true));
-    content.push(textCommand(547, 778, document.draft ? "DRAFT" : document.number, 10, true));
+    const first = page === 0;
+    content.push(textCommand(250, 800, document.title.toUpperCase(), 21, true));
+    content.push(textCommand(48, 762, document.supplier.name, 13, true));
+    let supplierY = addWrapped(content, 48, 748, document.supplier.address, 52, 7.5, 10, 4);
+    if (document.supplier.vatNumber) { content.push(textCommand(48, supplierY, `VAT: ${document.supplier.vatNumber}`, 7.5)); supplierY -= 10; }
+    if (document.supplier.registrationNumber) content.push(textCommand(48, supplierY, `Company: ${document.supplier.registrationNumber}`, 7.5));
+    content.push("0.72 0.55 0.20 RG 1 w 48 700 m 547 700 l S");
+
     if (first) {
-      content.push(textCommand(48, 738, `Customer: ${document.customer.name}`, 10, true));
-      content.push(textCommand(48, 723, document.customer.address ?? "", 8));
-      if (document.customer.vatNumber) content.push(textCommand(48, 709, `Customer VAT: ${document.customer.vatNumber}`, 8));
-      content.push(textCommand(360, 738, `Date: ${document.date}`, 9));
-      if (document.dueDate) content.push(textCommand(360, 723, `Due: ${document.dueDate}`, 9));
-      if (document.originalInvoiceNumber) content.push(textCommand(360, 709, `Original Invoice: ${document.originalInvoiceNumber}`, 9));
-    }
-    let y = first ? 675 : 735;
-    content.push("0.75 G 0.5 w 48 " + (y + 12) + " m 547 " + (y + 12) + " l S");
-    content.push(textCommand(48, y + 18, "Code", 8, true));
-    content.push(textCommand(120, y + 18, "Description", 8, true));
-    content.push(textCommand(390, y + 18, "Qty", 8, true));
-    if (document.kind !== "delivery_note") content.push(textCommand(465, y + 18, "Total", 8, true));
-    for (const line of document.lines.slice(start, start + pageLines)) {
-      content.push(textCommand(48, y, line.code.slice(0, 16), 8));
-      content.push(textCommand(120, y, line.description.slice(0, 52), 8));
-      content.push(textCommand(390, y, quantity(line.quantity), 8));
-      if (document.kind !== "delivery_note") content.push(textCommand(465, y, money(line.totalAmount, document.currency), 8));
-      y -= 18;
-    }
-    if (start + pageLines >= document.lines.length && document.kind !== "delivery_note") {
-      y -= 8;
-      content.push("0.58 0.45 0.17 RG 1 w 360 " + (y + 10) + " m 547 " + (y + 10) + " l S");
-      content.push(textCommand(360, y - 6, "Net", 9));
-      content.push(textCommand(465, y - 6, money(document.netAmount, document.currency), 9, true));
-      content.push(textCommand(360, y - 23, "VAT", 9));
-      content.push(textCommand(465, y - 23, money(document.vatAmount, document.currency), 9, true));
-      content.push(textCommand(360, y - 43, document.kind === "credit_note" ? "Credit total" : "Total", 11, true));
-      content.push(textCommand(465, y - 43, money(document.totalAmount, document.currency), 11, true));
-      if (document.kind === "invoice" && document.balanceAmount != null) {
-        content.push(textCommand(360, y - 62, "Balance due", 10, true));
-        content.push(textCommand(465, y - 62, money(document.balanceAmount, document.currency), 10, true));
+      content.push(textCommand(48, 676, "BILL TO", 9, true));
+      content.push(textCommand(48, 660, document.customer.name, 11, true));
+      let customerY = addWrapped(content, 48, 646, document.customer.address, 48, 8, 11, 3);
+      if (document.customer.vatNumber) content.push(textCommand(48, customerY, `VAT: ${document.customer.vatNumber}`, 8));
+
+      content.push(textCommand(360, 676, `${document.title} No.:`, 8, true));
+      content.push(textCommand(448, 676, document.draft ? "DRAFT" : document.number, 9, true));
+      content.push(textCommand(360, 659, `${document.kind === "delivery_note" ? "Delivery" : document.title} date:`, 8));
+      content.push(textCommand(448, 659, document.date, 8));
+      if (document.originalInvoiceNumber) {
+        content.push(textCommand(360, 642, "Original Invoice:", 8));
+        content.push(textCommand(448, 642, document.originalInvoiceNumber, 8, true));
+      }
+      if (document.draft) content.push(textCommand(48, 604, "DRAFT - Not an issued business document", 8, true));
+      if (document.kind === "invoice" && document.description) {
+        content.push(textCommand(48, 584, "DESCRIPTION", 8, true));
+        addWrapped(content, 48, 570, document.description, 88, 7.5, 10, 3);
+      }
+      if (document.kind === "credit_note" && document.reason) {
+        content.push(textCommand(48, 584, "REASON FOR CREDIT", 8, true));
+        addWrapped(content, 48, 570, document.reason, 88, 7.5, 10, 3);
       }
     }
-    content.push(textCommand(48, 42, document.footer ?? "Generated by BDB OS", 7));
+
+    let y = first ? 520 : 742;
+    content.push("0.11 0.11 0.10 rg 48 " + (y + 5) + " 499 20 re f");
+    content.push("1 g");
+    content.push(textCommand(52, y + 11, "SKU / Code", 7, true));
+    content.push(textCommand(118, y + 11, "Description", 7, true));
+    content.push(textCommand(327, y + 11, "Qty", 7, true));
+    if (priced) {
+      content.push(textCommand(365, y + 11, "Unit Price", 7, true));
+      content.push(textCommand(445, y + 11, "VAT", 7, true));
+      content.push(textCommand(495, y + 11, "Amount", 7, true));
+    }
+    content.push("0 g");
+    y -= 8;
+
+    const lines = document.lines.slice(start, start + pageLines);
+    for (const line of lines) {
+      content.push(textCommand(52, y, line.code.slice(0, 14), 7));
+      content.push(textCommand(118, y, line.description.slice(0, 38), 7));
+      content.push(textCommand(327, y, quantity(line.quantity), 7));
+      if (priced) {
+        content.push(textCommand(365, y, money(line.unitPrice, document.currency), 7));
+        content.push(textCommand(445, y, line.vatRate == null ? "-" : `${Number(line.vatRate).toFixed(2)}%`, 7));
+        content.push(textCommand(495, y, money(line.totalAmount, document.currency), 7));
+      }
+      content.push("0.86 G 0.35 w 48 " + (y - 5) + " m 547 " + (y - 5) + " l S");
+      y -= 18;
+    }
+
+    if (page === totalPages - 1 && priced) {
+      y -= 6;
+      content.push(textCommand(365, y, document.kind === "credit_note" ? "Credit subtotal" : "Subtotal", 8));
+      content.push(textCommand(485, y, money(document.netAmount, document.currency), 8, true));
+      y -= 17;
+      content.push(textCommand(365, y, "VAT", 8));
+      content.push(textCommand(485, y, money(document.vatAmount, document.currency), 8, true));
+      y -= 20;
+      content.push("0.11 0.11 0.10 RG 1.2 w 365 " + (y + 12) + " m 547 " + (y + 12) + " l S");
+      content.push(textCommand(365, y, document.kind === "credit_note" ? "Credit total" : "Total", 10, true));
+      content.push(textCommand(485, y, money(document.totalAmount, document.currency), 10, true));
+      if (document.kind === "invoice") {
+        y -= 18;
+        content.push(textCommand(365, y, "Paid", 8));
+        content.push(textCommand(485, y, money(document.paidAmount ?? 0, document.currency), 8));
+        y -= 18;
+        content.push(textCommand(365, y, "Balance due", 9, true));
+        content.push(textCommand(485, y, money(document.balanceAmount ?? document.totalAmount, document.currency), 9, true));
+        const signatureY = Math.max(90, y - 65);
+        content.push("0.45 G 0.6 w 350 " + signatureY + " m 535 " + signatureY + " l S");
+        content.push(textCommand(395, signatureY - 14, "Client signature", 8, true));
+        content.push(textCommand(377, signatureY - 26, "Payment acknowledgement", 6.5));
+        content.push(textCommand(350, signatureY - 47, "Date", 6.5));
+        content.push("0.55 G 0.5 w 378 " + (signatureY - 47) + " m 535 " + (signatureY - 47) + " l S");
+      }
+    }
+
+    if (priced) content.push(textCommand(405, 49, "Unit prices exclude VAT", 6.5));
+    addPoweredByBdb(content);
+    content.push(textCommand(505, 31, `${page + 1}/${totalPages}`, 6.5));
     pages.push(content);
   }
   return pages;
