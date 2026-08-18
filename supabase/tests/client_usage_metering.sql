@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(35);
 
 select has_table('public', 'plan_usage_allowances', 'Plan usage allowances table exists');
 select has_table('public', 'workspace_usage_periods', 'Workspace usage periods table exists');
@@ -65,7 +65,7 @@ update public.plan_usage_allowances
 set included_quantity=200, updated_at=now()
 where plan_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1' and metric_key='automation_executions';
 
-perform public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-15 12:00:00+00');
+select public.ensure_workspace_usage_period('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','2026-08-15 12:00:00+00');
 
 select is(
   (select (allowances_snapshot #>> '{automation_executions,included_quantity}')::numeric from public.workspace_usage_periods where workspace_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2' and period_start='2026-08-01 00:00:00+00'),
