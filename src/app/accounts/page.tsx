@@ -1,102 +1,92 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-import {
-  BadgePoundSterling,
   Banknote,
-  CircleCheckBig,
-  Clock3,
-  FilePlus2,
-  Link2,
+  Download,
+  FileMinus2,
+  FileText,
+  Mail,
+  PackageCheck,
   Plus,
-  ReceiptText,
+  Printer,
   RefreshCw,
-  RotateCcw,
+  Settings2,
   TriangleAlert,
-  UserRound,
-  X,
+  WifiOff,
 } from "lucide-react";
-import { Badge, Button, Card, Dialog, PageHeader, SectionHeading, StatCard } from "@/components/ui";
+import { Badge, Button, Dialog, PageHeader } from "@/components/ui";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   enqueueAccountsCommand,
   flushAccountsQueue,
   readAccountsQueue,
-  removeAccountsCommand,
   type AccountsCommandAction,
   type AccountsQueuedCommand,
 } from "@/lib/modules/accounts-queue";
 import styles from "./accounts.module.css";
 
-type InvoiceDisplayStatus = "draft" | "sent" | "overdue" | "paid" | "void";
-type InvoicePaymentStatus = "draft" | "unpaid" | "partially_paid" | "paid" | "void";
+type Tab = "documents" | "payments" | "customers";
+type DocumentKind = "invoice" | "credit_note" | "delivery_note";
 type PaymentMethod = "cash" | "card" | "bank_transfer" | "cheque" | "other";
-type Tab = "overview" | "invoices" | "payments" | "customers";
+type InvoiceStatus = "draft" | "sent" | "overdue" | "paid" | "void";
 
-type CustomerOption = {
-  id: string;
-  code: string;
-  name: string;
-  company: string | null;
-  email: string | null;
-  phone: string | null;
-  status: string;
-};
-
-type InvoiceLineRow = {
+type InvoiceLine = {
   id: string;
   line_number: number;
   line_type: "product" | "service" | "manual";
-  source_sale_line_id: string | null;
+  product_id: string | null;
+  service_id: string | null;
   code_snapshot: string;
   description_snapshot: string;
   quantity: number;
   unit_price: number;
-  gross_amount: number;
   discount_amount: number;
-  net_amount: number;
   vat_rate: number;
   vat_amount: number;
   total_amount: number;
 };
 
-type InvoiceRow = {
+type Invoice = {
   id: string;
   number: string;
   customer_id: string;
+  customer_name_snapshot: string;
+  customer_code_snapshot: string;
   source_sale_id: string | null;
   issued_at: string;
+  supply_date?: string | null;
   due_at: string;
   description: string;
   currency: string;
-  customer_code_snapshot: string;
-  customer_name_snapshot: string;
   gross_amount: number;
   discount_amount: number;
   net_amount: number;
   vat_amount: number;
   total_amount: number;
-  notes: string | null;
-  status: InvoiceDisplayStatus;
-  version: number;
-  sent_at: string | null;
-  voided_at: string | null;
-  void_reason: string | null;
-  allocated_amount: number;
+  adjusted_total_amount?: number;
   outstanding_amount: number;
-  payment_status: InvoicePaymentStatus;
-  display_status: InvoiceDisplayStatus;
-  invoice_lines: InvoiceLineRow[];
+  display_status: InvoiceStatus;
+  status: InvoiceStatus;
+  version: number;
+  notes: string | null;
+  vat_note?: string | null;
+  invoice_lines: InvoiceLine[];
 };
 
-type PaymentRow = {
+type Customer = {
+  id: string;
+  code: string;
+  name: string;
+  company?: string | null;
+  email: string | null;
+  phone?: string | null;
+  address?: string | null;
+  vat_number?: string | null;
+  version?: number;
+};
+
+type Payment = {
   id: string;
   reference: string;
   customer_id: string;
@@ -104,25 +94,9 @@ type PaymentRow = {
   currency: string;
   amount: number;
   payment_method: PaymentMethod;
-  external_reference: string | null;
-  notes: string | null;
   received_at: string;
   status: "posted" | "reversed";
-  version: number;
-  reversal_reason: string | null;
-  allocated_amount: number;
   unallocated_amount: number;
-};
-
-type AllocationRow = {
-  id: string;
-  payment_id: string;
-  invoice_id: string;
-  allocation_type: "allocation" | "reversal";
-  amount_delta: number;
-  reversal_of_id: string | null;
-  reason: string | null;
-  occurred_at: string;
 };
 
 type CustomerBalance = {
@@ -132,45 +106,102 @@ type CustomerBalance = {
   company: string | null;
   issued_amount: number;
   received_amount: number;
-  allocated_amount: number;
   outstanding_amount: number;
   unallocated_credit: number;
   net_balance: number;
   balance_status: "amount_due" | "customer_credit" | "clear";
 };
 
-type SaleAccountRow = {
-  sale_id: string;
-  sale_reference: string;
-  customer_id: string | null;
-  currency: string;
-  sale_total_amount: number;
-  invoice_id: string | null;
-  invoice_number: string | null;
-  invoice_status: string | null;
-  allocated_amount: number | null;
-  outstanding_amount: number | null;
-  account_status: "not_invoiced" | "invoiced" | "partially_paid" | "paid" | "invoice_void" | "reversed";
-};
-
 type AccountsBundle = {
   workspaceId: string;
-  settings: {
-    currency: string;
-    invoice_prefix: string;
-    vat_rate: number;
-    timezone: string;
-  };
-  invoices: InvoiceRow[];
-  payments: PaymentRow[];
-  allocations: AllocationRow[];
+  settings: { currency: string; vat_rate: number; invoice_prefix: string; timezone: string };
+  invoices: Invoice[];
+  payments: Payment[];
   customerBalances: CustomerBalance[];
-  customers: CustomerOption[];
-  sales: SaleAccountRow[];
 };
 
-type ManualLineDraft = {
+type BusinessDocumentRow = {
+  workspace_id: string;
   id: string;
+  document_type: DocumentKind;
+  number: string;
+  customer_id: string;
+  customer_name: string;
+  created_at: string;
+  issued_at: string | null;
+  status: string;
+  currency: string | null;
+  total_amount: number | null;
+  source_sale_id: string | null;
+  source_invoice_id: string | null;
+  outstanding_amount: number | null;
+};
+
+type CreditNote = {
+  id: string;
+  invoice_id: string;
+  number: string;
+  status: "draft" | "issued" | "void";
+  version: number;
+  customer_id: string;
+  reason: string;
+  total_amount: number;
+  currency: string;
+};
+
+type DeliveryNote = {
+  id: string;
+  number: string;
+  status: "draft" | "issued" | "void";
+  version: number;
+  customer_id: string;
+  source_invoice_id: string | null;
+  source_sale_id: string | null;
+  delivery_date: string;
+};
+
+type CatalogueProduct = { id: string; sku: string; name: string; selling_price: number; vat_rate: number };
+type CatalogueService = { id: string; code: string; name: string; price: number; vat_rate: number };
+
+type DocumentSettings = {
+  business_address?: string | null;
+  vat_number?: string | null;
+  invoice_prefix?: string;
+  credit_note_prefix?: string;
+  delivery_note_prefix?: string;
+  default_payment_terms_days?: number;
+  currency?: string;
+  vat_rate?: number;
+};
+
+type BusinessBundle = {
+  workspaceId: string;
+  documents: BusinessDocumentRow[];
+  creditNotes: CreditNote[];
+  deliveryNotes: DeliveryNote[];
+  products: CatalogueProduct[];
+  services: CatalogueService[];
+  settings: DocumentSettings;
+  workspace: { id: string; name: string; legal_name: string | null } | null;
+};
+
+type SourceLine = { id: string; line_number: number; product_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number };
+type DeliverySource = {
+  id: string;
+  customer_id: string;
+  reference?: string;
+  number?: string;
+  customer_name_snapshot?: string;
+  invoice_lines?: SourceLine[];
+  sale_lines?: SourceLine[];
+};
+
+type SourcesBundle = { invoices: DeliverySource[]; sales: DeliverySource[]; customers: Customer[] };
+
+type DraftLine = {
+  id: string;
+  kind: "product" | "service" | "manual";
+  sourceId: string;
   code: string;
   description: string;
   quantity: string;
@@ -179,848 +210,293 @@ type ManualLineDraft = {
   vatRate: string;
 };
 
-type ReversalTarget = {
-  kind: "invoice" | "payment" | "allocation";
-  id: string;
-  label: string;
-} | null;
-
-const emptyBundle: AccountsBundle = {
+const EMPTY_ACCOUNTS: AccountsBundle = {
   workspaceId: "",
-  settings: { currency: "EUR", invoice_prefix: "INV", vat_rate: 0, timezone: "UTC" },
-  invoices: [],
-  payments: [],
-  allocations: [],
-  customerBalances: [],
-  customers: [],
-  sales: [],
+  settings: { currency: "EUR", vat_rate: 0, invoice_prefix: "INV", timezone: "Europe/Malta" },
+  invoices: [], payments: [], customerBalances: [],
 };
 
-const CACHE_PREFIX = "bdb-accounts-cache-v1";
-const LAST_WORKSPACE_KEY = "bdb-accounts-last-workspace-v1";
-const cacheKey = (workspaceId: string) => `${CACHE_PREFIX}:${workspaceId}`;
+const EMPTY_BUSINESS: BusinessBundle = {
+  workspaceId: "", documents: [], creditNotes: [], deliveryNotes: [], products: [], services: [], settings: {}, workspace: null,
+};
 
-function localDateTime() {
-  const date = new Date();
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function defaultDueDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 14);
-  return date.toISOString().slice(0, 10);
-}
-
-function readCachedBundle(workspaceId: string): AccountsBundle | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const value = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "null") as AccountsBundle | null;
-    return value && Array.isArray(value.invoices) && Array.isArray(value.payments) ? value : null;
-  } catch {
-    window.localStorage.removeItem(cacheKey(workspaceId));
-    return null;
-  }
-}
-
-function writeCachedBundle(bundle: AccountsBundle) {
-  if (typeof window === "undefined" || !bundle.workspaceId) return;
-  window.localStorage.setItem(cacheKey(bundle.workspaceId), JSON.stringify(bundle));
-  window.localStorage.setItem(LAST_WORKSPACE_KEY, bundle.workspaceId);
-}
-
-function blankLine(vatRate: number): ManualLineDraft {
-  return {
-    id: crypto.randomUUID(),
-    code: "",
-    description: "",
-    quantity: "1",
-    unitPrice: "",
-    discountAmount: "0",
-    vatRate: String(vatRate),
-  };
-}
-
-function lineTotal(line: ManualLineDraft) {
-  const quantity = Number(line.quantity) || 0;
-  const price = Number(line.unitPrice) || 0;
-  const discount = Number(line.discountAmount) || 0;
-  return Math.max(quantity * price - discount, 0);
-}
-
-function invoiceTone(status: InvoiceDisplayStatus): "neutral" | "gold" | "green" | "red" {
-  if (status === "paid") return "green";
-  if (status === "overdue") return "red";
-  if (status === "sent") return "gold";
-  return "neutral";
-}
-
-function methodLabel(method: PaymentMethod) {
-  return method.replaceAll("_", " ");
-}
+const today = () => new Date().toISOString().slice(0, 10);
+function dueDate(days = 14) { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); }
+function blankLine(vat = 0): DraftLine { return { id: crypto.randomUUID(), kind: "manual", sourceId: "", code: "", description: "", quantity: "1", unitPrice: "", discountAmount: "0", vatRate: String(vat) }; }
+function documentLabel(kind: DocumentKind) { return kind === "credit_note" ? "Credit Note" : kind === "delivery_note" ? "Delivery Note" : "Invoice"; }
+function statusTone(status: string): "neutral" | "gold" | "green" | "red" { return status === "paid" || status === "issued" ? "green" : status === "overdue" || status === "void" ? "red" : status === "draft" ? "neutral" : "gold"; }
 
 export default function AccountsPage() {
-  const [bundle, setBundle] = useState<AccountsBundle>(emptyBundle);
-  const bundleRef = useRef(bundle);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("documents");
+  const [accounts, setAccounts] = useState<AccountsBundle>(EMPTY_ACCOUNTS);
+  const [business, setBusiness] = useState<BusinessBundle>(EMPTY_BUSINESS);
+  const [sources, setSources] = useState<SourcesBundle>({ invoices: [], sales: [], customers: [] });
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
   const [supportReadOnly, setSupportReadOnly] = useState(false);
-  const [busy, setBusy] = useState("");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [queue, setQueue] = useState<AccountsQueuedCommand[]>([]);
-  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [newMenu, setNewMenu] = useState(false);
 
   const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [editingInvoice, setEditingInvoice] = useState<InvoiceRow | null>(null);
   const [invoiceCustomerId, setInvoiceCustomerId] = useState("");
-  const [invoiceDueAt, setInvoiceDueAt] = useState(defaultDueDate());
-  const [invoiceDescription, setInvoiceDescription] = useState("");
+  const [invoiceSupplyDate, setInvoiceSupplyDate] = useState(today());
+  const [invoiceDueDate, setInvoiceDueDate] = useState(dueDate());
+  const [invoiceDescription, setInvoiceDescription] = useState("Goods / services supplied");
   const [invoiceNotes, setInvoiceNotes] = useState("");
-  const [invoiceLines, setInvoiceLines] = useState<ManualLineDraft[]>([]);
+  const [invoiceVatNote, setInvoiceVatNote] = useState("");
+  const [invoiceLines, setInvoiceLines] = useState<DraftLine[]>([]);
 
-  const [saleInvoiceOpen, setSaleInvoiceOpen] = useState(false);
-  const [saleId, setSaleId] = useState("");
-  const [saleInvoiceDueAt, setSaleInvoiceDueAt] = useState(defaultDueDate());
-  const [saleInvoiceNotes, setSaleInvoiceNotes] = useState("");
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditInvoiceId, setCreditInvoiceId] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [creditNotes, setCreditNotes] = useState("");
+  const [creditQuantities, setCreditQuantities] = useState<Record<string, string>>({});
+
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliverySourceType, setDeliverySourceType] = useState<"invoice" | "sale">("invoice");
+  const [deliverySourceId, setDeliverySourceId] = useState("");
+  const [deliveryDate, setDeliveryDate] = useState(today());
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
+  const [deliveryQuantities, setDeliveryQuantities] = useState<Record<string, string>>({});
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentCustomerId, setPaymentCustomerId] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
-  const [paymentReceivedAt, setPaymentReceivedAt] = useState(localDateTime());
-  const [paymentExternalReference, setPaymentExternalReference] = useState("");
-  const [paymentNotes, setPaymentNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank_transfer");
   const [paymentInvoiceId, setPaymentInvoiceId] = useState("");
-  const [paymentAllocationAmount, setPaymentAllocationAmount] = useState("");
 
-  const [allocationOpen, setAllocationOpen] = useState(false);
-  const [allocationPaymentId, setAllocationPaymentId] = useState("");
-  const [allocationInvoiceId, setAllocationInvoiceId] = useState("");
-  const [allocationAmount, setAllocationAmount] = useState("");
-
-  const [reversal, setReversal] = useState<ReversalTarget>(null);
-  const [reversalReason, setReversalReason] = useState("");
-
-  useEffect(() => {
-    bundleRef.current = bundle;
-  }, [bundle]);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState({ businessAddress: "", vatNumber: "", creditNotePrefix: "CN", deliveryNotePrefix: "DN", defaultPaymentTermsDays: "14" });
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
       const context = await contextResponse.json().catch(() => ({}));
-      if (!contextResponse.ok || !context.currentWorkspaceId) {
-        throw new Error(context.error ?? "The current workspace could not be resolved.");
-      }
+      if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current business could not be resolved.");
       const workspaceId = String(context.currentWorkspaceId);
-      const response = await fetch(`/api/accounts?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error ?? "Accounts could not be loaded.");
-      }
-      const next = result.result as AccountsBundle;
-      setBundle(next);
-      bundleRef.current = next;
-      writeCachedBundle(next);
+      setSupportReadOnly(Boolean(context.supportAccess) && context.supportAccessMode !== "test_write");
+      const [accountsResponse, docsResponse, sourcesResponse] = await Promise.all([
+        fetch(`/api/accounts?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }),
+        fetch(`/api/accounts/business-documents?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }),
+        fetch(`/api/accounts/delivery-sources?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" }),
+      ]);
+      const [accountsJson, docsJson, sourcesJson] = await Promise.all([accountsResponse.json().catch(() => ({})), docsResponse.json().catch(() => ({})), sourcesResponse.json().catch(() => ({}))]);
+      if (!accountsResponse.ok || !accountsJson.ok) throw new Error(accountsJson.error ?? "Accounts could not be loaded.");
+      if (!docsResponse.ok || !docsJson.ok) throw new Error(docsJson.error ?? "Business documents could not be loaded.");
+      if (!sourcesResponse.ok || !sourcesJson.ok) throw new Error(sourcesJson.error ?? "Document sources could not be loaded.");
+      setAccounts(accountsJson.result as AccountsBundle);
+      setBusiness(docsJson.result as BusinessBundle);
+      setSources(sourcesJson.result as SourcesBundle);
       setQueue(readAccountsQueue(workspaceId));
-      setSupportReadOnly(Boolean(context.supportAccess && context.supportAccessMode !== "test_write"));
       setNotice("");
     } catch (loadError) {
-      const lastWorkspace = typeof window === "undefined"
-        ? null
-        : window.localStorage.getItem(LAST_WORKSPACE_KEY);
-      const cached = lastWorkspace ? readCachedBundle(lastWorkspace) : null;
-      if (cached) {
-        setBundle(cached);
-        bundleRef.current = cached;
-        setQueue(readAccountsQueue(cached.workspaceId));
-        setNotice("Showing the last verified Accounts snapshot. Financial commands remain queued until the server accepts them.");
-      } else {
-        setError(loadError instanceof Error ? loadError.message : "Accounts could not be loaded.");
-      }
-    } finally {
-      setLoading(false);
-    }
+      setError(loadError instanceof Error ? loadError.message : "Accounts could not be loaded.");
+    } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
+  useEffect(() => { const update = () => setOnline(navigator.onLine); update(); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  useEffect(() => { if (online && accounts.workspaceId && queue.length) void syncQueue(); }, [online]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+  const customers = sources.customers.length ? sources.customers : accounts.customerBalances.map((balance) => ({ id: balance.customer_id, code: balance.customer_code, name: balance.customer_name, company: balance.company, email: null }));
+  const setupComplete = Boolean(business.settings.business_address && business.settings.vat_number);
+  const currency = accounts.settings.currency || business.settings.currency || "EUR";
 
-  const currency = bundle.settings.currency || "EUR";
-  const canWrite = Boolean(bundle.workspaceId) && !supportReadOnly;
-
-  const outstandingTotal = useMemo(
-    () => bundle.invoices.reduce((sum, invoice) => sum + Number(invoice.outstanding_amount || 0), 0),
-    [bundle.invoices],
-  );
-  const receivedTotal = useMemo(
-    () => bundle.payments.filter((payment) => payment.status === "posted").reduce((sum, payment) => sum + Number(payment.amount), 0),
-    [bundle.payments],
-  );
-  const unallocatedTotal = useMemo(
-    () => bundle.payments.reduce((sum, payment) => sum + Number(payment.unallocated_amount || 0), 0),
-    [bundle.payments],
-  );
-  const overdueCount = useMemo(
-    () => bundle.invoices.filter((invoice) => invoice.display_status === "overdue").length,
-    [bundle.invoices],
-  );
-
-  const activeAllocations = useMemo(() => {
-    const reversed = new Set(
-      bundle.allocations.filter((allocation) => allocation.reversal_of_id).map((allocation) => allocation.reversal_of_id as string),
-    );
-    return bundle.allocations.filter(
-      (allocation) => allocation.allocation_type === "allocation" && !reversed.has(allocation.id),
-    );
-  }, [bundle.allocations]);
-
-  const availableSales = useMemo(
-    () => bundle.sales.filter((sale) => sale.customer_id && ["not_invoiced", "invoice_void"].includes(sale.account_status)),
-    [bundle.sales],
-  );
-
-  const filteredInvoices = useMemo(() => {
+  const filteredDocuments = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return bundle.invoices;
-    return bundle.invoices.filter((invoice) => [
-      invoice.number,
-      invoice.customer_name_snapshot,
-      invoice.customer_code_snapshot,
-      invoice.description,
-      invoice.display_status,
-    ].join(" ").toLowerCase().includes(needle));
-  }, [bundle.invoices, query]);
+    return business.documents.filter((document) => !needle || [document.number, document.customer_name, document.document_type, document.status].join(" ").toLowerCase().includes(needle));
+  }, [business.documents, query]);
 
-  const filteredPayments = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return bundle.payments;
-    return bundle.payments.filter((payment) => [
-      payment.reference,
-      payment.customer_name_snapshot,
-      payment.payment_method,
-      payment.external_reference,
-      payment.status,
-    ].join(" ").toLowerCase().includes(needle));
-  }, [bundle.payments, query]);
+  const selectedCreditInvoice = accounts.invoices.find((invoice) => invoice.id === creditInvoiceId) ?? null;
+  const deliverySource = (deliverySourceType === "invoice" ? sources.invoices : sources.sales).find((source) => source.id === deliverySourceId) ?? null;
+  const deliverySourceLines = deliverySourceType === "invoice" ? deliverySource?.invoice_lines ?? [] : deliverySource?.sale_lines ?? [];
 
-  const paymentCustomerInvoices = useMemo(
-    () => bundle.invoices.filter(
-      (invoice) => invoice.customer_id === paymentCustomerId
-        && !["draft", "void", "paid"].includes(invoice.display_status)
-        && Number(invoice.outstanding_amount) > 0,
-    ),
-    [bundle.invoices, paymentCustomerId],
-  );
-
-  const selectedPayment = bundle.payments.find((payment) => payment.id === allocationPaymentId) ?? null;
-  const allocationInvoices = useMemo(
-    () => bundle.invoices.filter(
-      (invoice) => invoice.customer_id === selectedPayment?.customer_id
-        && invoice.currency === selectedPayment?.currency
-        && !["draft", "void", "paid"].includes(invoice.display_status)
-        && Number(invoice.outstanding_amount) > 0,
-    ),
-    [bundle.invoices, selectedPayment],
-  );
-
-  function refreshQueue(workspaceId = bundleRef.current.workspaceId) {
-    if (workspaceId) setQueue(readAccountsQueue(workspaceId));
-  }
-
-  async function syncCommands(workspaceId = bundleRef.current.workspaceId) {
-    if (!workspaceId || !navigator.onLine) return;
-    setBusy("sync");
-    const result = await flushAccountsQueue(workspaceId, () => refreshQueue(workspaceId));
-    refreshQueue(workspaceId);
-    setBusy("");
-    if (result.remaining === 0) {
-      setNotice(`${result.completed} financial command${result.completed === 1 ? "" : "s"} synchronised.`);
-      await load();
-    } else {
-      const failed = readAccountsQueue(workspaceId)[0];
-      setError(failed?.lastError ?? "Financial synchronisation stopped for review.");
-    }
+  async function syncQueue() {
+    if (!accounts.workspaceId || !navigator.onLine || busy) return;
+    setBusy(true);
+    const result = await flushAccountsQueue(accounts.workspaceId, () => setQueue(readAccountsQueue(accounts.workspaceId)));
+    setQueue(readAccountsQueue(accounts.workspaceId));
+    setBusy(false);
+    if (result.remaining === 0) { if (result.completed) setNotice(`${result.completed} queued Accounts change${result.completed === 1 ? "" : "s"} synchronised.`); await load(); }
+    else setError(readAccountsQueue(accounts.workspaceId)[0]?.lastError ?? "Accounts synchronisation stopped for review.");
   }
 
   async function dispatch(action: AccountsCommandAction, payload: Record<string, unknown>) {
-    if (!canWrite) {
-      setError("This Accounts workspace is read-only for the current access mode.");
-      return false;
-    }
-    const workspaceId = bundleRef.current.workspaceId;
-    if (!workspaceId) return false;
-    enqueueAccountsCommand(workspaceId, action, payload);
-    refreshQueue(workspaceId);
-    setNotice(navigator.onLine
-      ? "Financial command queued for authoritative server validation."
-      : "Financial command stored offline and will be revalidated after reconnection.");
-    if (navigator.onLine) await syncCommands(workspaceId);
+    if (!accounts.workspaceId || supportReadOnly) return false;
+    enqueueAccountsCommand(accounts.workspaceId, action, payload);
+    setQueue(readAccountsQueue(accounts.workspaceId));
+    if (navigator.onLine) await syncQueue();
+    else setNotice("Draft change saved offline. Final issue/numbering will happen after reconnection.");
     return true;
   }
 
-  function resetInvoiceForm() {
-    setEditingInvoice(null);
-    setInvoiceCustomerId(bundle.customers[0]?.id ?? "");
-    setInvoiceDueAt(defaultDueDate());
-    setInvoiceDescription("");
-    setInvoiceNotes("");
-    setInvoiceLines([blankLine(bundle.settings.vat_rate)]);
+  function openInvoice() {
+    const customer = customers[0];
+    const terms = Number(business.settings.default_payment_terms_days ?? 14);
+    setInvoiceCustomerId(customer?.id ?? ""); setInvoiceSupplyDate(today()); setInvoiceDueDate(dueDate(terms)); setInvoiceDescription("Goods / services supplied"); setInvoiceNotes(""); setInvoiceVatNote(""); setInvoiceLines([blankLine(Number(business.settings.vat_rate ?? accounts.settings.vat_rate ?? 0))]); setInvoiceOpen(true); setNewMenu(false);
   }
 
-  function openNewInvoice() {
-    resetInvoiceForm();
-    setInvoiceOpen(true);
-  }
-
-  function openEditInvoice(invoice: InvoiceRow) {
-    setEditingInvoice(invoice);
-    setInvoiceCustomerId(invoice.customer_id);
-    setInvoiceDueAt(invoice.due_at);
-    setInvoiceDescription(invoice.description);
-    setInvoiceNotes(invoice.notes ?? "");
-    setInvoiceLines(invoice.invoice_lines.map((line) => ({
-      id: line.id,
-      code: line.code_snapshot,
-      description: line.description_snapshot,
-      quantity: String(line.quantity),
-      unitPrice: String(line.unit_price),
-      discountAmount: String(line.discount_amount),
-      vatRate: String(line.vat_rate),
-    })));
-    setInvoiceOpen(true);
+  function updateLine(index: number, patch: Partial<DraftLine>) { setInvoiceLines((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line)); }
+  function chooseCatalogue(index: number, kind: DraftLine["kind"], sourceId: string) {
+    if (kind === "product") { const item = business.products.find((product) => product.id === sourceId); updateLine(index, { kind, sourceId, code: item?.sku ?? "", description: item?.name ?? "", unitPrice: item ? String(item.selling_price) : "", vatRate: item ? String(item.vat_rate) : "" }); }
+    else if (kind === "service") { const item = business.services.find((service) => service.id === sourceId); updateLine(index, { kind, sourceId, code: item?.code ?? "", description: item?.name ?? "", unitPrice: item ? String(item.price) : "", vatRate: item ? String(item.vat_rate) : "" }); }
+    else updateLine(index, { kind, sourceId: "", code: "", description: "", unitPrice: "", vatRate: String(business.settings.vat_rate ?? accounts.settings.vat_rate ?? 0) });
   }
 
   async function saveInvoice(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy("invoice");
-    const payloadLines = invoiceLines.map((line) => ({
-      id: line.id,
-      code: line.code || null,
-      description: line.description,
-      quantity: Number(line.quantity),
-      unitPrice: Number(line.unitPrice),
-      discountAmount: Number(line.discountAmount || 0),
-      vatRate: Number(line.vatRate || 0),
-    }));
-    const accepted = await dispatch(
-      editingInvoice ? "invoice-update" : "invoice-create-manual",
-      editingInvoice
-        ? {
-            id: editingInvoice.id,
-            expectedVersion: editingInvoice.version,
-            dueAt: invoiceDueAt,
-            description: invoiceDescription,
-            notes: invoiceNotes,
-            lines: editingInvoice.source_sale_id ? undefined : payloadLines,
-          }
-        : {
-            id: crypto.randomUUID(),
-            customerId: invoiceCustomerId,
-            dueAt: invoiceDueAt,
-            description: invoiceDescription,
-            notes: invoiceNotes,
-            lines: payloadLines,
-          },
-    );
-    setBusy("");
+    if (!invoiceLines.length) return;
+    const accepted = await dispatch("invoice-create", {
+      id: crypto.randomUUID(), customerId: invoiceCustomerId, supplyDate: invoiceSupplyDate, dueAt: invoiceDueDate, description: invoiceDescription, notes: invoiceNotes, vatNote: invoiceVatNote,
+      lines: invoiceLines.map((line) => ({ id: line.id, productId: line.kind === "product" ? line.sourceId : null, serviceId: line.kind === "service" ? line.sourceId : null, code: line.code || null, description: line.description || null, quantity: Number(line.quantity), unitPrice: line.unitPrice === "" ? null : Number(line.unitPrice), discountAmount: Number(line.discountAmount || 0), vatRate: line.vatRate === "" ? null : Number(line.vatRate) })),
+    });
     if (accepted) setInvoiceOpen(false);
   }
 
-  async function createSaleInvoice(event: FormEvent) {
-    event.preventDefault();
-    if (busy || !saleId) return;
-    setBusy("sale-invoice");
-    const accepted = await dispatch("invoice-create-sale", {
-      id: crypto.randomUUID(),
-      saleId,
-      dueAt: saleInvoiceDueAt,
-      notes: saleInvoiceNotes,
-    });
-    setBusy("");
-    if (accepted) setSaleInvoiceOpen(false);
+  function openCredit(invoiceId?: string) {
+    const eligible = accounts.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status) && invoice.invoice_lines.length > 0);
+    const id = invoiceId ?? eligible[0]?.id ?? "";
+    const invoice = eligible.find((item) => item.id === id);
+    setCreditInvoiceId(id); setCreditReason(""); setCreditNotes(""); setCreditQuantities(Object.fromEntries((invoice?.invoice_lines ?? []).map((line) => [line.id, "0"]))); setCreditOpen(true); setNewMenu(false);
   }
 
-  async function issueInvoice(invoice: InvoiceRow) {
-    if (busy) return;
-    setBusy(invoice.id);
-    await dispatch("invoice-issue", { id: invoice.id, expectedVersion: invoice.version });
-    setBusy("");
+  async function saveCredit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedCreditInvoice) return;
+    const lines = selectedCreditInvoice.invoice_lines.flatMap((line) => Number(creditQuantities[line.id] ?? 0) > 0 ? [{ id: crypto.randomUUID(), sourceInvoiceLineId: line.id, quantity: Number(creditQuantities[line.id]) }] : []);
+    if (!lines.length) return setError("Enter a quantity on at least one Invoice line to credit.");
+    const accepted = await dispatch("credit-note-create", { id: crypto.randomUUID(), invoiceId: selectedCreditInvoice.id, reason: creditReason, notes: creditNotes, lines });
+    if (accepted) setCreditOpen(false);
   }
 
-  async function recordPayment(event: FormEvent) {
+  function openDelivery(sourceType: "invoice" | "sale" = "invoice", sourceId?: string) {
+    const list = sourceType === "invoice" ? sources.invoices : sources.sales;
+    const id = sourceId ?? list[0]?.id ?? "";
+    const source = list.find((item) => item.id === id);
+    const customer = customers.find((item) => item.id === source?.customer_id);
+    const lines = sourceType === "invoice" ? source?.invoice_lines ?? [] : source?.sale_lines ?? [];
+    setDeliverySourceType(sourceType); setDeliverySourceId(id); setDeliveryDate(today()); setDeliveryAddress(customer?.address ?? ""); setDeliveryNotes(""); setDeliveryQuantities(Object.fromEntries(lines.map((line) => [line.id, String(line.quantity)]))); setDeliveryOpen(true); setNewMenu(false);
+  }
+
+  function changeDeliverySource(type: "invoice" | "sale", id: string) {
+    const source = (type === "invoice" ? sources.invoices : sources.sales).find((item) => item.id === id);
+    const customer = customers.find((item) => item.id === source?.customer_id);
+    const lines = type === "invoice" ? source?.invoice_lines ?? [] : source?.sale_lines ?? [];
+    setDeliverySourceType(type); setDeliverySourceId(id); setDeliveryAddress(customer?.address ?? ""); setDeliveryQuantities(Object.fromEntries(lines.map((line) => [line.id, String(line.quantity)])));
+  }
+
+  async function saveDelivery(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (!deliverySource) return;
+    const lines = deliverySourceLines.flatMap((line) => Number(deliveryQuantities[line.id] ?? 0) > 0 ? [{ id: crypto.randomUUID(), sourceLineId: line.id, quantity: Number(deliveryQuantities[line.id]) }] : []);
+    if (!lines.length) return setError("A Delivery Note needs at least one quantity.");
+    const accepted = await dispatch("delivery-note-create", { id: crypto.randomUUID(), sourceInvoiceId: deliverySourceType === "invoice" ? deliverySource.id : null, sourceSaleId: deliverySourceType === "sale" ? deliverySource.id : null, deliveryDate, deliveryAddress, notes: deliveryNotes, lines });
+    if (accepted) setDeliveryOpen(false);
+  }
+
+  function openPayment(customerId?: string, invoiceId?: string) {
+    const customer = customerId ?? customers[0]?.id ?? "";
+    const invoice = accounts.invoices.find((item) => item.id === invoiceId);
+    setPaymentCustomerId(customer); setPaymentInvoiceId(invoiceId ?? ""); setPaymentAmount(invoice ? String(invoice.outstanding_amount) : ""); setPaymentMethod("bank_transfer"); setPaymentOpen(true);
+  }
+
+  async function savePayment(event: FormEvent) {
+    event.preventDefault();
     const amount = Number(paymentAmount);
-    const allocation = paymentInvoiceId && Number(paymentAllocationAmount) > 0
-      ? [{ id: crypto.randomUUID(), invoiceId: paymentInvoiceId, amount: Number(paymentAllocationAmount) }]
-      : [];
-    setBusy("payment");
-    const accepted = await dispatch("payment-record", {
-      id: crypto.randomUUID(),
-      customerId: paymentCustomerId,
-      amount,
-      paymentMethod,
-      receivedAt: new Date(paymentReceivedAt).toISOString(),
-      externalReference: paymentExternalReference,
-      notes: paymentNotes,
-      allocations: allocation,
-    });
-    setBusy("");
+    const invoice = accounts.invoices.find((item) => item.id === paymentInvoiceId);
+    const accepted = await dispatch("payment-record", { id: crypto.randomUUID(), customerId: paymentCustomerId, amount, paymentMethod, receivedAt: new Date().toISOString(), externalReference: null, notes: null, allocations: invoice ? [{ id: crypto.randomUUID(), invoiceId: invoice.id, amount: Math.min(amount, Number(invoice.outstanding_amount)) }] : [] });
     if (accepted) setPaymentOpen(false);
   }
 
-  function openAllocation(payment: PaymentRow) {
-    setAllocationPaymentId(payment.id);
-    const firstInvoice = bundle.invoices.find(
-      (invoice) => invoice.customer_id === payment.customer_id
-        && invoice.currency === payment.currency
-        && Number(invoice.outstanding_amount) > 0
-        && !["draft", "void", "paid"].includes(invoice.display_status),
-    );
-    setAllocationInvoiceId(firstInvoice?.id ?? "");
-    setAllocationAmount(String(Math.min(Number(payment.unallocated_amount), Number(firstInvoice?.outstanding_amount ?? 0)) || ""));
-    setAllocationOpen(true);
+  async function issue(document: BusinessDocumentRow) {
+    if (!online) return setError("Reconnect before issuing a final business document. Drafts can still be prepared offline.");
+    const source = document.document_type === "invoice" ? accounts.invoices.find((invoice) => invoice.id === document.id) : document.document_type === "credit_note" ? business.creditNotes.find((note) => note.id === document.id) : business.deliveryNotes.find((note) => note.id === document.id);
+    if (!source) return;
+    await dispatch(`${document.document_type.replaceAll("_", "-")}-issue` as AccountsCommandAction, { id: document.id, expectedVersion: source.version });
   }
 
-  async function allocatePayment(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy("allocation");
-    const accepted = await dispatch("payment-allocate", {
-      id: crypto.randomUUID(),
-      paymentId: allocationPaymentId,
-      invoiceId: allocationInvoiceId,
-      amount: Number(allocationAmount),
-      occurredAt: new Date().toISOString(),
-    });
-    setBusy("");
-    if (accepted) setAllocationOpen(false);
+  async function voidDocument(document: BusinessDocumentRow) {
+    const reason = window.prompt(`Reason for voiding ${documentLabel(document.document_type)} ${document.number}?`);
+    if (!reason || reason.trim().length < 5) return;
+    const source = document.document_type === "invoice" ? accounts.invoices.find((invoice) => invoice.id === document.id) : document.document_type === "credit_note" ? business.creditNotes.find((note) => note.id === document.id) : business.deliveryNotes.find((note) => note.id === document.id);
+    if (!source) return;
+    await dispatch(`${document.document_type.replaceAll("_", "-")}-void` as AccountsCommandAction, document.document_type === "invoice" ? { id: document.id, expectedVersion: source.version, reason } : { id: document.id, expectedVersion: source.version, voidReason: reason });
   }
 
-  async function submitReversal(event: FormEvent) {
-    event.preventDefault();
-    if (!reversal || busy) return;
-    setBusy("reversal");
-    const action: AccountsCommandAction = reversal.kind === "invoice"
-      ? "invoice-void"
-      : reversal.kind === "payment"
-        ? "payment-reverse"
-        : "allocation-reverse";
-    const invoice = reversal.kind === "invoice"
-      ? bundle.invoices.find((item) => item.id === reversal.id)
-      : null;
-    const payload = reversal.kind === "invoice"
-      ? { id: reversal.id, expectedVersion: invoice?.version, reason: reversalReason }
-      : reversal.kind === "payment"
-        ? { paymentId: reversal.id, reason: reversalReason }
-        : { id: crypto.randomUUID(), allocationId: reversal.id, reason: reversalReason, occurredAt: new Date().toISOString() };
-    const accepted = await dispatch(action, payload);
-    setBusy("");
-    if (accepted) {
-      setReversal(null);
-      setReversalReason("");
-    }
+  function output(document: BusinessDocumentRow, format: "html" | "pdf") {
+    const params = new URLSearchParams({ workspaceId: accounts.workspaceId, type: document.document_type, id: document.id, format });
+    if (format === "html") params.set("print", "1");
+    window.open(`/api/accounts/document-output?${params.toString()}`, "_blank", "noopener,noreferrer");
   }
 
-  function discardCommand(commandId: string) {
-    if (!bundle.workspaceId) return;
-    removeAccountsCommand(bundle.workspaceId, commandId);
-    refreshQueue();
+  function emailDocument(document: BusinessDocumentRow) {
+    const customer = customers.find((item) => item.id === document.customer_id);
+    if (!customer?.email) return setError("This Customer does not have an email address. Add it in Customers first.");
+    const subject = encodeURIComponent(`${documentLabel(document.document_type)} ${document.number}`);
+    const body = encodeURIComponent(`Dear ${customer.name},\n\nPlease find ${documentLabel(document.document_type).toLowerCase()} ${document.number}.\n\nBDB OS has opened your email application; attach the downloaded PDF before sending.\n\nRegards`);
+    window.location.href = `mailto:${encodeURIComponent(customer.email)}?subject=${subject}&body=${body}`;
   }
 
-  const paymentInvoice = bundle.invoices.find((invoice) => invoice.id === paymentInvoiceId) ?? null;
-  const allocationInvoice = bundle.invoices.find((invoice) => invoice.id === allocationInvoiceId) ?? null;
-  const manualInvoiceTotal = invoiceLines.reduce((sum, line) => sum + lineTotal(line), 0);
+  function openSettings() {
+    setSettingsDraft({ businessAddress: String(business.settings.business_address ?? ""), vatNumber: String(business.settings.vat_number ?? ""), creditNotePrefix: String(business.settings.credit_note_prefix ?? "CN"), deliveryNotePrefix: String(business.settings.delivery_note_prefix ?? "DN"), defaultPaymentTermsDays: String(business.settings.default_payment_terms_days ?? 14) });
+    setSettingsOpen(true);
+  }
+
+  async function saveSettings(event: FormEvent) {
+    event.preventDefault(); if (!online || !accounts.workspaceId) return;
+    setBusy(true); setError("");
+    const response = await fetch("/api/accounts/business-documents", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ workspaceId: accounts.workspaceId, action: "document-settings-update", ...settingsDraft, defaultPaymentTermsDays: Number(settingsDraft.defaultPaymentTermsDays) }) });
+    const result = await response.json().catch(() => ({})); setBusy(false);
+    if (!response.ok || !result.ok) return setError(result.error ?? "Document settings could not be saved.");
+    setSettingsOpen(false); await load();
+  }
 
   return (
     <>
       <PageHeader
-        eyebrow="Finance workspace"
+        eyebrow="Business documents & balances"
         title="Accounts"
-        description="Issue invoices, record money received, allocate Payments and derive every customer balance from the ledger."
-        action={(
-          <div className={styles.toolbarActions}>
-            <Button
-              variant="secondary"
-              disabled={!canWrite || bundle.customers.length === 0}
-              onClick={() => {
-                setPaymentCustomerId(bundle.customers[0]?.id ?? "");
-                setPaymentAmount("");
-                setPaymentMethod("card");
-                setPaymentReceivedAt(localDateTime());
-                setPaymentExternalReference("");
-                setPaymentNotes("");
-                setPaymentInvoiceId("");
-                setPaymentAllocationAmount("");
-                setPaymentOpen(true);
-              }}
-            >
-              <Banknote size={17} /> Record Payment
-            </Button>
-            <Button disabled={!canWrite || bundle.customers.length === 0} onClick={openNewInvoice}>
-              <Plus size={17} /> New invoice
-            </Button>
-          </div>
-        )}
+        description="Create the documents customers receive, record payments and keep balances accurate."
+        action={<div className={styles.headerActions}><Button variant="secondary" disabled={supportReadOnly || customers.length === 0} onClick={() => openPayment()}><Banknote size={16} /> Record Payment</Button><div className={styles.newWrap}><Button disabled={supportReadOnly} onClick={() => setNewMenu((value) => !value)}><Plus size={16} /> New Document</Button>{newMenu ? <div className={styles.newMenu}><button onClick={openInvoice}><FileText size={16} /> Invoice</button><button disabled={!accounts.invoices.some((invoice) => !["draft", "void"].includes(invoice.display_status) && invoice.invoice_lines.length)} onClick={() => openCredit()}><FileMinus2 size={16} /> Credit Note</button><button disabled={!sources.invoices.length && !sources.sales.length} onClick={() => openDelivery(sources.invoices.length ? "invoice" : "sale")}><PackageCheck size={16} /> Delivery Note</button></div> : null}</div></div>}
       />
 
-      <div className={styles.tabs} role="tablist" aria-label="Accounts workspace sections">
-        {(["overview", "invoices", "payments", "customers"] as const).map((item) => (
-          <button key={item} role="tab" data-active={tab === item} onClick={() => setTab(item)}>
-            {item}
-          </button>
-        ))}
-      </div>
+      <div className={styles.tabs}>{(["documents", "payments", "customers"] as const).map((item) => <button key={item} data-active={tab === item} onClick={() => setTab(item)}>{item}</button>)}</div>
 
-      <div className="stat-grid">
-        <StatCard label="Outstanding" value={formatMoney(outstandingTotal, currency)} detail="Issued invoices still due" icon={<Clock3 size={19} />} />
-        <StatCard label="Received" value={formatMoney(receivedTotal, currency)} detail="Posted Payments, before Banking" icon={<CircleCheckBig size={19} />} />
-        <StatCard label="Unallocated credit" value={formatMoney(unallocatedTotal, currency)} detail="Money received not yet assigned" icon={<Banknote size={19} />} />
-        <StatCard label="Overdue" value={String(overdueCount)} detail="Derived from due dates and allocations" icon={<TriangleAlert size={19} />} />
-      </div>
+      {!online ? <div className={styles.notice}><WifiOff size={17} /><div><strong>Offline</strong><span>Draft commands stay queued locally. Final document issue and legal numbering wait for reconnection.</span></div></div> : null}
+      {!setupComplete ? <div className={styles.notice}><TriangleAlert size={17} /><div><strong>Business document identity needs completing</strong><span>Add the business address and VAT number before issuing Tax Invoices or Credit Notes.</span></div><Button variant="quiet" disabled={!online} onClick={openSettings}><Settings2 size={15} /> Configure</Button></div> : null}
+      {queue.length ? <div className={styles.notice}><RefreshCw size={17} /><div><strong>{queue.length} Accounts change{queue.length === 1 ? "" : "s"} waiting</strong><span>{queue[0]?.lastError || "They replay in order after reconnection."}</span></div><Button variant="quiet" disabled={!online || busy} onClick={() => void syncQueue()}>Sync</Button></div> : null}
+      {error ? <div className="review-callout"><TriangleAlert size={18} /><div><strong>Accounts needs attention</strong><p>{error}</p></div></div> : null}
+      {notice ? <div className={styles.quietNotice}>{notice}</div> : null}
 
-      <div className={styles.callout}>
-        <strong>Finance boundary</strong>
-        <span className={styles.muted}>Recording a Payment does not create or match a bank transaction. Banking reconciliation remains a separate controlled integration.</span>
-      </div>
-
-      {supportReadOnly ? (
-        <div className={styles.callout}>
-          <strong>Read-only access</strong>
-          <span className={styles.muted}>No financial command will be queued in this mode.</span>
+      {tab === "documents" ? <section>
+        <div className={styles.toolbar}><input className="filter-input" placeholder="Search documents or customers…" value={query} onChange={(event) => setQuery(event.target.value)} /><Button variant="quiet" disabled={loading} onClick={() => void load()}><RefreshCw size={15} /> Refresh</Button></div>
+        <div className={styles.documentTable}>
+          <table><thead><tr><th>Document</th><th>Customer</th><th>Date</th><th>Status</th><th className={styles.money}>Total</th><th className={styles.money}>Balance</th><th /></tr></thead><tbody>
+            {filteredDocuments.map((document) => <tr key={`${document.document_type}:${document.id}`}><td><div className={styles.reference}><strong>{document.number}</strong><span>{documentLabel(document.document_type)}</span></div></td><td>{document.customer_name}</td><td>{formatDate(document.issued_at ?? document.created_at, { day: "2-digit", month: "short", year: "numeric" })}</td><td><Badge tone={statusTone(document.status)}>{document.status}</Badge></td><td className={styles.money}>{document.total_amount === null ? "—" : formatMoney(Number(document.total_amount), document.currency ?? currency)}</td><td className={styles.money}>{document.outstanding_amount === null ? "—" : formatMoney(Number(document.outstanding_amount), document.currency ?? currency)}</td><td><div className={styles.rowActions}>{document.status === "draft" ? <Button variant="quiet" disabled={!online || supportReadOnly} onClick={() => void issue(document)}>Issue</Button> : null}<Button variant="quiet" onClick={() => output(document, "html")}><Printer size={14} /> Print</Button><Button variant="quiet" onClick={() => output(document, "pdf")}><Download size={14} /> PDF</Button>{document.status !== "draft" && document.status !== "void" ? <Button variant="quiet" onClick={() => emailDocument(document)}><Mail size={14} /> Email</Button> : null}{document.document_type === "invoice" && !["draft", "void", "paid"].includes(document.status) ? <Button variant="quiet" onClick={() => openPayment(document.customer_id, document.id)}>Payment</Button> : null}{document.document_type === "invoice" && document.status !== "draft" && document.status !== "void" ? <Button variant="quiet" onClick={() => openCredit(document.id)}>Credit</Button> : null}{document.document_type === "invoice" && document.status !== "draft" && document.status !== "void" ? <Button variant="quiet" onClick={() => openDelivery("invoice", document.id)}>Delivery</Button> : null}{document.status !== "draft" && document.status !== "void" ? <Button variant="quiet" disabled={supportReadOnly || !online} onClick={() => void voidDocument(document)}>Void</Button> : null}</div></td></tr>)}
+          </tbody></table>
+          {!filteredDocuments.length ? <div className={styles.empty}>No business documents yet. Create an Invoice, Credit Note or Delivery Note from the button above.</div> : null}
         </div>
-      ) : null}
-      {notice ? <div className={styles.callout}><strong>Accounts status</strong><span className={styles.muted}>{notice}</span></div> : null}
-      {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Accounts needs attention</strong><p>{error}</p></div></div> : null}
+      </section> : null}
 
-      {queue.length > 0 ? (
-        <div className={styles.queue}>
-          <SectionHeading
-            title={`${queue.length} queued financial command${queue.length === 1 ? "" : "s"}`}
-            description="Commands replay in order and stop at the first server conflict."
-            action={<Button variant="secondary" disabled={!online || busy === "sync"} onClick={() => void syncCommands()}><RefreshCw size={16} /> Synchronise</Button>}
-          />
-          {queue.map((command) => (
-            <div className={styles.queueRow} key={command.id}>
-              <div className={styles.queueMeta}>
-                <strong>{command.action.replaceAll("-", " ")}</strong>
-                <span className={styles.muted}>{formatDate(command.createdAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{command.lastError ? ` · ${command.lastError}` : ""}</span>
-              </div>
-              <Button variant="quiet" onClick={() => discardCommand(command.id)}><X size={15} /> Discard</Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      {tab === "payments" ? <section className={styles.documentTable}><table><thead><tr><th>Reference</th><th>Customer</th><th>Date</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Unallocated</th></tr></thead><tbody>{accounts.payments.map((payment) => <tr key={payment.id}><td><strong>{payment.reference}</strong></td><td>{payment.customer_name_snapshot}</td><td>{formatDate(payment.received_at, { day: "2-digit", month: "short", year: "numeric" })}</td><td>{payment.payment_method.replaceAll("_", " ")}</td><td><Badge tone={payment.status === "posted" ? "green" : "red"}>{payment.status}</Badge></td><td className={styles.money}>{formatMoney(payment.amount, payment.currency)}</td><td className={styles.money}>{formatMoney(payment.unallocated_amount, payment.currency)}</td></tr>)}</tbody></table>{!accounts.payments.length ? <div className={styles.empty}>No payments recorded.</div> : null}</section> : null}
 
-      <div className={styles.toolbar}>
-        <input
-          className="filter-input"
-          placeholder="Search invoices, Payments or customers…"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <div className={styles.toolbarActions}>
-          <Badge tone={online ? "green" : "gold"}>{online ? "Online" : "Offline"}</Badge>
-          <Button variant="quiet" disabled={loading} onClick={() => void load()}><RefreshCw size={16} /> Refresh</Button>
-        </div>
-      </div>
+      {tab === "customers" ? <section className={styles.documentTable}><table><thead><tr><th>Customer</th><th className={styles.money}>Issued</th><th className={styles.money}>Received</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Credit</th><th className={styles.money}>Net balance</th></tr></thead><tbody>{accounts.customerBalances.map((balance) => <tr key={balance.customer_id}><td><div className={styles.reference}><strong>{balance.customer_name}</strong><span>{balance.customer_code}{balance.company ? ` · ${balance.company}` : ""}</span></div></td><td className={styles.money}>{formatMoney(balance.issued_amount, currency)}</td><td className={styles.money}>{formatMoney(balance.received_amount, currency)}</td><td className={styles.money}>{formatMoney(balance.outstanding_amount, currency)}</td><td className={styles.money}>{formatMoney(balance.unallocated_credit, currency)}</td><td className={styles.money}><strong>{formatMoney(balance.net_balance, currency)}</strong></td></tr>)}</tbody></table>{!accounts.customerBalances.length ? <div className={styles.empty}>No customer balances yet.</div> : null}</section> : null}
 
-      {loading && !bundle.workspaceId ? <Card><div className={styles.empty}>Loading Accounts…</div></Card> : null}
+      <Dialog open={invoiceOpen} onClose={() => setInvoiceOpen(false)} title="New Invoice" description="Prepare the draft now. Final numbering happens when the Invoice is issued."><form onSubmit={saveInvoice}><div className={styles.formGrid}><label>Customer<select required value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.company ? ` · ${customer.company}` : ""}</option>)}</select></label><label>Supply date<input type="date" required value={invoiceSupplyDate} onChange={(event) => setInvoiceSupplyDate(event.target.value)} /></label><label>Due date<input type="date" required value={invoiceDueDate} onChange={(event) => setInvoiceDueDate(event.target.value)} /></label><label>Description<input required value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} /></label><label className={styles.full}>VAT / legal treatment note<input placeholder="Only when needed, e.g. Reverse charge" value={invoiceVatNote} onChange={(event) => setInvoiceVatNote(event.target.value)} /></label></div><div className={styles.lineEditor}>{invoiceLines.map((line, index) => <div className={styles.lineRow} key={line.id}><label>Type<select value={line.kind} onChange={(event) => chooseCatalogue(index, event.target.value as DraftLine["kind"], "")}><option value="product">Product</option><option value="service">Service</option><option value="manual">Manual</option></select></label>{line.kind !== "manual" ? <label>Item<select required value={line.sourceId} onChange={(event) => chooseCatalogue(index, line.kind, event.target.value)}><option value="">Choose…</option>{line.kind === "product" ? business.products.map((item) => <option key={item.id} value={item.id}>{item.sku} · {item.name}</option>) : business.services.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select></label> : <><label>Code<input value={line.code} onChange={(event) => updateLine(index, { code: event.target.value })} /></label><label>Description<input required value={line.description} onChange={(event) => updateLine(index, { description: event.target.value })} /></label></>}<label>Qty<input type="number" min="0.001" step="0.001" required value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></label><label>Unit price<input type="number" min="0" step="0.01" required value={line.unitPrice} onChange={(event) => updateLine(index, { unitPrice: event.target.value })} /></label><label>VAT %<input type="number" min="0" max="100" step="0.01" required value={line.vatRate} onChange={(event) => updateLine(index, { vatRate: event.target.value })} /></label><Button type="button" variant="quiet" disabled={invoiceLines.length === 1} onClick={() => setInvoiceLines((current) => current.filter((_, i) => i !== index))}>Remove</Button></div>)}</div><Button type="button" variant="secondary" onClick={() => setInvoiceLines((current) => [...current, blankLine(Number(business.settings.vat_rate ?? 0))])}><Plus size={14} /> Add line</Button><div className={styles.formGrid} style={{ marginTop: 14 }}><label className={styles.full}>Notes<textarea rows={3} value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} /></label></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit">Save Draft</Button></div></form></Dialog>
 
-      {tab === "overview" ? (
-        <div className={styles.stack}>
-          <Card className="table-card">
-            <SectionHeading
-              title="Sales awaiting an invoice"
-              description="A completed Sale remains commercially separate until Accounts creates and issues its invoice."
-              action={availableSales.length > 0 && canWrite ? (
-                <Button variant="secondary" onClick={() => {
-                  setSaleId(availableSales[0]?.sale_id ?? "");
-                  setSaleInvoiceDueAt(defaultDueDate());
-                  setSaleInvoiceNotes("");
-                  setSaleInvoiceOpen(true);
-                }}><FilePlus2 size={16} /> Invoice a Sale</Button>
-              ) : undefined}
-            />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Sale</th><th>Customer</th><th>Status</th><th className={styles.money}>Value</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {availableSales.slice(0, 12).map((sale) => {
-                    const customer = bundle.customers.find((item) => item.id === sale.customer_id);
-                    return (
-                      <tr key={sale.sale_id}>
-                        <td className={styles.referenceCell}><strong>{sale.sale_reference}</strong><span>{sale.account_status.replaceAll("_", " ")}</span></td>
-                        <td>{customer?.name ?? "Customer unavailable"}</td>
-                        <td><Badge tone="gold">Not invoiced</Badge></td>
-                        <td className={styles.money}>{formatMoney(Number(sale.sale_total_amount), sale.currency)}</td>
-                        <td><Button variant="quiet" disabled={!canWrite} onClick={() => {
-                          setSaleId(sale.sale_id);
-                          setSaleInvoiceDueAt(defaultDueDate());
-                          setSaleInvoiceNotes("");
-                          setSaleInvoiceOpen(true);
-                        }}><Link2 size={15} /> Create draft</Button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {availableSales.length === 0 ? <div className={styles.empty}>No completed Sales are waiting for an active invoice.</div> : null}
-          </Card>
+      <Dialog open={creditOpen} onClose={() => setCreditOpen(false)} title="New Credit Note" description="Credit specific quantities from an issued Invoice. The original Invoice remains in history."><form onSubmit={saveCredit}><div className={styles.formGrid}><label className={styles.full}>Invoice<select required value={creditInvoiceId} onChange={(event) => { const id = event.target.value; const invoice = accounts.invoices.find((item) => item.id === id); setCreditInvoiceId(id); setCreditQuantities(Object.fromEntries((invoice?.invoice_lines ?? []).map((line) => [line.id, "0"]))); }}>{accounts.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status) && invoice.invoice_lines.length).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {invoice.customer_name_snapshot}</option>)}</select></label><label className={styles.full}>Reason<input required minLength={5} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} /></label></div>{selectedCreditInvoice ? <div className={styles.creditLines}>{selectedCreditInvoice.invoice_lines.map((line) => <label key={line.id}><span><strong>{line.code_snapshot}</strong> {line.description_snapshot}<small>Original qty {line.quantity} · {formatMoney(line.total_amount, selectedCreditInvoice.currency)}</small></span><input type="number" min="0" max={line.quantity} step="0.001" value={creditQuantities[line.id] ?? "0"} onChange={(event) => setCreditQuantities((current) => ({ ...current, [line.id]: event.target.value }))} /></label>)}</div> : null}<label className={styles.longField}>Notes<textarea rows={3} value={creditNotes} onChange={(event) => setCreditNotes(event.target.value)} /></label><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit">Save Credit Note Draft</Button></div></form></Dialog>
 
-          <Card className="table-card">
-            <SectionHeading title="Customer balances" description="Outstanding invoices minus unallocated customer credit." />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Customer</th><th className={styles.money}>Issued</th><th className={styles.money}>Received</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Credit</th><th className={styles.money}>Net balance</th></tr></thead>
-                <tbody>
-                  {bundle.customerBalances.slice(0, 12).map((customer) => (
-                    <tr key={customer.customer_id}>
-                      <td className={styles.customerCell}><strong>{customer.customer_name}</strong><span>{customer.customer_code}{customer.company ? ` · ${customer.company}` : ""}</span></td>
-                      <td className={styles.money}>{formatMoney(Number(customer.issued_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.received_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.outstanding_amount), currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(customer.unallocated_credit), currency)}</td>
-                      <td className={`${styles.money} ${Number(customer.net_balance) > 0 ? styles.balancePositive : Number(customer.net_balance) < 0 ? styles.balanceCredit : ""}`}><strong>{formatMoney(Number(customer.net_balance), currency)}</strong></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      ) : null}
+      <Dialog open={deliveryOpen} onClose={() => setDeliveryOpen(false)} title="New Delivery Note" description="Delivery Notes carry quantities and delivery details only. They do not change the customer balance."><form onSubmit={saveDelivery}><div className={styles.formGrid}><label>Source<select value={deliverySourceType} onChange={(event) => changeDeliverySource(event.target.value as "invoice" | "sale", (event.target.value === "invoice" ? sources.invoices : sources.sales)[0]?.id ?? "")}><option value="invoice">Invoice</option><option value="sale">Sale</option></select></label><label>{deliverySourceType === "invoice" ? "Invoice" : "Sale"}<select required value={deliverySourceId} onChange={(event) => changeDeliverySource(deliverySourceType, event.target.value)}>{(deliverySourceType === "invoice" ? sources.invoices : sources.sales).map((source) => <option key={source.id} value={source.id}>{source.number ?? source.reference} · {customers.find((customer) => customer.id === source.customer_id)?.name ?? "Customer"}</option>)}</select></label><label>Delivery date<input type="date" required value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} /></label><label className={styles.full}>Delivery address<input required value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} /></label></div><div className={styles.creditLines}>{deliverySourceLines.map((line) => <label key={line.id}><span><strong>{line.code_snapshot}</strong> {line.description_snapshot}<small>Available qty {line.quantity}</small></span><input type="number" min="0" max={line.quantity} step="0.001" value={deliveryQuantities[line.id] ?? String(line.quantity)} onChange={(event) => setDeliveryQuantities((current) => ({ ...current, [line.id]: event.target.value }))} /></label>)}</div><label className={styles.longField}>Notes<textarea rows={3} value={deliveryNotes} onChange={(event) => setDeliveryNotes(event.target.value)} /></label><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setDeliveryOpen(false)}>Cancel</Button><Button type="submit">Save Delivery Note Draft</Button></div></form></Dialog>
 
-      {tab === "invoices" ? (
-        <Card className="table-card">
-          <SectionHeading
-            title="Invoices"
-            description="Drafts are editable. Issued invoices are immutable and corrected through allocation reversals or voiding."
-            action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={openNewInvoice}><Plus size={16} /> Manual invoice</Button>}
-          />
-          <div className={styles.tableScroll}>
-            <table>
-              <thead><tr><th>Invoice</th><th>Customer</th><th>Due</th><th>Status</th><th className={styles.money}>Total</th><th className={styles.money}>Allocated</th><th className={styles.money}>Outstanding</th><th aria-label="Actions" /></tr></thead>
-              <tbody>
-                {filteredInvoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td className={styles.referenceCell}><strong>{invoice.number}</strong><span>{invoice.source_sale_id ? "From completed Sale" : invoice.description}</span></td>
-                    <td className={styles.customerCell}><strong>{invoice.customer_name_snapshot}</strong><span>{invoice.customer_code_snapshot}</span></td>
-                    <td>{formatDate(`${invoice.due_at}T00:00:00Z`)}</td>
-                    <td><Badge tone={invoiceTone(invoice.display_status)}>{invoice.payment_status.replaceAll("_", " ")}</Badge></td>
-                    <td className={styles.money}>{formatMoney(Number(invoice.total_amount), invoice.currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(invoice.allocated_amount), invoice.currency)}</td>
-                    <td className={styles.money}><strong>{formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</strong></td>
-                    <td>
-                      <div className={styles.rowActions}>
-                        {invoice.display_status === "draft" ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => openEditInvoice(invoice)}>Edit</Button> : null}
-                        {invoice.display_status === "draft" ? <Button variant="secondary" disabled={!canWrite || Boolean(busy)} onClick={() => void issueInvoice(invoice)}>Issue</Button> : null}
-                        {["draft", "sent", "overdue"].includes(invoice.display_status) ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => { setReversal({ kind: "invoice", id: invoice.id, label: invoice.number }); setReversalReason(""); }}>Void</Button> : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filteredInvoices.length === 0 ? <div className={styles.empty}>No invoices match the current search.</div> : null}
-        </Card>
-      ) : null}
+      <Dialog open={paymentOpen} onClose={() => setPaymentOpen(false)} title="Record Payment" description="Record money received. Banking reconciliation remains separate."><form onSubmit={savePayment}><div className={styles.formGrid}><label>Customer<select required value={paymentCustomerId} onChange={(event) => { setPaymentCustomerId(event.target.value); setPaymentInvoiceId(""); }}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><label>Amount<input required type="number" min="0.01" step="0.01" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} /></label><label>Method<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></label><label>Allocate to Invoice<select value={paymentInvoiceId} onChange={(event) => { const id = event.target.value; setPaymentInvoiceId(id); const invoice = accounts.invoices.find((item) => item.id === id); if (invoice) setPaymentAmount(String(invoice.outstanding_amount)); }}><option value="">Leave unallocated</option>{accounts.invoices.filter((invoice) => invoice.customer_id === paymentCustomerId && Number(invoice.outstanding_amount) > 0 && !["draft", "void", "paid"].includes(invoice.display_status)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {formatMoney(invoice.outstanding_amount, invoice.currency)}</option>)}</select></label></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setPaymentOpen(false)}>Cancel</Button><Button type="submit">Record Payment</Button></div></form></Dialog>
 
-      {tab === "payments" ? (
-        <div className={styles.stack}>
-          <Card className="table-card">
-            <SectionHeading
-              title="Payments received"
-              description="A Payment is money received. It only reduces an invoice after allocation."
-              action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={() => {
-                setPaymentCustomerId(bundle.customers[0]?.id ?? "");
-                setPaymentAmount("");
-                setPaymentMethod("card");
-                setPaymentReceivedAt(localDateTime());
-                setPaymentExternalReference("");
-                setPaymentNotes("");
-                setPaymentInvoiceId("");
-                setPaymentAllocationAmount("");
-                setPaymentOpen(true);
-              }}><Plus size={16} /> Record Payment</Button>}
-            />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Payment</th><th>Customer</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Allocated</th><th className={styles.money}>Unallocated</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {filteredPayments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td className={styles.referenceCell}><strong>{payment.reference}</strong><span>{formatDate(payment.received_at, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></td>
-                      <td>{payment.customer_name_snapshot}</td>
-                      <td>{methodLabel(payment.payment_method)}</td>
-                      <td><Badge tone={payment.status === "posted" ? "green" : "neutral"}>{payment.status}</Badge></td>
-                      <td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td>
-                      <td className={styles.money}>{formatMoney(Number(payment.allocated_amount), payment.currency)}</td>
-                      <td className={styles.money}><strong>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</strong></td>
-                      <td><div className={styles.rowActions}>
-                        {payment.status === "posted" && Number(payment.unallocated_amount) > 0 ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => openAllocation(payment)}>Allocate</Button> : null}
-                        {payment.status === "posted" && Number(payment.allocated_amount) === 0 ? <Button variant="quiet" disabled={!canWrite || Boolean(busy)} onClick={() => { setReversal({ kind: "payment", id: payment.id, label: payment.reference }); setReversalReason(""); }}><RotateCcw size={15} /> Reverse</Button> : null}
-                      </div></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filteredPayments.length === 0 ? <div className={styles.empty}>No Payments match the current search.</div> : null}
-          </Card>
-
-          <Card className="table-card">
-            <SectionHeading title="Active allocations" description="Allocations are append-only. Corrections create a linked negative reversal." />
-            <div className={styles.tableScroll}>
-              <table>
-                <thead><tr><th>Payment</th><th>Invoice</th><th>Date</th><th className={styles.money}>Amount</th><th aria-label="Actions" /></tr></thead>
-                <tbody>
-                  {activeAllocations.map((allocation) => {
-                    const payment = bundle.payments.find((item) => item.id === allocation.payment_id);
-                    const invoice = bundle.invoices.find((item) => item.id === allocation.invoice_id);
-                    return (
-                      <tr key={allocation.id}>
-                        <td>{payment?.reference ?? allocation.payment_id}</td>
-                        <td>{invoice?.number ?? allocation.invoice_id}</td>
-                        <td>{formatDate(allocation.occurred_at, { day: "numeric", month: "short", year: "numeric" })}</td>
-                        <td className={styles.money}>{formatMoney(Number(allocation.amount_delta), payment?.currency ?? currency)}</td>
-                        <td><Button variant="quiet" disabled={!canWrite || Boolean(busy) || payment?.status !== "posted"} onClick={() => { setReversal({ kind: "allocation", id: allocation.id, label: `${payment?.reference ?? "Payment"} → ${invoice?.number ?? "Invoice"}` }); setReversalReason(""); }}><RotateCcw size={15} /> Reverse</Button></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {activeAllocations.length === 0 ? <div className={styles.empty}>No active Payment allocations.</div> : null}
-          </Card>
-        </div>
-      ) : null}
-
-      {tab === "customers" ? (
-        <Card className="table-card">
-          <SectionHeading title="Customer account balances" description="Balances are calculated from issued invoices and posted Payment allocations." />
-          <div className={styles.tableScroll}>
-            <table>
-              <thead><tr><th>Customer</th><th>Status</th><th className={styles.money}>Issued</th><th className={styles.money}>Payments</th><th className={styles.money}>Allocated</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Unallocated credit</th><th className={styles.money}>Net balance</th></tr></thead>
-              <tbody>
-                {bundle.customerBalances.map((customer) => (
-                  <tr key={customer.customer_id}>
-                    <td className={styles.customerCell}><strong>{customer.customer_name}</strong><span>{customer.customer_code}{customer.company ? ` · ${customer.company}` : ""}</span></td>
-                    <td><Badge tone={customer.balance_status === "amount_due" ? "gold" : customer.balance_status === "customer_credit" ? "green" : "neutral"}>{customer.balance_status.replaceAll("_", " ")}</Badge></td>
-                    <td className={styles.money}>{formatMoney(Number(customer.issued_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.received_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.allocated_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.outstanding_amount), currency)}</td>
-                    <td className={styles.money}>{formatMoney(Number(customer.unallocated_credit), currency)}</td>
-                    <td className={`${styles.money} ${Number(customer.net_balance) > 0 ? styles.balancePositive : Number(customer.net_balance) < 0 ? styles.balanceCredit : ""}`}><strong>{formatMoney(Number(customer.net_balance), currency)}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {bundle.customerBalances.length === 0 ? <div className={styles.empty}>No Customer account balances are available.</div> : null}
-        </Card>
-      ) : null}
-
-      <Dialog
-        open={invoiceOpen}
-        onClose={() => { if (!busy) setInvoiceOpen(false); }}
-        title={editingInvoice ? `Edit ${editingInvoice.number}` : "Create manual invoice"}
-        description={editingInvoice?.source_sale_id ? "Sale-derived lines are fixed. Only the due date, description and notes can be reviewed." : "Build the draft from explicit VAT-inclusive lines, then issue it separately."}
-      >
-        <form onSubmit={saveInvoice}>
-          <div className={styles.formGrid}>
-            <div className="field"><label htmlFor="invoice-customer">Customer</label><select id="invoice-customer" required disabled={Boolean(editingInvoice)} value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.code}</option>)}</select></div>
-            <div className="field"><label htmlFor="invoice-due">Due date</label><input id="invoice-due" required type="date" value={invoiceDueAt} onChange={(event) => setInvoiceDueAt(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="invoice-description">Description</label><input id="invoice-description" required value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="invoice-notes">Notes</label><textarea id="invoice-notes" value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} /></div>
-          </div>
-
-          {!editingInvoice?.source_sale_id ? (
-            <div className={styles.lineEditor}>
-              <SectionHeading title="Invoice lines" description={`Draft total: ${formatMoney(manualInvoiceTotal, currency)}`} action={<Button type="button" variant="secondary" onClick={() => setInvoiceLines((lines) => [...lines, blankLine(bundle.settings.vat_rate)])}><Plus size={15} /> Add line</Button>} />
-              {invoiceLines.map((line, index) => (
-                <div className={styles.lineRow} key={line.id}>
-                  <label>Description<input required value={line.description} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, description: event.target.value } : item))} /></label>
-                  <label>Quantity<input required min="0.001" step="0.001" type="number" value={line.quantity} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, quantity: event.target.value } : item))} /></label>
-                  <label>Unit price<input required min="0" step="0.01" type="number" value={line.unitPrice} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, unitPrice: event.target.value } : item))} /></label>
-                  <label>Discount<input required min="0" step="0.01" type="number" value={line.discountAmount} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, discountAmount: event.target.value } : item))} /></label>
-                  <label>VAT %<input required min="0" max="100" step="0.01" type="number" value={line.vatRate} onChange={(event) => setInvoiceLines((lines) => lines.map((item) => item.id === line.id ? { ...item, vatRate: event.target.value } : item))} /></label>
-                  <Button type="button" variant="quiet" disabled={invoiceLines.length === 1} onClick={() => setInvoiceLines((lines) => lines.filter((item) => item.id !== line.id))}><X size={15} /> {index + 1}</Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.callout}><strong>{editingInvoice.invoice_lines.length} Sale line{editingInvoice.invoice_lines.length === 1 ? "" : "s"}</strong><span className={styles.muted}>The commercial snapshots are fixed and cannot be edited from Accounts.</span></div>
-          )}
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>{busy === "invoice" ? "Saving…" : "Save draft"}</Button></div>
-        </form>
-      </Dialog>
-
-      <Dialog open={saleInvoiceOpen} onClose={() => { if (!busy) setSaleInvoiceOpen(false); }} title="Create invoice from Sale" description="The Sale lines and values are copied into a reviewable invoice draft. No Payment is implied.">
-        <form onSubmit={createSaleInvoice}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="sale-invoice-sale">Completed Sale</label><select id="sale-invoice-sale" required value={saleId} onChange={(event) => setSaleId(event.target.value)}>{availableSales.map((sale) => <option key={sale.sale_id} value={sale.sale_id}>{sale.sale_reference} · {formatMoney(Number(sale.sale_total_amount), sale.currency)}</option>)}</select></div>
-            <div className="field"><label htmlFor="sale-invoice-due">Due date</label><input id="sale-invoice-due" required type="date" value={saleInvoiceDueAt} onChange={(event) => setSaleInvoiceDueAt(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="sale-invoice-notes">Notes</label><textarea id="sale-invoice-notes" value={saleInvoiceNotes} onChange={(event) => setSaleInvoiceNotes(event.target.value)} /></div>
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setSaleInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || !saleId}>{busy === "sale-invoice" ? "Creating…" : "Create draft"}</Button></div>
-        </form>
-      </Dialog>
-
-      <Dialog open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false); }} title="Record Payment" description="Record the money received first. Allocation to an issued invoice is optional and may be partial.">
-        <form onSubmit={recordPayment}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-customer">Customer</label><select id="payment-customer" required value={paymentCustomerId} onChange={(event) => { setPaymentCustomerId(event.target.value); setPaymentInvoiceId(""); setPaymentAllocationAmount(""); }}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.code}</option>)}</select></div>
-            <div className="field"><label htmlFor="payment-amount">Amount</label><input id="payment-amount" required min="0.01" step="0.01" type="number" value={paymentAmount} onChange={(event) => setPaymentAmount(event.target.value)} /></div>
-            <div className="field"><label htmlFor="payment-method">Method</label><select id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod)}><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div>
-            <div className="field"><label htmlFor="payment-date">Received at</label><input id="payment-date" required type="datetime-local" value={paymentReceivedAt} onChange={(event) => setPaymentReceivedAt(event.target.value)} /></div>
-            <div className="field"><label htmlFor="payment-reference">External reference</label><input id="payment-reference" value={paymentExternalReference} onChange={(event) => setPaymentExternalReference(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-notes">Notes</label><textarea id="payment-notes" value={paymentNotes} onChange={(event) => setPaymentNotes(event.target.value)} /></div>
-            <div className={`field ${styles.full}`}><label htmlFor="payment-invoice">Allocate immediately (optional)</label><select id="payment-invoice" value={paymentInvoiceId} onChange={(event) => { const nextId = event.target.value; const invoice = paymentCustomerInvoices.find((item) => item.id === nextId); setPaymentInvoiceId(nextId); setPaymentAllocationAmount(nextId ? String(Math.min(Number(paymentAmount) || 0, Number(invoice?.outstanding_amount ?? 0))) : ""); }}><option value="">Leave unallocated</option>{paymentCustomerInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · due {formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</option>)}</select></div>
-            {paymentInvoiceId ? <div className="field"><label htmlFor="payment-allocation">Allocation amount</label><input id="payment-allocation" required min="0.01" max={Math.min(Number(paymentAmount) || 0, Number(paymentInvoice?.outstanding_amount ?? 0))} step="0.01" type="number" value={paymentAllocationAmount} onChange={(event) => setPaymentAllocationAmount(event.target.value)} /></div> : null}
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setPaymentOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>{busy === "payment" ? "Recording…" : "Record Payment"}</Button></div>
-        </form>
-      </Dialog>
-
-      <Dialog open={allocationOpen} onClose={() => { if (!busy) setAllocationOpen(false); }} title="Allocate Payment" description={selectedPayment ? `${selectedPayment.reference} has ${formatMoney(Number(selectedPayment.unallocated_amount), selectedPayment.currency)} unallocated.` : undefined}>
-        <form onSubmit={allocatePayment}>
-          <div className={styles.formGrid}>
-            <div className={`field ${styles.full}`}><label htmlFor="allocation-invoice">Issued invoice</label><select id="allocation-invoice" required value={allocationInvoiceId} onChange={(event) => { const nextId = event.target.value; const invoice = allocationInvoices.find((item) => item.id === nextId); setAllocationInvoiceId(nextId); setAllocationAmount(String(Math.min(Number(selectedPayment?.unallocated_amount ?? 0), Number(invoice?.outstanding_amount ?? 0)))); }}>{allocationInvoices.map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · due {formatMoney(Number(invoice.outstanding_amount), invoice.currency)}</option>)}</select></div>
-            <div className="field"><label htmlFor="allocation-amount">Amount</label><input id="allocation-amount" required min="0.01" max={Math.min(Number(selectedPayment?.unallocated_amount ?? 0), Number(allocationInvoice?.outstanding_amount ?? 0))} step="0.01" type="number" value={allocationAmount} onChange={(event) => setAllocationAmount(event.target.value)} /></div>
-          </div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setAllocationOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || !allocationInvoiceId}>{busy === "allocation" ? "Allocating…" : "Allocate"}</Button></div>
-        </form>
-      </Dialog>
-
-      <Dialog open={Boolean(reversal)} onClose={() => { if (!busy) setReversal(null); }} title={reversal?.kind === "invoice" ? "Void invoice" : reversal?.kind === "payment" ? "Reverse Payment" : "Reverse allocation"} description={reversal ? `${reversal.label} will remain visible in the immutable history.` : undefined}>
-        <form onSubmit={submitReversal}>
-          <div className="field"><label htmlFor="reversal-reason">Reason</label><textarea id="reversal-reason" required minLength={5} maxLength={500} value={reversalReason} onChange={(event) => setReversalReason(event.target.value)} /></div>
-          <div className="dialog-actions"><Button type="button" variant="quiet" disabled={Boolean(busy)} onClick={() => setReversal(null)}>Cancel</Button><Button type="submit" variant="danger" disabled={Boolean(busy)}>{busy === "reversal" ? "Saving…" : "Confirm correction"}</Button></div>
-        </form>
-      </Dialog>
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Business document setup" description="These details appear on issued Tax Invoices and Credit Notes."><form onSubmit={saveSettings}><div className={styles.formGrid}><label className={styles.full}>Business address<input required value={settingsDraft.businessAddress} onChange={(event) => setSettingsDraft({ ...settingsDraft, businessAddress: event.target.value })} /></label><label>VAT number<input required value={settingsDraft.vatNumber} onChange={(event) => setSettingsDraft({ ...settingsDraft, vatNumber: event.target.value })} /></label><label>Default payment terms (days)<input type="number" min="0" max="365" required value={settingsDraft.defaultPaymentTermsDays} onChange={(event) => setSettingsDraft({ ...settingsDraft, defaultPaymentTermsDays: event.target.value })} /></label><label>Credit Note prefix<input maxLength={8} required value={settingsDraft.creditNotePrefix} onChange={(event) => setSettingsDraft({ ...settingsDraft, creditNotePrefix: event.target.value.toUpperCase() })} /></label><label>Delivery Note prefix<input maxLength={8} required value={settingsDraft.deliveryNotePrefix} onChange={(event) => setSettingsDraft({ ...settingsDraft, deliveryNotePrefix: event.target.value.toUpperCase() })} /></label></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setSettingsOpen(false)}>Cancel</Button><Button type="submit" disabled={!online || busy}>Save Setup</Button></div></form></Dialog>
     </>
   );
 }
