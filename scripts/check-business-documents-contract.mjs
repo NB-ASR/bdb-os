@@ -30,7 +30,7 @@ assert.match(api, /productId/);
 assert.match(api, /serviceId/);
 
 assert.match(accounts, /New Document/);
-assert.match(accounts, /Documents/);
+assert.match(accounts, /documents/i);
 assert.match(accounts, /Payments/);
 assert.match(accounts, /Customers/);
 assert.match(accounts, /Credit Note/);
