@@ -9,8 +9,8 @@ export function formatMoney(value: number, currency = "GBP") {
 
 export function formatDate(value: string, options?: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en-GB", options ?? {
-    day: "numeric",
-    month: "short",
+    day: "2-digit",
+    month: "2-digit",
     year: "numeric",
   }).format(new Date(value));
 }
