@@ -21,9 +21,12 @@ function uuid(value: string | null, field: string) {
   if (!UUID_PATTERN.test(result)) throw new CommandError("INVALID_BUSINESS_DOCUMENT_INPUT", `${field} is invalid.`);
   return result;
 }
-
-function num(value: unknown) {
-  return value === null || value === undefined ? null : Number(value);
+function num(value: unknown) { return value === null || value === undefined ? null : Number(value); }
+function discountPercent(line: Record<string, unknown>) {
+  const gross = Number(line.gross_amount ?? (Number(line.quantity ?? 0) * Number(line.unit_price ?? 0)));
+  const discount = Number(line.discount_amount ?? 0);
+  if (!Number.isFinite(gross) || gross <= 0 || !Number.isFinite(discount) || discount <= 0) return 0;
+  return Math.round((discount / gross) * 10000) / 100;
 }
 
 export async function GET(request: Request) {
@@ -38,7 +41,6 @@ export async function GET(request: Request) {
     await requireWorkspaceCommand(request, workspaceId);
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
-
     const [workspaceResult, settingsResult, featureResult] = await Promise.all([
       supabase.from("workspaces").select("id,name,legal_name").eq("id", workspaceId).maybeSingle(),
       supabase.from("workspace_settings").select("*").eq("workspace_id", workspaceId).maybeSingle(),
@@ -80,10 +82,10 @@ export async function GET(request: Request) {
         },
         lines: lines.map((line): BusinessDocumentLine => ({
           code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity),
-          unitPrice: num(line.unit_price), netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount),
+          unitPrice: num(line.unit_price), discountAmount: num(line.discount_amount), discountPercent: discountPercent(line),
+          netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount),
         })),
-        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.adjusted_total_amount ?? row.total_amount),
-        paidAmount: num(row.allocated_amount), balanceAmount: num(row.outstanding_amount), footer: String(settings.document_footer ?? "") || null,
+        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount), footer: String(settings.document_footer ?? "") || null,
       };
     } else if (type === "credit_note") {
       const noteResult = await supabase.from("credit_notes").select("*,credit_note_lines(*)").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
@@ -107,7 +109,10 @@ export async function GET(request: Request) {
           registrationNumber: String(row.supplier_registration_number_snapshot ?? settings.company_registration_number ?? "") || null,
         },
         customer: { name: String(row.customer_name_snapshot ?? customerResult.data?.name ?? "Customer"), address: String(row.customer_address_snapshot ?? customerResult.data?.address ?? "") || null, vatNumber: String(row.customer_vat_number_snapshot ?? customerResult.data?.vat_number ?? "") || null },
-        lines: lines.map((line): BusinessDocumentLine => ({ code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity), unitPrice: num(line.unit_price), netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount) })),
+        lines: lines.map((line): BusinessDocumentLine => ({
+          code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity), unitPrice: num(line.unit_price),
+          discountAmount: num(line.discount_amount), discountPercent: discountPercent(line), netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount),
+        })),
         netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount), footer: String(settings.document_footer ?? "") || null,
       };
     } else {
@@ -153,14 +158,6 @@ export async function GET(request: Request) {
   if (!result.ok || !payload?.ok || !payload.result) return result;
   const document = payload.result;
   const safeName = `${document.title.replaceAll(" ", "-").toLowerCase()}-${document.draft ? "draft" : document.number}.pdf`.replace(/[^a-zA-Z0-9._-]/g, "-");
-  if (format === "pdf") {
-    return new Response(businessDocumentPdf(document), {
-      status: 200,
-      headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${safeName}"`, "Cache-Control": "no-store" },
-    });
-  }
-  return new Response(businessDocumentHtml(document, url.searchParams.get("print") === "1"), {
-    status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
-  });
+  if (format === "pdf") return new Response(businessDocumentPdf(document), { status: 200, headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${safeName}"`, "Cache-Control": "no-store" } });
+  return new Response(businessDocumentHtml(document, url.searchParams.get("print") === "1"), { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
 }
