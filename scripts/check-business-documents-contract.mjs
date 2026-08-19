@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 const migration = await readFile("supabase/migrations/20260818150236_accounts_business_documents_v1.sql", "utf8");
 const polishMigration = await readFile("supabase/migrations/20260818220613_accounts_invoice_ux_pricing.sql", "utf8");
 const headerReconcileMigration = await readFile("supabase/migrations/20260818221234_accounts_invoice_header_reconcile.sql", "utf8");
+const lifecycleMigration = await readFile("supabase/migrations/20260819101500_accounts_document_lifecycle_v1.sql", "utf8");
+const creditVatNumberingMigration = await readFile("supabase/migrations/20260819114500_accounts_credit_vat_and_numbering.sql", "utf8");
 const accounts = await readFile("src/app/accounts/page.tsx", "utf8");
 const accountsCss = await readFile("src/app/accounts/accounts.module.css", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
@@ -46,6 +48,23 @@ assert.match(headerReconcileMigration, /invoice\.source_sale_id is null/i, "Head
 assert.match(headerReconcileMigration, /invoice\.status = 'draft'/i, "Header reconciliation must remain draft-only.");
 assert.match(pricing, /vatAmount = moneyRound\(netAmount \* Math\.max\(0, vatRate\) \/ 100\)/);
 
+assert.match(lifecycleMigration, /create_and_issue_invoice_command/);
+assert.match(lifecycleMigration, /create_and_issue_credit_note_command/);
+assert.match(lifecycleMigration, /create_and_issue_delivery_note_command/);
+assert.match(lifecycleMigration, /business_document_notes/);
+assert.match(lifecycleMigration, /Issued Invoices can only be cancelled by an issued Credit Note/);
+
+assert.match(creditVatNumberingMigration, /source_line\.net_amount \* factor/);
+assert.match(creditVatNumberingMigration, /source_line\.vat_amount \* factor/);
+assert.match(creditVatNumberingMigration, /total_value := round\(net_value \+ vat_value, 4\)/);
+assert.doesNotMatch(creditVatNumberingMigration, /total_value \* source_line\.vat_rate \/ \(100 \+ source_line\.vat_rate\)/, "Credit Notes must reverse the Invoice VAT snapshot, not back VAT out independently.");
+assert.match(creditVatNumberingMigration, /invoice_prefix = 'INV'/);
+assert.match(creditVatNumberingMigration, /credit_note_prefix = 'CN'/);
+assert.match(creditVatNumberingMigration, /delivery_note_prefix = 'DN'/);
+assert.match(creditVatNumberingMigration, /p_document_type, 0, normalized_prefix/);
+assert.match(creditVatNumberingMigration, /lpad\(next_value::text, 3, '0'\)/);
+assert.doesNotMatch(creditVatNumberingMigration, /normalized_prefix \|\| '-' \|\| target_year/, "New customer-facing document numbers must not expose the year.");
+
 assert.match(accounts, /New Document/);
 assert.match(accounts, /documents/i);
 assert.match(accounts, /Payments/);
@@ -87,4 +106,4 @@ assert.doesNotMatch(renderer, /Due date/);
 assert.doesNotMatch(renderer, /Payment instructions/i);
 assert.doesNotMatch(renderer, /document\.footer \?/, "Permanent footer/payment instructions must not be printed on customer Invoices.");
 
-console.log("Business Documents contract preserves One Engine, VAT-exclusive Invoice pricing, reconciled draft totals, offline commands, document safety and restrained Accounts UX.");
+console.log("Business Documents contract preserves final-first creation, exact Credit Note VAT reversal, simple numbering, document safety and restrained Accounts UX.");
