@@ -7,6 +7,7 @@ import {
   FileMinus2,
   FileText,
   Mail,
+  MessageSquareText,
   MoreHorizontal,
   PackageCheck,
   Plus,
@@ -32,6 +33,7 @@ type Tab = "documents" | "payments" | "customers";
 type DocumentType = "invoice" | "credit_note" | "delivery_note";
 type PaymentMethod = "cash" | "card" | "bank_transfer" | "cheque" | "other";
 type LineType = "product" | "service" | "manual";
+type DeliverySourceType = "manual" | "invoice" | "sale";
 
 type Customer = { id: string; code: string; name: string; company: string | null; email: string | null; phone: string | null; address: string | null; vat_number: string | null };
 type Product = { id: string; sku: string; name: string; selling_price: number | null; vat_rate: number; purpose: string };
@@ -41,11 +43,12 @@ type Invoice = { id: string; number: string; customer_id: string; source_sale_id
 type CreditNoteLine = { id: string; source_invoice_line_id: string | null; line_number: number; code_snapshot: string; description_snapshot: string; quantity: number; total_amount: number };
 type CreditNote = { id: string; number: string; invoice_id: string; customer_id: string; currency: string; reason: string; status: "draft" | "issued"; total_amount: number; version: number; issued_at: string | null; created_at: string; credit_note_lines: CreditNoteLine[] };
 type DeliveryNoteLine = { id: string; source_invoice_line_id: string | null; source_sale_line_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number };
-type DeliveryNote = { id: string; number: string; source_invoice_id: string | null; source_sale_id: string | null; customer_id: string; customer_name_snapshot: string; delivery_address: string | null; delivery_date: string; status: "draft" | "issued"; version: number; created_at: string; delivery_note_lines: DeliveryNoteLine[] };
+type DeliveryNote = { id: string; number: string; source_invoice_id: string | null; source_sale_id: string | null; customer_id: string; customer_name_snapshot: string; delivery_address: string | null; delivery_date: string; status: "draft" | "issued"; notes: string | null; version: number; created_at: string; delivery_note_lines: DeliveryNoteLine[] };
 type Payment = { id: string; reference: string; customer_id: string; customer_name_snapshot: string; currency: string; amount: number; payment_method: PaymentMethod; external_reference: string | null; received_at: string; status: "posted" | "reversed"; version: number; allocated_amount: number; unallocated_amount: number };
 type CustomerBalance = { customer_id: string; customer_code: string; customer_name: string; company: string | null; outstanding_amount: number; unallocated_credit: number; net_balance: number; balance_status: "amount_due" | "customer_credit" | "clear" };
 type DocumentIndex = { workspace_id: string; document_type: DocumentType; id: string; number: string; customer_id: string; customer_name: string; document_date: string; status: string; currency: string | null; total_amount: number | null; balance_amount: number | null; source_invoice_id: string | null; source_sale_id: string | null; reason: string | null };
 type SaleSource = { id: string; reference: string; customer_id: string; total_amount: number; sale_lines: Array<{ id: string; code_snapshot: string; description_snapshot: string; quantity: number }> };
+type DocumentNote = { id: string; note: string; created_at: string; created_by: string };
 
 type AccountsBundle = {
   workspaceId: string;
@@ -63,7 +66,7 @@ type AccountsBundle = {
 
 type DraftLine = { id: string; lineType: LineType; sourceId: string; description: string; quantity: string; unitPrice: string; discountAmount: string; vatRate: string };
 type CreditDraftLine = { id: string; sourceInvoiceLineId: string; description: string; selected: boolean; quantity: string };
-type DeliveryDraftLine = { id: string; sourceLineId: string; description: string; selected: boolean; quantity: string };
+type DeliveryDraftLine = { id: string; sourceLineId: string; code: string; description: string; selected: boolean; quantity: string };
 
 const emptyBundle: AccountsBundle = {
   workspaceId: "",
@@ -77,7 +80,7 @@ const cacheKey = (workspaceId: string) => `${CACHE_PREFIX}:${workspaceId}`;
 function isoDate(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 }
 function localDateTime() {
   const date = new Date();
@@ -85,6 +88,9 @@ function localDateTime() {
 }
 function draftLine(vat = 0): DraftLine {
   return { id: crypto.randomUUID(), lineType: "manual", sourceId: "", description: "", quantity: "1", unitPrice: "", discountAmount: "0", vatRate: String(vat) };
+}
+function manualDeliveryLine(): DeliveryDraftLine {
+  return { id: crypto.randomUUID(), sourceLineId: "", code: "", description: "", selected: true, quantity: "1" };
 }
 function documentLabel(type: DocumentType) {
   return type === "invoice" ? "Invoice" : type === "credit_note" ? "Credit Note" : "Delivery Note";
@@ -133,13 +139,19 @@ export default function AccountsPage() {
   const [legacyCreditAmount, setLegacyCreditAmount] = useState("");
 
   const [deliveryOpen, setDeliveryOpen] = useState(false);
-  const [deliverySourceType, setDeliverySourceType] = useState<"invoice" | "sale">("invoice");
+  const [deliverySourceType, setDeliverySourceType] = useState<DeliverySourceType>("manual");
   const [deliverySourceId, setDeliverySourceId] = useState("");
+  const [deliveryCustomerId, setDeliveryCustomerId] = useState("");
   const [deliveryDate, setDeliveryDate] = useState(isoDate());
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
   const [deliveryLines, setDeliveryLines] = useState<DeliveryDraftLine[]>([]);
   const [saleSources, setSaleSources] = useState<SaleSource[]>([]);
+
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesDocument, setNotesDocument] = useState<DocumentIndex | null>(null);
+  const [documentNotes, setDocumentNotes] = useState<DocumentNote[]>([]);
+  const [newDocumentNote, setNewDocumentNote] = useState("");
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentCustomerId, setPaymentCustomerId] = useState("");
@@ -181,7 +193,7 @@ export default function AccountsPage() {
       const cached = last ? readCache(last) : null;
       if (cached) {
         setBundle(cached); bundleRef.current = cached; refreshQueue(cached.workspaceId);
-        setNotice("Showing the last verified Accounts snapshot. Draft changes can remain queued until reconnection.");
+        setNotice("Showing the last verified Accounts snapshot. New changes can remain Pending sync until reconnection.");
       } else setError(loadError instanceof Error ? loadError.message : "Accounts could not be loaded.");
     } finally { setLoading(false); }
   }, [refreshQueue]);
@@ -199,10 +211,10 @@ export default function AccountsPage() {
 
   async function dispatch(action: AccountsCommandAction, payload: Record<string, unknown>, requiresOnline = false) {
     if (supportReadOnly || !bundle.workspaceId) return setError("This Accounts workspace is read-only for the current session."), false;
-    if (requiresOnline && !online) return setError("Reconnect before issuing a numbered business document."), false;
+    if (requiresOnline && !online) return setError("Reconnect before issuing this legacy draft."), false;
     const command = enqueueAccountsCommand(bundle.workspaceId, action, payload);
     refreshQueue();
-    if (!online) { setNotice("Draft saved locally and queued for safe synchronisation."); return true; }
+    if (!online) { setNotice("Change queued as Pending sync. Final document numbers are assigned safely after reconnection."); return true; }
     setBusy(action);
     const result = await flushAccountsQueue(bundle.workspaceId, () => refreshQueue());
     setBusy(""); refreshQueue();
@@ -273,8 +285,8 @@ export default function AccountsPage() {
   }
   function openCredit(invoice?: Invoice) {
     setNewMenu(false);
-    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void"].includes(item.display_status));
-    if (!target) return setError("Create and issue an Invoice before creating a Credit Note.");
+    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void", "cancelled"].includes(item.display_status) && Number(item.adjusted_total_amount) > 0);
+    if (!target) return setError("There is no issued Invoice with value remaining to credit.");
     setCreditInvoice(target); setCreditOpen(true);
   }
   async function saveCredit(event: FormEvent) {
@@ -283,6 +295,7 @@ export default function AccountsPage() {
     const lines = selectedCreditInvoice.invoice_lines.length
       ? creditLines.filter((line) => line.selected).map((line) => ({ id: line.id, sourceInvoiceLineId: line.sourceInvoiceLineId, quantity: Number(line.quantity) }))
       : [{ id: crypto.randomUUID(), amount: Number(legacyCreditAmount) }];
+    if (!lines.length) return setError("Select at least one Invoice line to credit.");
     const ok = await dispatch("credit-note-create", { id: crypto.randomUUID(), invoiceId: selectedCreditInvoice.id, reason: creditReason, lines });
     if (ok) setCreditOpen(false);
   }
@@ -298,28 +311,76 @@ export default function AccountsPage() {
     if (type === "invoice") {
       const invoice = bundle.invoices.find((item) => item.id === sourceId);
       const customer = bundle.customers.find((item) => item.id === invoice?.customer_id);
-      setDeliveryAddress(customer?.address ?? "");
-      setDeliveryLines((invoice?.invoice_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+      setDeliveryCustomerId(invoice?.customer_id ?? ""); setDeliveryAddress(customer?.address ?? "");
+      setDeliveryLines((invoice?.invoice_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, code: line.code_snapshot, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
     } else {
       const sale = saleSources.find((item) => item.id === sourceId);
       const customer = bundle.customers.find((item) => item.id === sale?.customer_id);
-      setDeliveryAddress(customer?.address ?? "");
-      setDeliveryLines((sale?.sale_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+      setDeliveryCustomerId(sale?.customer_id ?? ""); setDeliveryAddress(customer?.address ?? "");
+      setDeliveryLines((sale?.sale_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, code: line.code_snapshot, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
     }
   }
   async function openDelivery(invoice?: Invoice) {
     setNewMenu(false);
     await loadSaleSources();
-    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void"].includes(item.display_status) && item.invoice_lines.length > 0);
-    if (target) populateDelivery("invoice", target.id);
-    else { setDeliverySourceType("sale"); setDeliverySourceId(""); setDeliveryLines([]); setDeliveryAddress(""); }
-    setDeliveryDate(isoDate()); setDeliveryNotes(""); setDeliveryOpen(true);
+    setDeliveryDate(isoDate()); setDeliveryNotes("");
+    if (invoice) {
+      populateDelivery("invoice", invoice.id);
+    } else {
+      const firstCustomer = bundle.customers[0];
+      setDeliverySourceType("manual"); setDeliverySourceId(""); setDeliveryCustomerId(firstCustomer?.id ?? "");
+      setDeliveryAddress(firstCustomer?.address ?? ""); setDeliveryLines([manualDeliveryLine()]);
+    }
+    setDeliveryOpen(true);
+  }
+  function changeDeliverySource(type: DeliverySourceType) {
+    setDeliverySourceType(type); setDeliverySourceId("");
+    if (type === "manual") {
+      const customer = bundle.customers.find((item) => item.id === deliveryCustomerId) ?? bundle.customers[0];
+      setDeliveryCustomerId(customer?.id ?? ""); setDeliveryAddress(customer?.address ?? ""); setDeliveryLines([manualDeliveryLine()]);
+    } else {
+      setDeliveryLines([]);
+    }
   }
   async function saveDelivery(event: FormEvent) {
     event.preventDefault();
-    const lines = deliveryLines.filter((line) => line.selected).map((line) => ({ id: line.id, sourceLineId: line.sourceLineId, quantity: Number(line.quantity) }));
-    const ok = await dispatch("delivery-note-create", { id: crypto.randomUUID(), sourceType: deliverySourceType, sourceId: deliverySourceId, deliveryDate, deliveryAddress, notes: deliveryNotes, lines });
+    const selected = deliveryLines.filter((line) => line.selected);
+    const lines = deliverySourceType === "manual"
+      ? selected.map((line) => ({ id: line.id, code: line.code, description: line.description, quantity: Number(line.quantity) }))
+      : selected.map((line) => ({ id: line.id, sourceLineId: line.sourceLineId, quantity: Number(line.quantity) }));
+    if (!lines.length) return setError("Add at least one Delivery Note line.");
+    const ok = await dispatch("delivery-note-create", {
+      id: crypto.randomUUID(), sourceType: deliverySourceType,
+      sourceId: deliverySourceType === "manual" ? null : deliverySourceId,
+      customerId: deliverySourceType === "manual" ? deliveryCustomerId : null,
+      deliveryDate, deliveryAddress, notes: deliveryNotes, lines,
+    });
     if (ok) setDeliveryOpen(false);
+  }
+
+  async function openDocumentNotes(document: DocumentIndex) {
+    setNotesDocument(document); setNewDocumentNote("");
+    const initial: DocumentNote[] = [];
+    if (document.document_type === "delivery_note") {
+      const delivery = bundle.deliveryNotes.find((item) => item.id === document.id);
+      if (delivery?.notes) initial.push({ id: `initial-${delivery.id}`, note: delivery.notes, created_at: delivery.created_at, created_by: "Created with document" });
+    }
+    setDocumentNotes(initial); setNotesOpen(true);
+    if (!online || !bundle.workspaceId) return;
+    const params = new URLSearchParams({ workspaceId: bundle.workspaceId, documentType: document.document_type, documentId: document.id });
+    const response = await fetch(`/api/accounts/final-documents?${params.toString()}`, { cache: "no-store" });
+    const json = await response.json().catch(() => ({}));
+    if (response.ok && json.ok) setDocumentNotes([...initial, ...(json.result?.notes ?? [])]);
+  }
+  async function addDocumentNote(event: FormEvent) {
+    event.preventDefault();
+    if (!notesDocument || !newDocumentNote.trim()) return;
+    const noteText = newDocumentNote.trim();
+    const ok = await dispatch("document-note-add", { id: crypto.randomUUID(), documentType: notesDocument.document_type, documentId: notesDocument.id, note: noteText });
+    if (!ok) return;
+    setNewDocumentNote("");
+    if (online) await openDocumentNotes(notesDocument);
+    else setNotesOpen(false);
   }
 
   function openPayment(invoice?: Invoice) {
@@ -384,16 +445,16 @@ export default function AccountsPage() {
       <PageHeader
         eyebrow="Business documents & balances"
         title="Accounts"
-        description="Create professional business documents, then keep Payments and balances connected underneath."
-        action={<div className={styles.headerActions}><Button variant="quiet" onClick={() => void openIdentity()}><Settings2 size={16} /> Document setup</Button><div className={styles.newWrap}><Button disabled={!canWrite} onClick={() => setNewMenu((value) => !value)}><Plus size={17} /> New Document</Button>{newMenu ? <div className={styles.newMenu}><button onClick={openInvoice}><FileText size={18} /><span><strong>Invoice</strong><small>Bill a Customer</small></span></button><button onClick={() => openCredit()}><FileMinus2 size={18} /><span><strong>Credit Note</strong><small>Credit an issued Invoice</small></span></button><button onClick={() => void openDelivery()}><PackageCheck size={18} /><span><strong>Delivery Note</strong><small>Record goods delivered</small></span></button></div> : null}</div></div>}
+        description="Create final business documents, then keep Payments, balances and document history connected underneath."
+        action={<div className={styles.headerActions}><Button variant="quiet" onClick={() => void openIdentity()}><Settings2 size={16} /> Document setup</Button><div className={styles.newWrap}><Button disabled={!canWrite} onClick={() => setNewMenu((value) => !value)}><Plus size={17} /> New Document</Button>{newMenu ? <div className={styles.newMenu}><button onClick={openInvoice}><FileText size={18} /><span><strong>Invoice</strong><small>Bill a Customer</small></span></button><button onClick={() => openCredit()}><FileMinus2 size={18} /><span><strong>Credit Note</strong><small>Correct or cancel an Invoice</small></span></button><button onClick={() => void openDelivery()}><PackageCheck size={18} /><span><strong>Delivery Note</strong><small>Standalone or linked delivery</small></span></button></div> : null}</div></div>}
       />
 
       <nav className={styles.tabs} aria-label="Accounts sections">
         {(["documents", "payments", "customers"] as const).map((item) => <button key={item} data-active={tab === item} onClick={() => setTab(item)}>{item}</button>)}
       </nav>
 
-      {!online ? <div className={styles.attention}><TriangleAlert size={17} /><div><strong>Offline</strong><span>Drafts can be queued. Issuing final numbered documents waits for reconnection.</span></div></div> : null}
-      {queue.length > 0 ? <div className={styles.attention}><RefreshCw size={17} /><div><strong>{queue.length} change{queue.length === 1 ? "" : "s"} waiting to synchronise</strong><span>Commands replay in order and stop safely at the first conflict.</span></div></div> : null}
+      {!online ? <div className={styles.attention}><TriangleAlert size={17} /><div><strong>Offline</strong><span>New documents can be queued as Pending sync. Their permanent numbers are assigned only after safe synchronisation.</span></div></div> : null}
+      {queue.length > 0 ? <div className={styles.attention}><RefreshCw size={17} /><div><strong>{queue.length} change{queue.length === 1 ? "" : "s"} Pending sync</strong><span>Commands replay in order and stop safely at the first conflict.</span></div></div> : null}
       {identityIncomplete ? <div className={styles.quietNotice}><span>Before real client use, complete the business address and any VAT/company details that apply under <button onClick={() => void openIdentity()}>Document setup</button>.</span></div> : null}
       {error ? <div className="review-callout"><TriangleAlert size={18} /><div><strong>Accounts needs attention</strong><p>{error}</p></div></div> : null}
       {notice ? <div className={styles.quietNotice}><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={14} /></button></div> : null}
@@ -409,17 +470,18 @@ export default function AccountsPage() {
               const isDraft = document.status === "draft";
               const invoice = document.document_type === "invoice" ? bundle.invoices.find((item) => item.id === document.id) : null;
               return <tr key={`${document.document_type}-${document.id}`}>
-                <td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Draft" : document.number}</small></span></div></td>
-                <td>{document.customer_name}</td><td>{formatDate(document.document_date)}</td><td><Badge tone={isDraft ? "neutral" : document.status === "paid" ? "green" : document.status === "overdue" ? "red" : "gold"}>{document.status.replaceAll("_", " ")}</Badge></td>
+                <td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Legacy draft" : document.number}</small></span></div></td>
+                <td>{document.customer_name}</td><td>{formatDate(document.document_date)}</td><td><Badge tone={isDraft ? "neutral" : document.status === "paid" || document.status === "cancelled" ? "green" : document.status === "overdue" ? "red" : "gold"}>{document.status.replaceAll("_", " ")}</Badge></td>
                 <td className={styles.money}>{document.document_type === "delivery_note" ? "—" : formatMoney(Number(document.total_amount ?? 0), document.currency ?? currency)}</td>
                 <td className={styles.money}>{document.document_type === "invoice" ? formatMoney(Number(document.balance_amount ?? 0), document.currency ?? currency) : "—"}</td>
                 <td><div className={styles.rowActions}>
                   <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html"), "_blank")}><MoreHorizontal size={15} /> View</Button>
                   <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html", true), "_blank")}><Printer size={15} /> Print</Button>
                   <a className={styles.actionLink} href={businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "pdf")}><Download size={15} /> PDF</a>
+                  <Button variant="quiet" onClick={() => void openDocumentNotes(document)}><MessageSquareText size={15} /> Notes</Button>
                   {!isDraft ? <Button variant="quiet" onClick={() => emailDocument(document)}><Mail size={15} /> Email</Button> : null}
-                  {isDraft ? <Button variant="secondary" disabled={!online || Boolean(busy)} onClick={() => void issueDocument(document)}>Issue</Button> : null}
-                  {invoice && !isDraft && !["void"].includes(invoice.display_status) ? <><Button variant="quiet" onClick={() => openCredit(invoice)}>Credit</Button>{invoice.invoice_lines.length ? <Button variant="quiet" onClick={() => void openDelivery(invoice)}>Deliver</Button> : null}{invoice.outstanding_amount > 0 ? <Button variant="quiet" onClick={() => openPayment(invoice)}>Payment</Button> : null}</> : null}
+                  {isDraft ? <Button variant="secondary" disabled={!online || Boolean(busy)} onClick={() => void issueDocument(document)}>Issue legacy draft</Button> : null}
+                  {invoice && !isDraft && !["void", "cancelled"].includes(invoice.display_status) ? <><Button variant="quiet" onClick={() => openCredit(invoice)}>Credit</Button>{invoice.invoice_lines.length ? <Button variant="quiet" onClick={() => void openDelivery(invoice)}>Deliver</Button> : null}{invoice.outstanding_amount > 0 ? <Button variant="quiet" onClick={() => openPayment(invoice)}>Payment</Button> : null}</> : null}
                 </div></td>
               </tr>;
             })}
@@ -440,13 +502,9 @@ export default function AccountsPage() {
 
       {loading && !bundle.workspaceId ? <Card><div className={styles.empty}>Opening Accounts…</div></Card> : null}
 
-      <Dialog className={styles.documentComposer} open={invoiceOpen} onClose={() => { if (!busy) setInvoiceOpen(false); }} title="New Invoice" description="Create a clear customer Invoice. Prices entered here are exclusive of VAT; VAT is added on top.">
+      <Dialog className={styles.documentComposer} open={invoiceOpen} onClose={() => { if (!busy) setInvoiceOpen(false); }} title="New Invoice" description="Create and issue a customer Invoice. Prices entered here are exclusive of VAT; VAT is added on top.">
         <form onSubmit={saveInvoice} className={`${styles.formStack} ${styles.composerForm}`}>
-          <section className={styles.composerSection}>
-            <div className={styles.sectionLabel}>Customer</div>
-            <div className={styles.customerChooser}><div className="field"><label>Bill to</label><select required value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.company ? ` · ${customer.company}` : ""}</option>)}</select><small className={styles.helperText}>The selected Customer&apos;s saved billing details will appear on the Invoice.</small></div></div>
-          </section>
-
+          <section className={styles.composerSection}><div className={styles.sectionLabel}>Customer</div><div className={styles.customerChooser}><div className="field"><label>Bill to</label><select required value={invoiceCustomerId} onChange={(event) => setInvoiceCustomerId(event.target.value)}>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}{customer.company ? ` · ${customer.company}` : ""}</option>)}</select><small className={styles.helperText}>The selected Customer&apos;s saved billing details will appear on the Invoice.</small></div></div></section>
           <section className={styles.composerSection}>
             <div className={styles.sectionHeadingRow}><div><div className={styles.sectionLabel}>Invoice items</div><p>Use a Product, Service or manual line. Catalogue SKU / codes are carried onto the final Invoice.</p></div><Button type="button" variant="quiet" onClick={() => setInvoiceLines((current) => [...current, draftLine(bundle.settings.vat_rate)])}><Plus size={15} /> Add line</Button></div>
             <div className={styles.lineList}>{invoiceLines.map((line, index) => <div className={styles.lineRow} key={line.id}>
@@ -459,34 +517,40 @@ export default function AccountsPage() {
             </div>)}</div>
             <div className={styles.invoiceSummary} aria-label="Invoice totals preview"><div><span>Subtotal / Net</span><strong>{formatMoney(invoicePreview.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(invoicePreview.vatAmount, currency)}</strong></div><div className={styles.invoiceGrand}><span>Total</span><strong>{formatMoney(invoicePreview.totalAmount, currency)}</strong></div></div>
           </section>
-
-          <section className={styles.composerSection}>
-            <div className={styles.sectionLabel}>Message & internal context</div>
-            <div className={styles.copyGrid}>
-              <div className="field"><label>Description <span className={styles.customerFacing}>Visible to customer</span></label><textarea required rows={5} value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} placeholder="What is this Invoice for? Add any wording the receiver should see." /><small className={styles.helperText}><strong>Printed on the Invoice.</strong> The receiver will see this text.</small></div>
-              <div className="field"><label>Notes <span className={styles.internalOnly}>Internal only</span></label><textarea rows={5} value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} placeholder="Private context for your team" /><small className={styles.helperText}><strong>Never printed on the Invoice.</strong> Use this only for internal context.</small></div>
-            </div>
-          </section>
-
-          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>Drafts can be saved offline. Final numbering happens when issued online.</span><div><Button type="button" variant="quiet" onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Save Draft</Button></div></div>
+          <section className={styles.composerSection}><div className={styles.sectionLabel}>Message & internal context</div><div className={styles.copyGrid}><div className="field"><label>Description <span className={styles.customerFacing}>Visible to customer</span></label><textarea required rows={5} value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} placeholder="What is this Invoice for? Add any wording the receiver should see." /><small className={styles.helperText}><strong>Printed on the Invoice.</strong> The receiver will see this text.</small></div><div className="field"><label>Notes <span className={styles.internalOnly}>Internal only</span></label><textarea rows={5} value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} placeholder="Private context for your team" /><small className={styles.helperText}><strong>Never printed on the Invoice.</strong> Use this only for internal context.</small></div></div></section>
+          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>Online: issued immediately. Offline: queued as Pending sync and numbered safely after reconnection.</span><div><Button type="button" variant="quiet" onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Create Invoice</Button></div></div>
         </form>
       </Dialog>
 
-      <Dialog className={styles.documentComposer} open={creditOpen} onClose={() => { if (!busy) setCreditOpen(false); }} title="New Credit Note" description="Credit an issued Invoice without deleting or rewriting its history. Choose exactly what is being credited.">
+      <Dialog className={styles.documentComposer} open={creditOpen} onClose={() => { if (!busy) setCreditOpen(false); }} title="New Credit Note" description="Correct or cancel an issued Invoice without deleting or rewriting its history. Every Credit Note remains linked to the Invoice it changes.">
         <form onSubmit={saveCredit} className={`${styles.formStack} ${styles.composerForm}`}>
-          <section className={styles.composerSection}><div className={styles.formGrid}><div className={`field ${styles.full}`}><label>Invoice to credit</label><select value={creditInvoiceId} onChange={(event) => { const invoice = bundle.invoices.find((item) => item.id === event.target.value); if (invoice) setCreditInvoice(invoice); }}>{bundle.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {formatMoney(Number(invoice.adjusted_total_amount ?? invoice.total_amount), invoice.currency)}</option>)}</select></div><div className={`field ${styles.full}`}><label>Reason <span className={styles.customerFacing}>Printed on Credit Note</span></label><textarea required minLength={5} rows={3} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Why is this amount being credited?" /></div></div></section>
+          <section className={styles.composerSection}><div className={styles.formGrid}><div className={`field ${styles.full}`}><label>Invoice to credit</label><select value={creditInvoiceId} onChange={(event) => { const invoice = bundle.invoices.find((item) => item.id === event.target.value); if (invoice) setCreditInvoice(invoice); }}>{bundle.invoices.filter((invoice) => !["draft", "void", "cancelled"].includes(invoice.display_status) && Number(invoice.adjusted_total_amount) > 0).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {formatMoney(Number(invoice.adjusted_total_amount ?? invoice.total_amount), invoice.currency)}</option>)}</select></div><div className={`field ${styles.full}`}><label>Reason <span className={styles.customerFacing}>Printed on Credit Note</span></label><textarea required minLength={5} rows={3} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Why is this amount being credited?" /></div></div></section>
           <section className={styles.composerSection}><div className={styles.sectionLabel}>Items being credited</div>{selectedCreditInvoice?.invoice_lines.length ? <div className={styles.selectionList}>{creditLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity to credit</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div> : <div className="field"><label>Credit amount</label><input required type="number" min="0.01" step="0.01" max={selectedCreditInvoice?.adjusted_total_amount ?? selectedCreditInvoice?.total_amount} value={legacyCreditAmount} onChange={(event) => setLegacyCreditAmount(event.target.value)} /><small className={styles.helperText}>This historical Invoice has no stored line detail, so BDB OS preserves it and records the Credit Note as an explicit adjustment.</small></div>}</section>
-          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>The Credit Note receives its final number when issued online.</span><div><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Save Draft</Button></div></div>
+          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>A full Credit Note cancels the Invoice economically while preserving both records.</span><div><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Create Credit Note</Button></div></div>
         </form>
       </Dialog>
 
-      <Dialog className={styles.documentComposer} open={deliveryOpen} onClose={() => { if (!busy) setDeliveryOpen(false); }} title="New Delivery Note" description="Record fulfilment from an issued Invoice or completed Sale. Delivery Notes never change the customer balance.">
+      <Dialog className={styles.documentComposer} open={deliveryOpen} onClose={() => { if (!busy) setDeliveryOpen(false); }} title="New Delivery Note" description="Create a standalone Delivery Note, or link it to an issued Invoice or completed Sale. Delivery Notes never change the customer balance.">
         <form onSubmit={saveDelivery} className={`${styles.formStack} ${styles.composerForm}`}>
-          <section className={styles.composerSection}><div className={styles.formGrid}><div className="field"><label>Source</label><select value={deliverySourceType} onChange={(event) => { const type = event.target.value as "invoice" | "sale"; setDeliverySourceType(type); setDeliverySourceId(""); setDeliveryLines([]); }}><option value="invoice">Issued Invoice</option><option value="sale">Completed Sale</option></select></div><div className="field"><label>{deliverySourceType === "invoice" ? "Invoice" : "Sale"}</label><select required value={deliverySourceId} onChange={(event) => populateDelivery(deliverySourceType, event.target.value)}><option value="">Choose…</option>{deliverySourceType === "invoice" ? bundle.invoices.filter((invoice) => !["draft", "void"].includes(invoice.display_status) && invoice.invoice_lines.length).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number}</option>) : saleSources.filter((sale) => sale.sale_lines.length).map((sale) => <option key={sale.id} value={sale.id}>{sale.reference}</option>)}</select></div><div className="field"><label>Delivery date</label><input type="date" required value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} /></div><div className="field"><label>Delivery address</label><input value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} /></div></div></section>
-          <section className={styles.composerSection}><div className={styles.sectionLabel}>Items delivered</div><div className={styles.selectionList}>{deliveryLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity delivered</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div></section>
-          <section className={styles.composerSection}><div className="field"><label>Internal notes <span className={styles.internalOnly}>Internal only</span></label><textarea rows={4} value={deliveryNotes} onChange={(event) => setDeliveryNotes(event.target.value)} /><small className={styles.helperText}>These notes stay inside BDB OS and are not used as pricing or accounting instructions.</small></div></section>
-          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>Delivery Notes record fulfilment only.</span><div><Button type="button" variant="quiet" onClick={() => setDeliveryOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || deliveryLines.every((line) => !line.selected)}>Save Draft</Button></div></div>
+          <section className={styles.composerSection}><div className={styles.formGrid}>
+            <div className="field"><label>Source</label><select value={deliverySourceType} onChange={(event) => changeDeliverySource(event.target.value as DeliverySourceType)}><option value="manual">Standalone Delivery Note</option><option value="invoice">Issued Invoice</option><option value="sale">Completed Sale</option></select></div>
+            {deliverySourceType === "manual" ? <div className="field"><label>Customer</label><select required value={deliveryCustomerId} onChange={(event) => { const id = event.target.value; const customer = bundle.customers.find((item) => item.id === id); setDeliveryCustomerId(id); setDeliveryAddress(customer?.address ?? ""); }}><option value="">Choose…</option>{bundle.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></div> : <div className="field"><label>{deliverySourceType === "invoice" ? "Invoice" : "Sale"}</label><select required value={deliverySourceId} onChange={(event) => populateDelivery(deliverySourceType, event.target.value)}><option value="">Choose…</option>{deliverySourceType === "invoice" ? bundle.invoices.filter((invoice) => !["draft", "void", "cancelled"].includes(invoice.display_status) && invoice.invoice_lines.length).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number}</option>) : saleSources.filter((sale) => sale.sale_lines.length).map((sale) => <option key={sale.id} value={sale.id}>{sale.reference}</option>)}</select></div>}
+            <div className="field"><label>Delivery date</label><input type="date" required value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value)} /></div><div className="field"><label>Delivery address</label><input value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} /></div>
+          </div></section>
+          <section className={styles.composerSection}>
+            <div className={styles.sectionHeadingRow}><div><div className={styles.sectionLabel}>Items delivered</div><p>{deliverySourceType === "manual" ? "Add the goods or items exactly as they should appear on this Delivery Note." : "Choose the quantities being delivered from the linked record."}</p></div>{deliverySourceType === "manual" ? <Button type="button" variant="quiet" onClick={() => setDeliveryLines((current) => [...current, manualDeliveryLine()])}><Plus size={15} /> Add line</Button> : null}</div>
+            {deliverySourceType === "manual" ? <div className={styles.lineList}>{deliveryLines.map((line, index) => <div className={styles.lineRow} key={line.id}><div className="field"><label>Code</label><input value={line.code} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, code: event.target.value } : item))} placeholder="Optional" /></div><div className={`field ${styles.lineDescription}`}><label>Description</label><input required value={line.description} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))} /></div><div className="field"><label>Qty</label><input required type="number" min="0.001" step="0.001" value={line.quantity} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></div><button type="button" className={styles.removeLine} aria-label="Remove line" disabled={deliveryLines.length === 1} onClick={() => setDeliveryLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button></div>)}</div> : <div className={styles.selectionList}>{deliveryLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity delivered</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setDeliveryLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div>}
+          </section>
+          <section className={styles.composerSection}><div className="field"><label>Creation note <span className={styles.internalOnly}>Internal only</span></label><textarea rows={4} value={deliveryNotes} onChange={(event) => setDeliveryNotes(event.target.value)} placeholder="Optional context about this delivery" /><small className={styles.helperText}>This is internal. After creation, more comments can be added from Notes without altering the issued Delivery Note.</small></div></section>
+          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>Once issued, the Delivery Note itself cannot be altered. Corrections require a new Delivery Note; Notes explain the history.</span><div><Button type="button" variant="quiet" onClick={() => setDeliveryOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || deliveryLines.every((line) => !line.selected)}>Create Delivery Note</Button></div></div>
         </form>
+      </Dialog>
+
+      <Dialog open={notesOpen} onClose={() => { if (!busy) setNotesOpen(false); }} title={notesDocument ? `${documentLabel(notesDocument.document_type)} ${notesDocument.number} Notes` : "Document Notes"} description="Append internal operational context without changing the issued document.">
+        <div className={styles.formStack}>
+          <div className={styles.selectionList}>{documentNotes.length ? documentNotes.map((item) => <div className={styles.selectionRow} key={item.id}><span><strong>{item.note}</strong><small>{formatDate(item.created_at)} · {item.created_by}</small></span></div>) : <div className={styles.empty}><MessageSquareText size={22} /><strong>No notes yet</strong><span>Add context if this document is wrong, replaced, unsigned, or needs explanation.</span></div>}</div>
+          <form onSubmit={addDocumentNote} className={styles.formStack}><div className="field"><label>Add note <span className={styles.internalOnly}>Internal only</span></label><textarea required maxLength={2000} rows={4} value={newDocumentNote} onChange={(event) => setNewDocumentNote(event.target.value)} placeholder="Example: Incorrect delivery quantity; replaced by DN-…" /></div><div className={styles.dialogActions}><Button type="button" variant="quiet" onClick={() => setNotesOpen(false)}>Close</Button><Button type="submit" disabled={Boolean(busy) || !newDocumentNote.trim()}>Add Note</Button></div></form>
+        </div>
       </Dialog>
 
       <Dialog open={paymentOpen} onClose={() => { if (!busy) setPaymentOpen(false); }} title="Record Payment" description="Record money received. When opened from an Invoice, the Payment is allocated to it automatically.">
