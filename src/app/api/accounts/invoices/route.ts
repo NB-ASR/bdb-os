@@ -11,7 +11,7 @@ const DISPLAY_STATUSES = new Set(["sent", "overdue", "paid", "cancelled", "draft
 const PAYMENT_STATUSES = new Set(["unpaid", "partially_paid", "paid", "cancelled", "draft", "void"]);
 const CREDIT_STATES = new Set(["any", "with", "without"]);
 
-type Cursor = { date: string; id: string };
+type Cursor = { createdAt: string; id: string };
 
 type InvoiceRegisterRow = {
   id: string;
@@ -20,6 +20,7 @@ type InvoiceRegisterRow = {
   customer_code_snapshot: string;
   customer_name_snapshot: string;
   issued_at: string;
+  created_at: string;
   due_at: string | null;
   description: string;
   currency: string;
@@ -55,22 +56,19 @@ function pageSize(value: string | null) {
 
 function searchTerm(value: string | null) {
   const raw = String(value ?? "").trim().slice(0, 100);
-  return raw
-    .replace(/[^\p{L}\p{N}\s./-]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return raw.replace(/[^\p{L}\p{N}\s./-]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
-function encodeCursor(row: Pick<InvoiceRegisterRow, "issued_at" | "id">) {
-  return Buffer.from(JSON.stringify({ date: row.issued_at, id: row.id } satisfies Cursor)).toString("base64url");
+function encodeCursor(row: Pick<InvoiceRegisterRow, "created_at" | "id">) {
+  return Buffer.from(JSON.stringify({ createdAt: row.created_at, id: row.id } satisfies Cursor)).toString("base64url");
 }
 
 function decodeCursor(value: string | null): Cursor | null {
   if (!value) return null;
   try {
     const decoded = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<Cursor>;
-    if (!decoded.date || !DATE_PATTERN.test(decoded.date) || !decoded.id || !UUID_PATTERN.test(decoded.id)) throw new Error("invalid");
-    return { date: decoded.date, id: decoded.id };
+    if (!decoded.createdAt || Number.isNaN(Date.parse(decoded.createdAt)) || !decoded.id || !UUID_PATTERN.test(decoded.id)) throw new Error("invalid");
+    return { createdAt: new Date(decoded.createdAt).toISOString(), id: decoded.id };
   } catch {
     throw new CommandError("INVALID_ACCOUNTS_CURSOR", "Invoice page cursor is invalid.");
   }
@@ -99,9 +97,9 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("invoice_account_balances")
-      .select("id,number,customer_id,customer_code_snapshot,customer_name_snapshot,issued_at,due_at,description,currency,total_amount,credited_amount,allocated_amount,outstanding_amount,display_status,payment_status,sales_order_reference")
+      .select("id,number,customer_id,customer_code_snapshot,customer_name_snapshot,issued_at,created_at,due_at,description,currency,total_amount,credited_amount,allocated_amount,outstanding_amount,display_status,payment_status,sales_order_reference")
       .eq("workspace_id", workspaceId)
-      .order("issued_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(limit + 1);
 
@@ -115,24 +113,15 @@ export async function GET(request: Request) {
     if (paymentStatus !== "all") query = query.eq("payment_status", paymentStatus);
     if (creditState === "with") query = query.gt("credited_amount", 0);
     if (creditState === "without") query = query.eq("credited_amount", 0);
-    if (cursor) {
-      query = query.or(`issued_at.lt.${cursor.date},and(issued_at.eq.${cursor.date},id.lt.${cursor.id})`);
-    }
+    if (cursor) query = query.or(`created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`);
 
     const result = await query;
     if (result.error) throw result.error;
-
     const fetched = (result.data ?? []) as InvoiceRegisterRow[];
     const hasMore = fetched.length > limit;
     const rows = hasMore ? fetched.slice(0, limit) : fetched;
     const last = rows.at(-1);
 
-    return {
-      workspaceId,
-      rows,
-      pageSize: limit,
-      hasMore,
-      nextCursor: hasMore && last ? encodeCursor(last) : null,
-    };
+    return { workspaceId, rows, pageSize: limit, hasMore, nextCursor: hasMore && last ? encodeCursor(last) : null };
   });
 }
