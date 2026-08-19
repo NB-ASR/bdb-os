@@ -39,9 +39,9 @@ type Customer = { id: string; code: string; name: string; company: string | null
 type Product = { id: string; sku: string; name: string; selling_price: number | null; vat_rate: number; purpose: string };
 type Service = { id: string; code: string; name: string; price: number | null; vat_rate: number };
 type InvoiceLine = { id: string; line_number: number; line_type: LineType; product_id: string | null; service_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number; unit_price: number; discount_amount: number; vat_rate: number; total_amount: number };
-type Invoice = { id: string; number: string; customer_id: string; source_sale_id: string | null; issued_at: string; due_at: string | null; description: string; notes: string | null; currency: string; status: string; display_status: string; payment_status: string; total_amount: number; adjusted_total_amount: number; credited_amount: number; allocated_amount: number; outstanding_amount: number; version: number; invoice_lines: InvoiceLine[] };
+type Invoice = { id: string; number: string; customer_id: string; source_sale_id: string | null; issued_at: string; due_at: string | null; description: string; notes: string | null; currency: string; status: string; display_status: string; payment_status: string; total_amount: number; adjusted_total_amount: number; credited_amount: number; allocated_amount: number; outstanding_amount: number; version: number; sales_order_reference: string | null; invoice_lines: InvoiceLine[] };
 type CreditNoteLine = { id: string; source_invoice_line_id: string | null; line_number: number; code_snapshot: string; description_snapshot: string; quantity: number; total_amount: number };
-type CreditNote = { id: string; number: string; invoice_id: string; customer_id: string; currency: string; reason: string; status: "draft" | "issued"; total_amount: number; version: number; issued_at: string | null; created_at: string; credit_note_lines: CreditNoteLine[] };
+type CreditNote = { id: string; number: string; invoice_id: string; customer_id: string; currency: string; reason: string; status: "draft" | "issued"; total_amount: number; version: number; issued_at: string | null; created_at: string; sales_order_reference: string | null; credit_note_lines: CreditNoteLine[] };
 type DeliveryNoteLine = { id: string; source_invoice_line_id: string | null; source_sale_line_id: string | null; code_snapshot: string; description_snapshot: string; quantity: number };
 type DeliveryNote = { id: string; number: string; source_invoice_id: string | null; source_sale_id: string | null; customer_id: string; customer_name_snapshot: string; delivery_address: string | null; delivery_date: string; status: "draft" | "issued"; notes: string | null; version: number; created_at: string; delivery_note_lines: DeliveryNoteLine[] };
 type Payment = { id: string; reference: string; customer_id: string; customer_name_snapshot: string; currency: string; amount: number; payment_method: PaymentMethod; external_reference: string | null; received_at: string; status: "posted" | "reversed"; version: number; allocated_amount: number; unallocated_amount: number };
@@ -65,7 +65,6 @@ type AccountsBundle = {
 };
 
 type DraftLine = { id: string; lineType: LineType; sourceId: string; description: string; quantity: string; unitPrice: string; discountAmount: string; vatRate: string };
-type CreditDraftLine = { id: string; sourceInvoiceLineId: string; description: string; selected: boolean; quantity: string };
 type DeliveryDraftLine = { id: string; sourceLineId: string; code: string; description: string; selected: boolean; quantity: string };
 
 const emptyBundle: AccountsBundle = {
@@ -130,13 +129,14 @@ export default function AccountsPage() {
   const [invoiceCustomerId, setInvoiceCustomerId] = useState("");
   const [invoiceDescription, setInvoiceDescription] = useState("");
   const [invoiceNotes, setInvoiceNotes] = useState("");
+  const [invoiceSalesOrderReference, setInvoiceSalesOrderReference] = useState("");
   const [invoiceLines, setInvoiceLines] = useState<DraftLine[]>([]);
 
   const [creditOpen, setCreditOpen] = useState(false);
   const [creditInvoiceId, setCreditInvoiceId] = useState("");
+  const [creditInvoiceNumber, setCreditInvoiceNumber] = useState("");
+  const [creditAmount, setCreditAmount] = useState("");
   const [creditReason, setCreditReason] = useState("");
-  const [creditLines, setCreditLines] = useState<CreditDraftLine[]>([]);
-  const [legacyCreditAmount, setLegacyCreditAmount] = useState("");
 
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliverySourceType, setDeliverySourceType] = useState<DeliverySourceType>("manual");
@@ -238,7 +238,11 @@ export default function AccountsPage() {
     vatRate: Number(line.vatRate || 0),
   }))), [invoiceLines]);
 
-  const selectedCreditInvoice = bundle.invoices.find((invoice) => invoice.id === creditInvoiceId) ?? null;
+  const invoiceNeedsSalesOrder = invoiceLines.some((line) => line.lineType === "product");
+  const eligibleCreditInvoices = bundle.invoices.filter((invoice) => !["draft", "void", "cancelled"].includes(invoice.display_status) && Number(invoice.adjusted_total_amount) > 0);
+  const selectedCreditInvoice = eligibleCreditInvoices.find((invoice) => invoice.id === creditInvoiceId) ?? null;
+  const enteredCreditAmount = Number(creditAmount || 0);
+  const projectedCreditBalance = selectedCreditInvoice ? Math.max(Number(selectedCreditInvoice.adjusted_total_amount) - (Number.isFinite(enteredCreditAmount) ? enteredCreditAmount : 0), 0) : 0;
   const currency = bundle.settings.currency || "EUR";
 
   function openInvoice() {
@@ -248,7 +252,7 @@ export default function AccountsPage() {
       return;
     }
     setInvoiceCustomerId(bundle.customers[0]?.id ?? "");
-    setInvoiceDescription(""); setInvoiceNotes(""); setInvoiceLines([draftLine(bundle.settings.vat_rate)]); setInvoiceOpen(true);
+    setInvoiceDescription(""); setInvoiceNotes(""); setInvoiceSalesOrderReference(""); setInvoiceLines([draftLine(bundle.settings.vat_rate)]); setInvoiceOpen(true);
   }
 
   function catalogueChange(index: number, sourceId: string) {
@@ -268,6 +272,10 @@ export default function AccountsPage() {
 
   async function saveInvoice(event: FormEvent) {
     event.preventDefault();
+    if (invoiceNeedsSalesOrder && !invoiceSalesOrderReference.trim()) {
+      setError("A Sales Order (SO) number is required because this Invoice contains Products.");
+      return;
+    }
     const lines = invoiceLines.map((line) => ({
       id: line.id, lineType: line.lineType,
       productId: line.lineType === "product" ? line.sourceId : null,
@@ -275,28 +283,50 @@ export default function AccountsPage() {
       description: line.description, quantity: Number(line.quantity), unitPrice: line.unitPrice === "" ? null : Number(line.unitPrice),
       discountAmount: Number(line.discountAmount || 0), vatRate: line.vatRate === "" ? null : Number(line.vatRate),
     }));
-    const ok = await dispatch("invoice-create-manual", { id: crypto.randomUUID(), customerId: invoiceCustomerId, description: invoiceDescription || "Invoice", notes: invoiceNotes, lines });
+    const ok = await dispatch("invoice-create-manual", {
+      id: crypto.randomUUID(),
+      customerId: invoiceCustomerId,
+      description: invoiceDescription || "Invoice",
+      notes: invoiceNotes,
+      salesOrderReference: invoiceNeedsSalesOrder ? invoiceSalesOrderReference.trim() : null,
+      lines,
+    });
     if (ok) setInvoiceOpen(false);
   }
 
-  function setCreditInvoice(invoice: Invoice) {
-    setCreditInvoiceId(invoice.id); setCreditReason(""); setLegacyCreditAmount("");
-    setCreditLines(invoice.invoice_lines.map((line) => ({ id: crypto.randomUUID(), sourceInvoiceLineId: line.id, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
+  function chooseCreditInvoice(invoice: Invoice, resetReason = false) {
+    setCreditInvoiceId(invoice.id);
+    setCreditInvoiceNumber(invoice.number);
+    setCreditAmount("");
+    if (resetReason) setCreditReason("");
+  }
+  function resolveCreditInvoiceNumber(value: string) {
+    setCreditInvoiceNumber(value);
+    const target = eligibleCreditInvoices.find((invoice) => invoice.number.toLowerCase() === value.trim().toLowerCase());
+    setCreditInvoiceId(target?.id ?? "");
+    setCreditAmount("");
   }
   function openCredit(invoice?: Invoice) {
     setNewMenu(false);
-    const target = invoice ?? bundle.invoices.find((item) => !["draft", "void", "cancelled"].includes(item.display_status) && Number(item.adjusted_total_amount) > 0);
-    if (!target) return setError("There is no issued Invoice with value remaining to credit.");
-    setCreditInvoice(target); setCreditOpen(true);
+    if (!eligibleCreditInvoices.length) return setError("There is no issued Invoice with value remaining to credit.");
+    setCreditReason(""); setCreditAmount("");
+    if (invoice) chooseCreditInvoice(invoice);
+    else { setCreditInvoiceId(""); setCreditInvoiceNumber(""); }
+    setCreditOpen(true);
   }
   async function saveCredit(event: FormEvent) {
     event.preventDefault();
-    if (!selectedCreditInvoice) return;
-    const lines = selectedCreditInvoice.invoice_lines.length
-      ? creditLines.filter((line) => line.selected).map((line) => ({ id: line.id, sourceInvoiceLineId: line.sourceInvoiceLineId, quantity: Number(line.quantity) }))
-      : [{ id: crypto.randomUUID(), amount: Number(legacyCreditAmount) }];
-    if (!lines.length) return setError("Select at least one Invoice line to credit.");
-    const ok = await dispatch("credit-note-create", { id: crypto.randomUUID(), invoiceId: selectedCreditInvoice.id, reason: creditReason, lines });
+    const invoice = eligibleCreditInvoices.find((item) => item.number.toLowerCase() === creditInvoiceNumber.trim().toLowerCase()) ?? selectedCreditInvoice;
+    if (!invoice) return setError("Enter a valid issued Invoice number before creating the Credit Note.");
+    const amount = Number(creditAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return setError("Enter a Credit amount greater than zero.");
+    if (amount > Number(invoice.adjusted_total_amount)) return setError(`Credit amount cannot exceed ${formatMoney(Number(invoice.adjusted_total_amount), invoice.currency)} for ${invoice.number}.`);
+    const ok = await dispatch("credit-note-create", {
+      id: crypto.randomUUID(),
+      invoiceId: invoice.id,
+      reason: creditReason,
+      lines: [{ id: crypto.randomUUID(), amount }],
+    });
     if (ok) setCreditOpen(false);
   }
 
@@ -470,7 +500,7 @@ export default function AccountsPage() {
               const isDraft = document.status === "draft";
               const invoice = document.document_type === "invoice" ? bundle.invoices.find((item) => item.id === document.id) : null;
               return <tr key={`${document.document_type}-${document.id}`}>
-                <td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Legacy draft" : document.number}</small></span></div></td>
+                <td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Legacy draft" : document.number}{invoice?.sales_order_reference ? ` · SO ${invoice.sales_order_reference}` : ""}</small></span></div></td>
                 <td>{document.customer_name}</td><td>{formatDate(document.document_date)}</td><td><Badge tone={isDraft ? "neutral" : document.status === "paid" || document.status === "cancelled" ? "green" : document.status === "overdue" ? "red" : "gold"}>{document.status.replaceAll("_", " ")}</Badge></td>
                 <td className={styles.money}>{document.document_type === "delivery_note" ? "—" : formatMoney(Number(document.total_amount ?? 0), document.currency ?? currency)}</td>
                 <td className={styles.money}>{document.document_type === "invoice" ? formatMoney(Number(document.balance_amount ?? 0), document.currency ?? currency) : "—"}</td>
@@ -517,16 +547,21 @@ export default function AccountsPage() {
             </div>)}</div>
             <div className={styles.invoiceSummary} aria-label="Invoice totals preview"><div><span>Subtotal / Net</span><strong>{formatMoney(invoicePreview.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(invoicePreview.vatAmount, currency)}</strong></div><div className={styles.invoiceGrand}><span>Total</span><strong>{formatMoney(invoicePreview.totalAmount, currency)}</strong></div></div>
           </section>
+          {invoiceNeedsSalesOrder ? <section className={styles.composerSection}><div className={styles.sectionLabel}>Sales Order reference</div><div className={styles.formGrid}><div className={`field ${styles.full}`}><label>SO number <span className={styles.customerFacing}>Required for Products</span></label><input required maxLength={64} value={invoiceSalesOrderReference} onChange={(event) => setInvoiceSalesOrderReference(event.target.value)} placeholder="SO123" /><small className={styles.helperText}>This Invoice contains a Product, so an SO number is mandatory. Mixed Product + Service Invoices follow the same rule. The SO is stored with the Invoice and inherited by any Credit Note.</small></div></div></section> : null}
           <section className={styles.composerSection}><div className={styles.sectionLabel}>Message & internal context</div><div className={styles.copyGrid}><div className="field"><label>Description <span className={styles.customerFacing}>Visible to customer</span></label><textarea required rows={5} value={invoiceDescription} onChange={(event) => setInvoiceDescription(event.target.value)} placeholder="What is this Invoice for? Add any wording the receiver should see." /><small className={styles.helperText}><strong>Printed on the Invoice.</strong> The receiver will see this text.</small></div><div className="field"><label>Notes <span className={styles.internalOnly}>Internal only</span></label><textarea rows={5} value={invoiceNotes} onChange={(event) => setInvoiceNotes(event.target.value)} placeholder="Private context for your team" /><small className={styles.helperText}><strong>Never printed on the Invoice.</strong> Use this only for internal context.</small></div></div></section>
           <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>Online: issued immediately. Offline: queued as Pending sync and numbered safely after reconnection.</span><div><Button type="button" variant="quiet" onClick={() => setInvoiceOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Create Invoice</Button></div></div>
         </form>
       </Dialog>
 
-      <Dialog className={styles.documentComposer} open={creditOpen} onClose={() => { if (!busy) setCreditOpen(false); }} title="New Credit Note" description="Correct or cancel an issued Invoice without deleting or rewriting its history. Every Credit Note remains linked to the Invoice it changes.">
+      <Dialog className={styles.documentComposer} open={creditOpen} onClose={() => { if (!busy) setCreditOpen(false); }} title="New Credit Note" description="Enter the Invoice number and the exact amount to credit. BDB OS preserves the original Invoice, VAT breakdown and any inherited SO reference.">
         <form onSubmit={saveCredit} className={`${styles.formStack} ${styles.composerForm}`}>
-          <section className={styles.composerSection}><div className={styles.formGrid}><div className={`field ${styles.full}`}><label>Invoice to credit</label><select value={creditInvoiceId} onChange={(event) => { const invoice = bundle.invoices.find((item) => item.id === event.target.value); if (invoice) setCreditInvoice(invoice); }}>{bundle.invoices.filter((invoice) => !["draft", "void", "cancelled"].includes(invoice.display_status) && Number(invoice.adjusted_total_amount) > 0).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.number} · {formatMoney(Number(invoice.adjusted_total_amount ?? invoice.total_amount), invoice.currency)}</option>)}</select></div><div className={`field ${styles.full}`}><label>Reason <span className={styles.customerFacing}>Printed on Credit Note</span></label><textarea required minLength={5} rows={3} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Why is this amount being credited?" /></div></div></section>
-          <section className={styles.composerSection}><div className={styles.sectionLabel}>Items being credited</div>{selectedCreditInvoice?.invoice_lines.length ? <div className={styles.selectionList}>{creditLines.map((line, index) => <label key={line.id} className={styles.selectionRow}><input type="checkbox" checked={line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, selected: event.target.checked } : item))} /><span><strong>{line.description}</strong><small>Quantity to credit</small></span><input type="number" min="0.001" step="0.001" value={line.quantity} disabled={!line.selected} onChange={(event) => setCreditLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item))} /></label>)}</div> : <div className="field"><label>Credit amount</label><input required type="number" min="0.01" step="0.01" max={selectedCreditInvoice?.adjusted_total_amount ?? selectedCreditInvoice?.total_amount} value={legacyCreditAmount} onChange={(event) => setLegacyCreditAmount(event.target.value)} /><small className={styles.helperText}>This historical Invoice has no stored line detail, so BDB OS preserves it and records the Credit Note as an explicit adjustment.</small></div>}</section>
-          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>A full Credit Note cancels the Invoice economically while preserving both records.</span><div><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy)}>Create Credit Note</Button></div></div>
+          <section className={styles.composerSection}><div className={styles.formGrid}>
+            <div className={`field ${styles.full}`}><label>Invoice number</label><input required list="credit-invoice-options" value={creditInvoiceNumber} onChange={(event) => resolveCreditInvoiceNumber(event.target.value)} placeholder="INV001" autoComplete="off" /><datalist id="credit-invoice-options">{eligibleCreditInvoices.map((invoice) => <option key={invoice.id} value={invoice.number}>{invoice.number} · {formatMoney(Number(invoice.adjusted_total_amount), invoice.currency)}</option>)}</datalist><small className={styles.helperText}>Enter the issued Invoice you want to correct. BDB OS resolves the authoritative record rather than creating a standalone Credit Note.</small></div>
+            {selectedCreditInvoice?.sales_order_reference ? <div className={`field ${styles.full}`}><label>SO number <span className={styles.internalOnly}>Inherited from Invoice</span></label><input readOnly value={selectedCreditInvoice.sales_order_reference} /><small className={styles.helperText}>This SO relationship is locked to {selectedCreditInvoice.number}; it does not need to be retyped and cannot be removed from this Credit Note.</small></div> : null}
+          </div></section>
+          {selectedCreditInvoice ? <section className={styles.composerSection}><div className={styles.sectionLabel}>Credit amount</div><div className={styles.formGrid}><div className="field"><label>Amount to credit</label><input required type="number" min="0.01" step="0.01" max={selectedCreditInvoice.adjusted_total_amount} value={creditAmount} onChange={(event) => setCreditAmount(event.target.value)} /><small className={styles.helperText}>Enter any amount up to the Invoice&apos;s remaining uncredited value.</small></div><div className="field"><label>Remaining after credit</label><input readOnly value={formatMoney(projectedCreditBalance, selectedCreditInvoice.currency)} /><small className={styles.helperText}>Full credit economically cancels the Invoice; a smaller credit leaves this value available.</small></div></div><div className={styles.invoiceSummary} aria-label="Credit Note preview"><div><span>Invoice value remaining</span><strong>{formatMoney(Number(selectedCreditInvoice.adjusted_total_amount), selectedCreditInvoice.currency)}</strong></div><div className={styles.invoiceGrand}><span>Credit Note</span><strong>{formatMoney(Number.isFinite(enteredCreditAmount) ? Math.max(enteredCreditAmount, 0) : 0, selectedCreditInvoice.currency)}</strong></div></div></section> : null}
+          <section className={styles.composerSection}><div className="field"><label>Reason <span className={styles.customerFacing}>Printed on Credit Note</span></label><textarea required minLength={5} rows={3} value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Why is this amount being credited?" /></div></section>
+          <div className={`${styles.dialogActions} ${styles.stickyActions}`}><span className={styles.saveHint}>BDB OS allocates the entered amount across the Invoice&apos;s remaining authoritative VAT values and reconciles the Credit Note exactly.</span><div><Button type="button" variant="quiet" onClick={() => setCreditOpen(false)}>Cancel</Button><Button type="submit" disabled={Boolean(busy) || !selectedCreditInvoice || !creditAmount}>Create Credit Note</Button></div></div>
         </form>
       </Dialog>
 
