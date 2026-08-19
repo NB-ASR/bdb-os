@@ -55,7 +55,7 @@ select ok(
     'allocation_factor := target_amount / remaining_source_total'
     in lower(pg_get_functiondef('private.write_credit_note_amount_lines(uuid,uuid,uuid,numeric)'::regprocedure))
   ) > 0,
-  'Amount-based Credit Notes allocate across remaining Invoice line value'
+  'Historical amount-credit implementation remains readable for migration history'
 );
 
 select ok(
@@ -63,15 +63,19 @@ select ok(
     'totals.total <> target_amount'
     in lower(pg_get_functiondef('private.write_credit_note_amount_lines(uuid,uuid,uuid,numeric)'::regprocedure))
   ) > 0,
-  'Amount-based Credit Notes must reconcile exactly to the requested amount'
+  'Historical amount-credit implementation retains its exact-allocation safeguard'
 );
 
 select ok(
   position(
-    'p_lines->0->>''amount'''
+    'credit notes cannot deduct an arbitrary amount'
+    in lower(pg_get_functiondef('private.write_credit_note_lines(uuid,uuid,uuid,jsonb)'::regprocedure))
+  ) > 0
+  and position(
+    'write_credit_note_lines_by_quantity'
     in lower(pg_get_functiondef('private.write_credit_note_lines(uuid,uuid,uuid,jsonb)'::regprocedure))
   ) > 0,
-  'Credit Note writer supports amount-first commands while retaining the legacy quantity path'
+  'Credit Note writer rejects money-first commands and uses the quantity-backed path'
 );
 
 select ok(
