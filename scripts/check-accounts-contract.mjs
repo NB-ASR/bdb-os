@@ -6,9 +6,21 @@ const paymentSchema = await readFile("supabase/release-sources/vanita-integratio
 const views = await readFile("supabase/release-sources/vanita-integration-20260813/20260729161500_accounts_balance_views_security.sql", "utf8");
 const invoiceCommands = await readFile("supabase/release-sources/vanita-integration-20260813/20260729162000_accounts_invoice_commands.sql", "utf8");
 const paymentCommands = await readFile("supabase/release-sources/vanita-integration-20260813/20260729162500_accounts_payment_commands.sql", "utf8");
+const scalabilityMigration = await readFile("supabase/migrations/20260819221325_accounts_scalable_registers.sql", "utf8");
+const invoiceCursorMigration = await readFile("supabase/migrations/20260819222047_accounts_invoice_register_cursor.sql", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
+const overviewApi = await readFile("src/app/api/accounts/overview/route.ts", "utf8");
+const invoicesApi = await readFile("src/app/api/accounts/invoices/route.ts", "utf8");
+const invoiceDetailApi = await readFile("src/app/api/accounts/invoices/[id]/route.ts", "utf8");
+const paymentsApi = await readFile("src/app/api/accounts/payments/route.ts", "utf8");
+const customersApi = await readFile("src/app/api/accounts/customers/route.ts", "utf8");
+const creditNotesApi = await readFile("src/app/api/accounts/credit-notes/route.ts", "utf8");
+const deliveryNotesApi = await readFile("src/app/api/accounts/delivery-notes/route.ts", "utf8");
 const finalDocumentsApi = await readFile("src/app/api/accounts/final-documents/route.ts", "utf8");
-const page = await readFile("src/app/accounts/page.tsx", "utf8");
+const overviewPage = await readFile("src/app/accounts/page.tsx", "utf8");
+const operationsPage = await readFile("src/app/accounts/operations/page.tsx", "utf8");
+const invoiceRegister = await readFile("src/app/accounts/sales/invoices/page.tsx", "utf8");
+const invoiceDetail = await readFile("src/app/accounts/sales/invoices/[id]/page.tsx", "utf8");
 const queue = await readFile("src/lib/modules/accounts-queue.ts", "utf8");
 const salesLayout = await readFile("src/app/sales/layout.tsx", "utf8");
 
@@ -48,17 +60,54 @@ assert.match(api, /ACCOUNTS_STATE_CONFLICT/i);
 assert.match(finalDocumentsApi, /catalogueInvoiceLines/);
 assert.match(finalDocumentsApi, /quantityCreditLines/);
 
+// Write-side financial commands remain unchanged and offline-first during the workspace split.
 assert.match(queue, /bdb-accounts-queue-v1/i);
 assert.match(queue, /for \(const command of readAccountsQueue/i);
 assert.match(queue, /break;/i);
-assert.match(page, /enqueueAccountsCommand/i);
-assert.match(page, /Running balance = issued Invoices minus Credit Notes and Payments/);
-assert.match(page, /unallocated_credit/i);
-assert.match(page, /Original total/);
-assert.match(page, /Credits/);
-assert.match(page, /Balance/);
-assert.doesNotMatch(page, /reconcile|bank transaction/i, "The simplified Accounts surface must not imply Banking reconciliation.");
-assert.doesNotMatch(page, /markInvoicePaid|Approve paid/i);
+assert.match(operationsPage, /enqueueAccountsCommand/i);
+assert.match(operationsPage, /Running balance = issued Invoices minus Credit Notes and Payments/);
+assert.match(operationsPage, /Original total/);
+assert.match(operationsPage, /Credits/);
+assert.match(operationsPage, /Balance/);
+assert.doesNotMatch(operationsPage, /markInvoicePaid|Approve paid/i);
 assert.match(salesLayout, /Invoices & Payments/i);
 
-console.log("Accounts keeps immutable issued documents, separate Payments/Credits and derived customer balances under the catalogue-only workflow.");
+// Accounts now has a scalable read shell instead of one browser-loaded financial bundle.
+assert.match(overviewPage, /Financial control without the clutter/);
+assert.match(overviewPage, /\/accounts\/sales\/invoices/);
+assert.match(overviewPage, /\/accounts\/payments/);
+assert.match(overviewPage, /\/accounts\/customers/);
+assert.doesNotMatch(overviewPage, /invoice_account_balances/);
+assert.match(overviewApi, /accounts_workspace_summary/);
+assert.match(overviewApi, /\.limit\(8\)/);
+
+for (const boundedApi of [invoicesApi, paymentsApi, creditNotesApi, deliveryNotesApi]) {
+  assert.match(boundedApi, /pageSize/);
+  assert.match(boundedApi, /\.limit\(limit \+ 1\)/);
+  assert.match(boundedApi, /nextCursor/);
+}
+assert.match(invoicesApi, /\.order\("created_at"/);
+assert.match(invoicesApi, /createdAt/);
+assert.match(invoicesApi, /customer_name_snapshot\.ilike/);
+assert.match(paymentsApi, /\.order\("received_at"/);
+assert.match(customersApi, /\.range\(from, to\)/);
+assert.match(customersApi, /workspace_settings/);
+assert.match(invoiceRegister, /50/);
+assert.match(invoiceRegister, /nextCursor/);
+assert.match(invoiceDetailApi, /invoice_lines\(\*\)/);
+assert.match(invoiceDetailApi, /payment_allocations/);
+assert.match(invoiceDetailApi, /credit_notes/);
+assert.match(invoiceDetailApi, /delivery_notes/);
+assert.match(invoiceDetail, /Original Invoice/);
+
+assert.match(scalabilityMigration, /create extension if not exists pg_trgm/);
+assert.match(scalabilityMigration, /invoices_workspace_issued_cursor_idx/);
+assert.match(scalabilityMigration, /payments_workspace_received_cursor_idx/);
+assert.match(scalabilityMigration, /gin_trgm_ops/);
+assert.match(scalabilityMigration, /create or replace view public\.accounts_workspace_summary/);
+assert.match(scalabilityMigration, /security_invoker = true/);
+assert.match(scalabilityMigration, /revoke all on public\.accounts_workspace_summary from anon/);
+assert.match(invoiceCursorMigration, /invoices_workspace_created_cursor_idx/);
+assert.match(invoiceCursorMigration, /workspace_id, created_at desc, id desc/);
+
+console.log("Accounts preserves immutable financial commands while high-volume reads use bounded registers, dedicated detail loading and indexed database search.");

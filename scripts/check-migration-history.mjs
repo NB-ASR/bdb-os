@@ -70,6 +70,8 @@ const canonicalProductionHistory = [
   "20260819122420_accounts_partial_credit_sales_order.sql",
   "20260819132042_accounts_catalogue_credit_rules.sql",
   "20260819145020_business_document_branding_snapshots.sql",
+  "20260819221325_accounts_scalable_registers.sql",
+  "20260819222047_accounts_invoice_register_cursor.sql",
 ];
 
 const pendingMigrations = [];
