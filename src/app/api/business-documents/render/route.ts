@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { formatDocumentDate } from "@/lib/format";
 import { CommandError, requireWorkspaceCommand, runCommand } from "@/lib/server/command";
 import {
   businessDocumentHtml,
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
       const lines = ((row.invoice_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
         kind: "invoice", title: "Invoice", number: String(row.number), draft: String(row.status) === "draft",
-        date: String(row.issued_at), supplyDate: row.supply_date ? String(row.supply_date) : null,
+        date: formatDocumentDate(String(row.issued_at)), supplyDate: row.supply_date ? formatDocumentDate(String(row.supply_date)) : null,
         description: String(row.description ?? "") || null,
         currency: String(row.currency),
         supplier: {
@@ -95,7 +96,7 @@ export async function GET(request: Request) {
       const lines = ((row.credit_note_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
         kind: "credit_note", title: "Credit Note", number: String(row.number), draft: String(row.status) === "draft",
-        date: String(row.issued_at ?? String(row.created_at).slice(0, 10)), originalInvoiceNumber: String(invoiceResult.data?.number ?? ""), reason: String(row.reason), currency: String(row.currency),
+        date: formatDocumentDate(String(row.issued_at ?? String(row.created_at).slice(0, 10))), originalInvoiceNumber: String(invoiceResult.data?.number ?? ""), reason: String(row.reason), currency: String(row.currency),
         supplier: {
           name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
           address: String(row.supplier_address_snapshot ?? settings.business_address ?? ""), vatNumber: String(row.supplier_vat_number_snapshot ?? settings.vat_number ?? "") || null,
@@ -120,7 +121,7 @@ export async function GET(request: Request) {
       }
       const lines = ((row.delivery_note_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
-        kind: "delivery_note", title: "Delivery Note", number: String(row.number), draft: String(row.status) === "draft", date: String(row.delivery_date), originalInvoiceNumber,
+        kind: "delivery_note", title: "Delivery Note", number: String(row.number), draft: String(row.status) === "draft", date: formatDocumentDate(String(row.delivery_date)), originalInvoiceNumber,
         supplier: { name: String(workspaceResult.data.legal_name ?? workspaceResult.data.name), address: String(settings.business_address ?? ""), vatNumber: String(settings.vat_number ?? "") || null, registrationNumber: String(settings.company_registration_number ?? "") || null },
         customer: { name: String(row.customer_name_snapshot ?? customerResult.data?.name ?? "Customer"), address: String(customerResult.data?.address ?? "") || null, vatNumber: String(customerResult.data?.vat_number ?? "") || null },
         deliveryAddress: String(row.delivery_address ?? customerResult.data?.address ?? "") || null,

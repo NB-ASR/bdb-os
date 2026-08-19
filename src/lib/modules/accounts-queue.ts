@@ -10,6 +10,7 @@ export type AccountsCommandAction =
   | "delivery-note-create"
   | "delivery-note-update"
   | "delivery-note-issue"
+  | "document-note-add"
   | "payment-record"
   | "payment-allocate"
   | "allocation-reverse"
@@ -26,6 +27,13 @@ export type AccountsQueuedCommand = {
 };
 
 const QUEUE_PREFIX = "bdb-accounts-queue-v1";
+const FINAL_DOCUMENT_ACTIONS = new Set<AccountsCommandAction>([
+  "invoice-create-manual",
+  "invoice-create-sale",
+  "credit-note-create",
+  "delivery-note-create",
+  "document-note-add",
+]);
 const ACTIONS = new Set<AccountsCommandAction>([
   "invoice-create-manual",
   "invoice-create-sale",
@@ -38,6 +46,7 @@ const ACTIONS = new Set<AccountsCommandAction>([
   "delivery-note-create",
   "delivery-note-update",
   "delivery-note-issue",
+  "document-note-add",
   "payment-record",
   "payment-allocate",
   "allocation-reverse",
@@ -114,7 +123,10 @@ export function failAccountsCommand(workspaceId: string, commandId: string, erro
 }
 
 export async function submitAccountsCommand(command: AccountsQueuedCommand) {
-  const response = await fetch("/api/accounts", {
+  const endpoint = FINAL_DOCUMENT_ACTIONS.has(command.action)
+    ? "/api/accounts/final-documents"
+    : "/api/accounts";
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
