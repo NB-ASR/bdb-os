@@ -19,6 +19,7 @@ type CustomerBalance = {
 
 type PageResult = {
   workspaceId: string;
+  currency: string;
   rows: CustomerBalance[];
   page: number;
   pageSize: number;
@@ -27,6 +28,7 @@ type PageResult = {
 
 export default function AccountsCustomersPage() {
   const [workspaceId, setWorkspaceId] = useState("");
+  const [currency, setCurrency] = useState("EUR");
   const [rows, setRows] = useState<CustomerBalance[]>([]);
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
@@ -55,6 +57,7 @@ export default function AccountsCustomersPage() {
       if (!response.ok || !result.ok) throw new Error(result.error ?? "Customer balances could not be loaded.");
       const next = result.result as PageResult;
       setRows(next.rows ?? []);
+      setCurrency(next.currency || "EUR");
       setPage(next.page);
       setHasMore(Boolean(next.hasMore));
     } catch (loadError) {
@@ -67,7 +70,9 @@ export default function AccountsCustomersPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => void requestPage(1, "", "all"), 0);
     return () => window.clearTimeout(timer);
-  }, []); // initial workspace load only
+    // Initial workspace load is intentionally not coupled to filter state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function applyFilters() {
     const nextSearch = draftQ.trim();
@@ -104,7 +109,7 @@ export default function AccountsCustomersPage() {
 
       <section className={styles.tableCard}>
         <div className={styles.tableScroll}><table className={styles.table}><thead><tr><th>Customer</th><th>Code</th><th>Status</th><th className={styles.money}>Outstanding</th><th className={styles.money}>Credit</th><th className={styles.money}>Net balance</th><th>Profile</th></tr></thead>
-        <tbody>{rows.map((balance) => <tr key={balance.customer_id}><td><strong>{balance.customer_name}</strong>{balance.company ? <span className={styles.subtle}>{balance.company}</span> : null}</td><td>{balance.customer_code}</td><td><span className={styles.status} data-tone={balance.balance_status === "amount_due" ? "attention" : balance.balance_status === "customer_credit" ? "good" : undefined}>{balance.balance_status.replaceAll("_", " ")}</span></td><td className={styles.money}>{formatMoney(Number(balance.outstanding_amount), "EUR")}</td><td className={styles.money}>{formatMoney(Number(balance.unallocated_credit), "EUR")}</td><td className={styles.money}><strong>{formatMoney(Number(balance.net_balance), "EUR")}</strong></td><td><Link className={styles.quietLink} href={`/customers/${balance.customer_id}`}>Open</Link></td></tr>)}</tbody></table></div>
+        <tbody>{rows.map((balance) => <tr key={balance.customer_id}><td><strong>{balance.customer_name}</strong>{balance.company ? <span className={styles.subtle}>{balance.company}</span> : null}</td><td>{balance.customer_code}</td><td><span className={styles.status} data-tone={balance.balance_status === "amount_due" ? "attention" : balance.balance_status === "customer_credit" ? "good" : undefined}>{balance.balance_status.replaceAll("_", " ")}</span></td><td className={styles.money}>{formatMoney(Number(balance.outstanding_amount), currency)}</td><td className={styles.money}>{formatMoney(Number(balance.unallocated_credit), currency)}</td><td className={styles.money}><strong>{formatMoney(Number(balance.net_balance), currency)}</strong></td><td><Link className={styles.quietLink} href={`/customers/${balance.customer_id}`}>Open</Link></td></tr>)}</tbody></table></div>
         {!rows.length ? <div className={styles.emptyState}>{loading ? "Loading customer balances…" : "No customers match these filters."}</div> : null}
         <div className={styles.pagination}><span className={styles.helper}>{loading ? <><RefreshCw size={13} /> Refreshing…</> : `Page ${page} · ${rows.length} rows`}</span><div className={styles.inlineActions}><button disabled={page <= 1 || loading} onClick={() => void requestPage(page - 1)}><ArrowLeft size={14} /> Back</button><button disabled={!hasMore || loading} onClick={() => void requestPage(page + 1)}>Next <ArrowRight size={14} /></button></div></div>
       </section>
