@@ -1,24 +1,18 @@
 begin;
 
 -- BDB OS V1 business-document lifecycle hardening.
--- Financial documents are final-first in the normal UI. Legacy drafts remain supported
--- for backwards compatibility, but new create flows can create + issue atomically.
--- Delivery Notes may be standalone and post-issue operational comments are stored
--- separately so the issued document itself remains immutable.
+-- New UI commands create + issue atomically. Legacy drafts remain readable/issuable.
+-- Issued documents stay immutable. Operational comments live in an append-only history.
 
-alter table public.delivery_notes
-  drop constraint if exists delivery_notes_source_shape;
-alter table public.delivery_notes
-  add constraint delivery_notes_source_shape check (
-    (((source_invoice_id is not null))::integer + ((source_sale_id is not null))::integer) <= 1
-  );
+alter table public.delivery_notes drop constraint if exists delivery_notes_source_shape;
+alter table public.delivery_notes add constraint delivery_notes_source_shape check (
+  (((source_invoice_id is not null))::integer + ((source_sale_id is not null))::integer) <= 1
+);
 
-alter table public.delivery_note_lines
-  drop constraint if exists delivery_note_lines_source_shape;
-alter table public.delivery_note_lines
-  add constraint delivery_note_lines_source_shape check (
-    (((source_invoice_line_id is not null))::integer + ((source_sale_line_id is not null))::integer) <= 1
-  );
+alter table public.delivery_note_lines drop constraint if exists delivery_note_lines_source_shape;
+alter table public.delivery_note_lines add constraint delivery_note_lines_source_shape check (
+  (((source_invoice_line_id is not null))::integer + ((source_sale_line_id is not null))::integer) <= 1
+);
 
 create table if not exists public.business_document_notes (
   id uuid primary key,
@@ -38,6 +32,7 @@ alter table public.business_document_notes enable row level security;
 revoke all on public.business_document_notes from public, anon, authenticated;
 grant select on public.business_document_notes to authenticated;
 
+drop policy if exists "Business document notes Accounts read" on public.business_document_notes;
 create policy "Business document notes Accounts read"
 on public.business_document_notes for select to authenticated
 using (private.has_workspace_permission(workspace_id, 'accounts', 'view'));
@@ -66,19 +61,16 @@ begin
   if p_note is null or char_length(trim(p_note)) not between 1 and 2000 then
     raise exception 'Business document note is invalid';
   end if;
-  if not private.accounts_actor_can_write(p_workspace_id, p_actor_user_id, 'edit') then
+  if not private.accounts_actor_can_write(p_workspace_id,p_actor_user_id,'edit') then
     raise exception 'Accounts document note access denied';
   end if;
 
-  if p_document_type = 'invoice' then
-    select number into document_number from public.invoices
-      where workspace_id=p_workspace_id and id=p_document_id;
-  elsif p_document_type = 'credit_note' then
-    select number into document_number from public.credit_notes
-      where workspace_id=p_workspace_id and id=p_document_id;
+  if p_document_type='invoice' then
+    select number into document_number from public.invoices where workspace_id=p_workspace_id and id=p_document_id;
+  elsif p_document_type='credit_note' then
+    select number into document_number from public.credit_notes where workspace_id=p_workspace_id and id=p_document_id;
   else
-    select number into document_number from public.delivery_notes
-      where workspace_id=p_workspace_id and id=p_document_id;
+    select number into document_number from public.delivery_notes where workspace_id=p_workspace_id and id=p_document_id;
   end if;
   if document_number is null then raise exception 'Business document not found'; end if;
 
@@ -87,7 +79,8 @@ begin
   returning * into note_record;
 
   insert into public.activity_items(workspace_id,actor_user_id,action,detail,tone,entity_type,entity_id,command_id,metadata)
-  values(p_workspace_id,p_actor_user_id,'Document note added',document_number || ' · ' || left(trim(p_note),120),'neutral',p_document_type,p_document_id::text,p_command_id,
+  values(p_workspace_id,p_actor_user_id,'Document note added',document_number || ' · ' || left(trim(p_note),120),
+    'neutral',p_document_type,p_document_id::text,p_command_id,
     jsonb_build_object('document_type',p_document_type,'document_number',document_number));
 
   return jsonb_build_object('note',to_jsonb(note_record));
@@ -96,6 +89,25 @@ $$;
 
 revoke all on function public.add_business_document_note(uuid,uuid,text,uuid,text,uuid,uuid) from public, anon, authenticated;
 grant execute on function public.add_business_document_note(uuid,uuid,text,uuid,text,uuid,uuid) to service_role;
+
+create or replace function private.reject_direct_invoice_void()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if old.status <> 'void'::public.invoice_status and new.status = 'void'::public.invoice_status then
+    raise exception 'Issued Invoices can only be cancelled by an issued Credit Note';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists invoices_reject_direct_void on public.invoices;
+create trigger invoices_reject_direct_void
+before update of status on public.invoices
+for each row execute function private.reject_direct_invoice_void();
 
 create or replace function public.create_and_issue_invoice_command(
   p_workspace_id uuid,
@@ -199,6 +211,7 @@ declare
   created jsonb;
   issued jsonb;
   created_version integer;
+  existing_result jsonb;
   customer_record public.customers;
   settings_record public.workspace_settings;
   note_record public.delivery_notes;
@@ -225,6 +238,9 @@ begin
   end if;
 
   if p_source_type <> 'manual' then raise exception 'Delivery Note source type is invalid'; end if;
+  select result into existing_result from public.accounts_command_receipts
+  where workspace_id=p_workspace_id and idempotency_key=p_idempotency_key;
+  if existing_result is not null then return existing_result; end if;
   if not private.accounts_actor_can_write(p_workspace_id,p_actor_user_id,'create') then raise exception 'Accounts Delivery Note access denied'; end if;
   if p_customer_id is null then raise exception 'Delivery Note Customer is required'; end if;
   if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) < 1 or jsonb_array_length(p_lines) > 100 then
@@ -255,23 +271,21 @@ begin
     if code_value='' then code_value := 'LINE-' || lpad(line_number_value::text,2,'0'); end if;
     description_value := trim(coalesce(line_value->>'description',''));
     begin quantity_value := (line_value->>'quantity')::numeric; exception when others then raise exception 'Delivery Note quantity is invalid'; end;
-    if char_length(code_value) > 64 then raise exception 'Delivery Note line code is invalid'; end if;
-    if description_value='' or char_length(description_value) > 240 then raise exception 'Delivery Note line description is invalid'; end if;
-    if quantity_value is null or quantity_value <= 0 or quantity_value > 100000 then raise exception 'Delivery Note quantity is invalid'; end if;
+    if char_length(code_value)>64 then raise exception 'Delivery Note line code is invalid'; end if;
+    if description_value='' or char_length(description_value)>240 then raise exception 'Delivery Note line description is invalid'; end if;
+    if quantity_value is null or quantity_value<=0 or quantity_value>100000 then raise exception 'Delivery Note quantity is invalid'; end if;
 
     insert into public.delivery_note_lines(
       id,workspace_id,delivery_note_id,line_number,line_type,code_snapshot,description_snapshot,quantity
-    ) values(
-      line_id,p_workspace_id,p_delivery_note_id,line_number_value,'manual',code_value,description_value,quantity_value
-    );
+    ) values(line_id,p_workspace_id,p_delivery_note_id,line_number_value,'manual',code_value,description_value,quantity_value);
   end loop;
 
   result_payload := jsonb_build_object('action','issue','deliveryNote',to_jsonb(note_record));
   insert into public.accounts_command_receipts(workspace_id,idempotency_key,entity_type,entity_id,action,result)
-  values(p_workspace_id,p_idempotency_key,'delivery_note',p_delivery_note_id,'issue_delivery_note',result_payload)
-  on conflict (workspace_id,idempotency_key) do nothing;
+  values(p_workspace_id,p_idempotency_key,'delivery_note',p_delivery_note_id,'issue_delivery_note',result_payload);
   insert into public.activity_items(workspace_id,actor_user_id,action,detail,tone,entity_type,entity_id,command_id,metadata)
-  values(p_workspace_id,p_actor_user_id,'Standalone Delivery Note issued',note_record.number || ' · ' || note_record.customer_name_snapshot,'blue','delivery_note',p_delivery_note_id::text,p_command_id,
+  values(p_workspace_id,p_actor_user_id,'Standalone Delivery Note issued',note_record.number || ' · ' || note_record.customer_name_snapshot,
+    'blue','delivery_note',p_delivery_note_id::text,p_command_id,
     jsonb_build_object('customer_id',note_record.customer_id,'standalone',true,'idempotency_key',p_idempotency_key));
   return result_payload;
 end;
@@ -279,64 +293,5 @@ $$;
 
 revoke all on function public.create_and_issue_delivery_note_command(uuid,uuid,text,uuid,uuid,text,uuid,uuid,date,text,text,jsonb) from public, anon, authenticated;
 grant execute on function public.create_and_issue_delivery_note_command(uuid,uuid,text,uuid,uuid,text,uuid,uuid,date,text,text,jsonb) to service_role;
-
--- A fully credited invoice is cancelled through its Credit Note history, never by deletion/voiding.
-create or replace view public.invoice_account_balances as
-with allocation_totals as (
-  select allocation.workspace_id, allocation.invoice_id,
-         round(coalesce(sum(allocation.amount_delta),0),4) as allocated_amount
-  from public.payment_allocations allocation
-  join public.payments payment on payment.workspace_id=allocation.workspace_id and payment.id=allocation.payment_id
-  where payment.status='posted'
-  group by allocation.workspace_id, allocation.invoice_id
-), credit_totals as (
-  select workspace_id, invoice_id, round(coalesce(sum(total_amount),0),4) as credited_amount
-  from public.credit_notes where status='issued'
-  group by workspace_id, invoice_id
-)
-select invoice.*,
-  coalesce(allocation.allocated_amount,0)::numeric(14,4) as allocated_amount,
-  (case when invoice.status::text in ('draft','void') then 0
-        else greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0)-coalesce(allocation.allocated_amount,0),4),0) end)::numeric(14,4) as outstanding_amount,
-  case
-    when invoice.status::text='void' then 'void'
-    when invoice.status::text='draft' then 'draft'
-    when coalesce(credit.credited_amount,0) >= invoice.total_amount then 'cancelled'
-    when greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0)-coalesce(allocation.allocated_amount,0),4),0)=0 then 'paid'
-    when coalesce(allocation.allocated_amount,0)>0 then 'partially_paid'
-    else 'unpaid'
-  end as payment_status,
-  case
-    when invoice.status::text='void' then 'void'
-    when invoice.status::text='draft' then 'draft'
-    when coalesce(credit.credited_amount,0) >= invoice.total_amount then 'cancelled'
-    when greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0)-coalesce(allocation.allocated_amount,0),4),0)=0 then 'paid'
-    when invoice.due_at < current_date then 'overdue'
-    else 'sent'
-  end as display_status,
-  coalesce(credit.credited_amount,0)::numeric(14,4) as credited_amount,
-  greatest(round(invoice.total_amount-coalesce(credit.credited_amount,0),4),0)::numeric(14,4) as adjusted_total_amount,
-  (case when invoice.status::text in ('draft','void') then 0
-        else greatest(round(coalesce(allocation.allocated_amount,0)-greatest(invoice.total_amount-coalesce(credit.credited_amount,0),0),4),0) end)::numeric(14,4) as overallocated_credit
-from public.invoices invoice
-left join allocation_totals allocation on allocation.workspace_id=invoice.workspace_id and allocation.invoice_id=invoice.id
-left join credit_totals credit on credit.workspace_id=invoice.workspace_id and credit.invoice_id=invoice.id;
-
-create or replace view public.business_document_index as
-select invoice.workspace_id,'invoice'::text as document_type,invoice.id,invoice.number,invoice.customer_id,
-       invoice.customer_name_snapshot as customer_name,invoice.issued_at as document_date,invoice.display_status as status,
-       invoice.currency,invoice.adjusted_total_amount as total_amount,invoice.outstanding_amount as balance_amount,
-       invoice.id as source_invoice_id,invoice.source_sale_id,null::text as reason
-from public.invoice_account_balances invoice
-union all
-select note.workspace_id,'credit_note'::text,note.id,note.number,note.customer_id,note.customer_name_snapshot,note.issued_at,note.status,
-       note.currency,note.total_amount,null::numeric,note.invoice_id,null::uuid,note.reason
-from public.credit_notes note
-union all
-select note.workspace_id,'delivery_note'::text,note.id,note.number,note.customer_id,note.customer_name_snapshot,note.delivery_date,note.status,
-       null::text,null::numeric,null::numeric,note.source_invoice_id,note.source_sale_id,null::text
-from public.delivery_notes note;
-
-grant select on public.invoice_account_balances, public.business_document_index to authenticated;
 
 commit;
