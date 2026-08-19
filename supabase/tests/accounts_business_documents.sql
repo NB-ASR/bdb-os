@@ -1,6 +1,6 @@
 begin;
 
-select plan(52);
+select plan(62);
 
 select has_table('public','business_document_sequences','Business document sequence table exists');
 select has_table('public','credit_notes','Credit Notes exist');
@@ -18,6 +18,12 @@ select has_column('public','customers','vat_number','Customer VAT identifier is 
 select has_column('public','invoices','supplier_vat_number_snapshot','Issued Invoices preserve supplier VAT identity');
 select has_column('public','invoices','customer_vat_number_snapshot','Issued Invoices preserve customer VAT identity');
 select has_column('public','invoices','final_number_assigned_at','Issued Invoices record authoritative number assignment');
+select has_column('public','invoices','supplier_logo_path_snapshot','Issued Invoices preserve supplier logo identity');
+select has_column('public','invoices','branding_snapshot_at','Issued Invoices record branding snapshot time');
+select has_column('public','credit_notes','supplier_logo_path_snapshot','Issued Credit Notes preserve supplier logo identity');
+select has_column('public','credit_notes','branding_snapshot_at','Issued Credit Notes record branding snapshot time');
+select has_column('public','delivery_notes','supplier_logo_path_snapshot','Issued Delivery Notes preserve supplier logo identity');
+select has_column('public','delivery_notes','branding_snapshot_at','Issued Delivery Notes record branding snapshot time');
 
 select ok((select relrowsecurity from pg_class where oid='public.credit_notes'::regclass),'Credit Notes use RLS');
 select ok((select relrowsecurity from pg_class where oid='public.credit_note_lines'::regclass),'Credit Note lines use RLS');
@@ -35,6 +41,7 @@ select ok(not has_table_privilege('authenticated','public.business_document_sequ
 select has_function('public','apply_credit_note_command',array['uuid','uuid','text','text','uuid','uuid','integer','uuid','text','jsonb'],'Credit Note trusted command exists');
 select has_function('public','apply_delivery_note_command',array['uuid','uuid','text','text','uuid','uuid','integer','text','uuid','date','text','text','jsonb'],'Delivery Note trusted command exists');
 select has_function('private','next_business_document_number',array['uuid','text','text','date'],'Sequential business document numbering exists');
+select has_function('private','current_custom_branding_logo_path',array['uuid'],'Issue-time branding resolver exists');
 select ok(not has_function_privilege('authenticated','public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)','EXECUTE'),'Browser cannot execute Credit Note RPC directly');
 select ok(has_function_privilege('service_role','public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)','EXECUTE'),'Service role can execute Credit Note RPC');
 select ok(not has_function_privilege('authenticated','public.apply_delivery_note_command(uuid,uuid,text,text,uuid,uuid,integer,text,uuid,date,text,text,jsonb)','EXECUTE'),'Browser cannot execute Delivery Note RPC directly');
@@ -45,6 +52,9 @@ select ok(position('series_year' in pg_get_functiondef('private.next_business_do
 select ok(position('on conflict' in lower(pg_get_functiondef('private.next_business_document_number(uuid,text,text,date)'::regprocedure)))>0,'Number generator increments atomically');
 select ok(exists(select 1 from pg_trigger where tgrelid='public.invoices'::regclass and tgname='invoices_assign_issue_identity' and not tgisinternal),'Invoice issue transition assigns legal identity and number');
 select ok(position('next_business_document_number' in pg_get_functiondef('private.assign_invoice_issue_identity()'::regprocedure))>0,'Invoice issue uses shared sequential numbering');
+select ok(exists(select 1 from pg_trigger where tgrelid='public.invoices'::regclass and tgname='invoices_snapshot_branding' and not tgisinternal),'Invoices snapshot branding at issue');
+select ok(exists(select 1 from pg_trigger where tgrelid='public.credit_notes'::regclass and tgname='credit_notes_snapshot_branding' and not tgisinternal),'Credit Notes snapshot branding at issue');
+select ok(exists(select 1 from pg_trigger where tgrelid='public.delivery_notes'::regclass and tgname='delivery_notes_snapshot_branding' and not tgisinternal),'Delivery Notes snapshot branding at issue');
 
 select ok(position('Credit Note quantity exceeds the uncredited Invoice quantity' in pg_get_functiondef('private.write_credit_note_lines_by_quantity(uuid,uuid,uuid,jsonb)'::regprocedure))>0,'Legacy quantity Credit Note path prevents line over-crediting');
 select ok(position('Credit Note exceeds the remaining Invoice value' in pg_get_functiondef('public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)'::regprocedure))>0,'Credit Note prevents total over-crediting at issue');

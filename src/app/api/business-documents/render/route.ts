@@ -53,12 +53,14 @@ export async function GET(request: Request) {
 
     const settings = (settingsResult.data ?? {}) as Record<string, unknown>;
     let model: BusinessDocumentModel;
+    let logoSnapshotPath: string | null = null;
 
     if (type === "invoice") {
       const invoiceResult = await supabase.from("invoice_account_balances").select("*,invoice_lines(*)").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
       if (invoiceResult.error) throw invoiceResult.error;
       const row = invoiceResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Invoice could not be found.", 404);
+      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       const lines = ((row.invoice_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
@@ -92,6 +94,7 @@ export async function GET(request: Request) {
       if (noteResult.error) throw noteResult.error;
       const row = noteResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Credit Note could not be found.", 404);
+      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
       const invoiceResult = await supabase.from("invoices").select("number,sales_order_reference").eq("workspace_id", workspaceId).eq("id", String(row.invoice_id)).maybeSingle();
       if (invoiceResult.error) throw invoiceResult.error;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
@@ -120,6 +123,7 @@ export async function GET(request: Request) {
       if (noteResult.error) throw noteResult.error;
       const row = noteResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Delivery Note could not be found.", 404);
+      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       let originalInvoiceNumber: string | null = null;
@@ -139,18 +143,24 @@ export async function GET(request: Request) {
       };
     }
 
-    const customBrandingEnabled = ((featureResult.data ?? []) as Array<{ feature_key: string; enabled: boolean }>).some((feature) => feature.feature_key === "custom_branding" && feature.enabled);
-    if (customBrandingEnabled) {
-      const admin = createAdminClient();
-      if (admin) {
+    const admin = createAdminClient();
+    let logoPath = model.draft ? null : logoSnapshotPath;
+
+    // Legacy drafts are not issued records, so they may preview today's enabled workspace branding.
+    // Issued documents never fall back to live branding: only their captured snapshot may render.
+    if (model.draft) {
+      const customBrandingEnabled = ((featureResult.data ?? []) as Array<{ feature_key: string; enabled: boolean }>).some((feature) => feature.feature_key === "custom_branding" && feature.enabled);
+      if (customBrandingEnabled && admin) {
         const theme = await admin.from("workspace_themes").select("client_logo_path").eq("workspace_id", workspaceId).maybeSingle();
-        const path = theme.data?.client_logo_path ? String(theme.data.client_logo_path) : "";
-        if (!theme.error && path) {
-          const signed = await admin.storage.from("workspace-assets").createSignedUrl(path, 1800);
-          if (!signed.error) model.logoUrl = signed.data?.signedUrl ?? null;
-        }
+        if (!theme.error) logoPath = theme.data?.client_logo_path ? String(theme.data.client_logo_path) : null;
       }
     }
+
+    if (logoPath && admin) {
+      const signed = await admin.storage.from("workspace-assets").createSignedUrl(logoPath, 1800);
+      if (!signed.error) model.logoUrl = signed.data?.signedUrl ?? null;
+    }
+
     return model;
   });
 
