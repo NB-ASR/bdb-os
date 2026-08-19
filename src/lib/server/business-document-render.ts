@@ -20,6 +20,7 @@ export type BusinessDocumentModel = {
   description?: string | null;
   supplyDate?: string | null;
   originalInvoiceNumber?: string | null;
+  salesOrderReference?: string | null;
   reason?: string | null;
   currency?: string | null;
   supplier: {
@@ -90,7 +91,7 @@ export function businessDocumentHtml(document: BusinessDocumentModel, printOnLoa
     </section>` : "";
 
   const legalWarning = document.draft ? `<div class="draft">DRAFT · Not an issued business document</div>` : "";
-  const customerBlock = `<section class="bill-block"><div><p class="block-label">Bill To</p><strong>${escapeHtml(document.customer.name)}</strong><p>${escapeHtml(document.customer.address ?? "")}</p>${document.customer.vatNumber ? `<p>VAT: ${escapeHtml(document.customer.vatNumber)}</p>` : ""}</div><div class="facts"><div><span>${escapeHtml(document.title)} No.</span><strong>${escapeHtml(document.draft ? "Draft" : document.number)}</strong></div><div><span>${document.kind === "delivery_note" ? "Delivery date" : `${escapeHtml(document.title)} date`}</span><strong>${escapeHtml(document.date)}</strong></div>${document.originalInvoiceNumber ? `<div><span>Original Invoice</span><strong>${escapeHtml(document.originalInvoiceNumber)}</strong></div>` : ""}${document.kind === "delivery_note" && document.deliveryAddress ? `<div><span>Deliver to</span><strong>${escapeHtml(document.deliveryAddress)}</strong></div>` : ""}</div></section>`;
+  const customerBlock = `<section class="bill-block"><div><p class="block-label">Bill To</p><strong>${escapeHtml(document.customer.name)}</strong><p>${escapeHtml(document.customer.address ?? "")}</p>${document.customer.vatNumber ? `<p>VAT: ${escapeHtml(document.customer.vatNumber)}</p>` : ""}</div><div class="facts"><div><span>${escapeHtml(document.title)} No.</span><strong>${escapeHtml(document.draft ? "Draft" : document.number)}</strong></div><div><span>${document.kind === "delivery_note" ? "Delivery date" : `${escapeHtml(document.title)} date`}</span><strong>${escapeHtml(document.date)}</strong></div>${document.originalInvoiceNumber ? `<div><span>Original Invoice</span><strong>${escapeHtml(document.originalInvoiceNumber)}</strong></div>` : ""}${document.salesOrderReference ? `<div><span>SO number</span><strong>${escapeHtml(document.salesOrderReference)}</strong></div>` : ""}${document.kind === "delivery_note" && document.deliveryAddress ? `<div><span>Deliver to</span><strong>${escapeHtml(document.deliveryAddress)}</strong></div>` : ""}</div></section>`;
   const customerFacingDescription = document.kind === "invoice" && document.description ? `<section class="invoice-description"><p class="block-label">Description</p><p>${escapeHtml(document.description)}</p></section>` : "";
   const creditReason = document.kind === "credit_note" && document.reason ? `<section class="invoice-description"><p class="block-label">Reason for credit</p><p>${escapeHtml(document.reason)}</p></section>` : "";
   const signature = document.kind === "invoice" ? `<section class="closing"><div class="powered"><img src="/bdb-mark.svg" alt=""><span>Powered by BDB</span></div><div class="signature"><div class="signature-line"></div><strong>Client signature</strong><span>Payment acknowledgement</span><div class="date-line"><span>Date</span><i></i></div></div></section>` : `<section class="closing"><div class="powered"><img src="/bdb-mark.svg" alt=""><span>Powered by BDB</span></div></section>`;
@@ -183,9 +184,15 @@ function documentPages(document: BusinessDocumentModel) {
       content.push(textCommand(448, 676, document.draft ? "DRAFT" : document.number, 9, true));
       content.push(textCommand(360, 659, `${document.kind === "delivery_note" ? "Delivery" : document.title} date:`, 8));
       content.push(textCommand(448, 659, document.date, 8));
+      let referenceY = 642;
       if (document.originalInvoiceNumber) {
-        content.push(textCommand(360, 642, "Original Invoice:", 8));
-        content.push(textCommand(448, 642, document.originalInvoiceNumber, 8, true));
+        content.push(textCommand(360, referenceY, "Original Invoice:", 8));
+        content.push(textCommand(448, referenceY, document.originalInvoiceNumber, 8, true));
+        referenceY -= 17;
+      }
+      if (document.salesOrderReference) {
+        content.push(textCommand(360, referenceY, "SO number:", 8));
+        content.push(textCommand(448, referenceY, document.salesOrderReference, 8, true));
       }
       if (document.draft) content.push(textCommand(48, 604, "DRAFT - Not an issued business document", 8, true));
       if (document.kind === "invoice" && document.description) {
