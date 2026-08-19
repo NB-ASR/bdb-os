@@ -65,7 +65,10 @@ const canonicalProductionHistory = [
   "20260818221234_accounts_invoice_header_reconcile.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260819101500_accounts_document_lifecycle_v1.sql",
+  "20260819102000_accounts_credit_cancellation_status.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
