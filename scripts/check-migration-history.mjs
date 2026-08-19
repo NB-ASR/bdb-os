@@ -68,6 +68,7 @@ const canonicalProductionHistory = [
 const pendingMigrations = [
   "20260819101500_accounts_document_lifecycle_v1.sql",
   "20260819102000_accounts_credit_cancellation_status.sql",
+  "20260819114500_accounts_credit_vat_and_numbering.sql",
 ];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
