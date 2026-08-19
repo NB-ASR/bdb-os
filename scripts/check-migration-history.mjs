@@ -67,11 +67,10 @@ const canonicalProductionHistory = [
   "20260819110134_accounts_credit_cancellation_status.sql",
   "20260819110205_accounts_credit_vat_and_numbering.sql",
   "20260819111532_accounts_invoice_total_precision_hotfix.sql",
+  "20260819122420_accounts_partial_credit_sales_order.sql",
 ];
 
-const pendingMigrations = [
-  "20260819130000_accounts_partial_credit_sales_order.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
