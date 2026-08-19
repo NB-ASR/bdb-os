@@ -40,6 +40,26 @@ async function signedLogo(admin: ReturnType<typeof adminClient>, path: string | 
   return signed.data?.signedUrl ?? null;
 }
 
+async function logoIsReferencedByIssuedDocument(admin: ReturnType<typeof adminClient>, path: string) {
+  const results = await Promise.all([
+    admin.from("invoices").select("id").eq("supplier_logo_path_snapshot", path).limit(1),
+    admin.from("credit_notes").select("id").eq("supplier_logo_path_snapshot", path).limit(1),
+    admin.from("delivery_notes").select("id").eq("supplier_logo_path_snapshot", path).limit(1),
+  ]);
+  if (results.some((result) => result.error)) {
+    // Deletion must fail safe. If reference status cannot be proven, retain the asset.
+    return true;
+  }
+  return results.some((result) => (result.data?.length ?? 0) > 0);
+}
+
+async function removeLogoIfUnreferenced(admin: ReturnType<typeof adminClient>, path: string | null) {
+  if (!path) return false;
+  if (await logoIsReferencedByIssuedDocument(admin, path)) return true;
+  await admin.storage.from("workspace-assets").remove([path]).catch(() => undefined);
+  return false;
+}
+
 async function writeAudit(admin: ReturnType<typeof adminClient>, record: Record<string, unknown>) {
   const { error } = await admin.from("audit_logs").insert(record);
   if (error) throw error;
@@ -130,9 +150,9 @@ export async function POST(request: Request) {
       throw updated.error;
     }
 
-    if (previousPath && previousPath !== path) {
-      await admin.storage.from("workspace-assets").remove([previousPath]).catch(() => undefined);
-    }
+    const previousLogoPreservedForDocuments = previousPath && previousPath !== path
+      ? await removeLogoIfUnreferenced(admin, previousPath)
+      : false;
 
     await writeAudit(admin, {
       actor_user_id: identity.userId,
@@ -140,7 +160,12 @@ export async function POST(request: Request) {
       action: "admin.custom_branding.logo_updated",
       entity_type: "workspace",
       entity_id: id,
-      metadata: { workspace_name: workspace.name, logo_path: path, previous_logo_path: previousPath },
+      metadata: {
+        workspace_name: workspace.name,
+        logo_path: path,
+        previous_logo_path: previousPath,
+        previous_logo_preserved_for_documents: previousLogoPreservedForDocuments,
+      },
     });
 
     return Response.json({
@@ -177,9 +202,7 @@ export async function DELETE(request: Request) {
       .eq("workspace_id", id);
     if (updated.error) throw updated.error;
 
-    if (previousPath) {
-      await admin.storage.from("workspace-assets").remove([previousPath]).catch(() => undefined);
-    }
+    const logoPreservedForDocuments = await removeLogoIfUnreferenced(admin, previousPath);
 
     await writeAudit(admin, {
       actor_user_id: identity.userId,
@@ -187,7 +210,11 @@ export async function DELETE(request: Request) {
       action: "admin.custom_branding.logo_removed",
       entity_type: "workspace",
       entity_id: id,
-      metadata: { workspace_name: workspace.name, previous_logo_path: previousPath },
+      metadata: {
+        workspace_name: workspace.name,
+        previous_logo_path: previousPath,
+        preserved_for_documents: logoPreservedForDocuments,
+      },
     });
 
     return Response.json({ ok: true, workspaceId: id });
