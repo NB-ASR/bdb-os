@@ -1,6 +1,8 @@
 begin;
 
-create or replace view public.invoice_account_balances as
+create or replace view public.invoice_account_balances
+with (security_invoker = true)
+as
 with allocation_totals as (
   select allocation_1.workspace_id,
          allocation_1.invoice_id,
