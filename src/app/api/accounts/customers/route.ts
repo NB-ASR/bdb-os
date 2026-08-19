@@ -43,7 +43,7 @@ export async function GET(request: Request) {
 
     const from = (page - 1) * limit;
     const to = from + limit;
-    let query = supabase
+    let balanceQuery = supabase
       .from("customer_account_balances")
       .select("customer_id,customer_code,customer_name,company,outstanding_amount,unallocated_credit,net_balance,balance_status")
       .eq("workspace_id", workspaceId)
@@ -53,15 +53,20 @@ export async function GET(request: Request) {
 
     if (q) {
       const pattern = `%${q}%`;
-      query = query.or(`customer_name.ilike.${pattern},customer_code.ilike.${pattern},company.ilike.${pattern}`);
+      balanceQuery = balanceQuery.or(`customer_name.ilike.${pattern},customer_code.ilike.${pattern},company.ilike.${pattern}`);
     }
-    if (status !== "all") query = query.eq("balance_status", status);
+    if (status !== "all") balanceQuery = balanceQuery.eq("balance_status", status);
 
-    const result = await query;
-    if (result.error) throw result.error;
-    const fetched = result.data ?? [];
+    const [balancesResult, settingsResult] = await Promise.all([
+      balanceQuery,
+      supabase.from("workspace_settings").select("currency").eq("workspace_id", workspaceId).maybeSingle(),
+    ]);
+    if (balancesResult.error) throw balancesResult.error;
+    if (settingsResult.error) throw settingsResult.error;
+
+    const fetched = balancesResult.data ?? [];
     const hasMore = fetched.length > limit;
     const rows = hasMore ? fetched.slice(0, limit) : fetched;
-    return { workspaceId, rows, page, pageSize: limit, hasMore };
+    return { workspaceId, currency: settingsResult.data?.currency ?? "EUR", rows, page, pageSize: limit, hasMore };
   });
 }
