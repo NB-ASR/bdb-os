@@ -25,7 +25,7 @@ The original Accounts page loaded complete collections of Invoices, Payments, Cu
 
 - Accounts Overview loads only attention-level summary data and eight recent documents.
 - Invoice, Credit Note, Delivery Note and Payment registers load bounded pages from dedicated APIs.
-- Invoice register paging uses stable keyset cursors based on issued date and ID.
+- Invoice register paging uses stable keyset cursors based on precise `created_at` timestamp + ID. Under the final-first lifecycle, modern Invoices are created atomically at issue time, so this avoids ambiguous ordering when thousands share the same issue date.
 - Payment/Credit Note/Delivery Note registers use stable timestamp + ID cursors.
 - Customer balances remain bounded to 50-row database pages.
 - Full Invoice lines, linked Credit Notes, Payments, Delivery Notes and Notes load only when one Invoice is opened.
