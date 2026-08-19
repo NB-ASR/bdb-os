@@ -6,6 +6,7 @@ const lifecycleMigration = await readFile("supabase/migrations/20260819110118_ac
 const creditVatNumberingMigration = await readFile("supabase/migrations/20260819110205_accounts_credit_vat_and_numbering.sql", "utf8");
 const salesOrderMigration = await readFile("supabase/migrations/20260819122420_accounts_partial_credit_sales_order.sql", "utf8");
 const catalogueRulesMigration = await readFile("supabase/migrations/20260819132042_accounts_catalogue_credit_rules.sql", "utf8");
+const brandingSnapshotMigration = await readFile("supabase/migrations/20260819143500_business_document_branding_snapshots.sql", "utf8");
 const accounts = await readFile("src/app/accounts/page.tsx", "utf8");
 const accountsCss = await readFile("src/app/accounts/accounts.module.css", "utf8");
 const finalDocumentsApi = await readFile("src/app/api/accounts/final-documents/route.ts", "utf8");
@@ -45,6 +46,20 @@ assert.match(catalogueRulesMigration, /write_credit_note_lines_by_quantity/);
 assert.match(catalogueRulesMigration, /invoice\.total_amount as total_amount/);
 assert.match(catalogueRulesMigration, /invoice\.outstanding_amount as balance_amount/);
 assert.match(catalogueRulesMigration, /security_invoker = true/);
+
+// Issued documents freeze the logo state that existed at issue time.
+for (const table of ["invoices", "credit_notes", "delivery_notes"]) {
+  assert.match(brandingSnapshotMigration, new RegExp(`alter table public\\.${table}[\\s\\S]*supplier_logo_path_snapshot`));
+  assert.match(brandingSnapshotMigration, new RegExp(`alter table public\\.${table}[\\s\\S]*branding_snapshot_at`));
+}
+assert.match(brandingSnapshotMigration, /private\.current_custom_branding_logo_path/);
+assert.match(brandingSnapshotMigration, /private\.snapshot_business_document_branding/);
+assert.match(brandingSnapshotMigration, /historical_custom_branding_logo_path/);
+assert.match(brandingSnapshotMigration, /admin\.custom_branding\.logo_updated/);
+assert.match(brandingSnapshotMigration, /admin\.feature-override/);
+assert.match(brandingSnapshotMigration, /invoices_snapshot_branding/);
+assert.match(brandingSnapshotMigration, /credit_notes_snapshot_branding/);
+assert.match(brandingSnapshotMigration, /delivery_notes_snapshot_branding/);
 
 assert.match(finalDocumentsApi, /catalogueInvoiceLines/);
 assert.match(finalDocumentsApi, /discountPercent/);
@@ -89,11 +104,15 @@ assert.match(queue, /bdb-accounts-queue-v1/);
 assert.match(accountsCss, /\.documentComposer/);
 assert.match(accountsCss, /background: #1a1a17/);
 
-// An issued Invoice is a permanent document. Re-rendering cannot substitute live balance values.
+// An issued Invoice is a permanent document. Re-rendering cannot substitute live balances or branding.
 assert.match(renderRoute, /totalAmount: num\(row\.total_amount\)/);
 assert.doesNotMatch(renderRoute, /totalAmount: num\(row\.adjusted_total_amount/);
 assert.doesNotMatch(renderRoute, /paidAmount: num\(row\.allocated_amount\)/);
 assert.doesNotMatch(renderRoute, /balanceAmount: num\(row\.outstanding_amount\)/);
+assert.match(renderRoute, /supplier_logo_path_snapshot/);
+assert.match(renderRoute, /let logoPath = model\.draft \? null : logoSnapshotPath/);
+assert.match(renderRoute, /Issued documents never fall back to live branding/);
+assert.match(renderRoute, /if \(model\.draft\)/);
 assert.match(renderRoute, /discountPercent/);
 assert.match(renderRoute, /salesOrderReference/);
 assert.match(renderer, /Discount/);
@@ -106,4 +125,4 @@ assert.match(renderer, /Powered by BDB/);
 assert.match(renderer, /Print \/ Save as PDF/);
 assert.doesNotMatch(renderer, /Payment instructions/i);
 
-console.log("Business Documents preserve catalogue pricing, percentage discounts, quantity-backed Credit Notes, permanent issued Invoices and separate running balances.");
+console.log("Business Documents preserve catalogue pricing, quantity-backed Credit Notes, immutable issued totals/branding and separate running balances.");
