@@ -1,6 +1,6 @@
 begin;
 
-select plan(8);
+select plan(9);
 
 select ok(
   exists (
@@ -60,6 +60,19 @@ select ok(
   position('when invoice.due_at<current_date then ''overdue''' in replace(lower(pg_get_viewdef('public.invoice_account_balances'::regclass, true)), ' ', '')) = 0
   or position('invoice.due_at < current_date' in lower(pg_get_viewdef('public.invoice_account_balances'::regclass, true))) > 0,
   'Existing balance logic remains compatible with nullable due dates'
+);
+
+select ok(
+  position(
+    'round(amount, 2) = round(total_amount, 2)'
+    in pg_get_constraintdef((
+      select oid
+      from pg_constraint
+      where conrelid = 'public.invoices'::regclass
+        and conname = 'invoices_totals_check'
+    ))
+  ) > 0,
+  'Legacy two-decimal Invoice amount agrees with canonical total at currency precision'
 );
 
 select * from finish();
