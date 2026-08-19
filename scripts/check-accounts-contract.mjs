@@ -6,7 +6,8 @@ const paymentSchema = await readFile("supabase/release-sources/vanita-integratio
 const views = await readFile("supabase/release-sources/vanita-integration-20260813/20260729161500_accounts_balance_views_security.sql", "utf8");
 const invoiceCommands = await readFile("supabase/release-sources/vanita-integration-20260813/20260729162000_accounts_invoice_commands.sql", "utf8");
 const paymentCommands = await readFile("supabase/release-sources/vanita-integration-20260813/20260729162500_accounts_payment_commands.sql", "utf8");
-const scalabilityMigration = await readFile("supabase/migrations/20260819220500_accounts_scalable_registers.sql", "utf8");
+const scalabilityMigration = await readFile("supabase/migrations/20260819221325_accounts_scalable_registers.sql", "utf8");
+const invoiceCursorMigration = await readFile("supabase/migrations/20260819222000_accounts_invoice_register_cursor.sql", "utf8");
 const api = await readFile("src/app/api/accounts/route.ts", "utf8");
 const overviewApi = await readFile("src/app/api/accounts/overview/route.ts", "utf8");
 const invoicesApi = await readFile("src/app/api/accounts/invoices/route.ts", "utf8");
@@ -85,10 +86,12 @@ for (const boundedApi of [invoicesApi, paymentsApi, creditNotesApi, deliveryNote
   assert.match(boundedApi, /\.limit\(limit \+ 1\)/);
   assert.match(boundedApi, /nextCursor/);
 }
-assert.match(invoicesApi, /\.order\("issued_at"/);
+assert.match(invoicesApi, /\.order\("created_at"/);
+assert.match(invoicesApi, /createdAt/);
 assert.match(invoicesApi, /customer_name_snapshot\.ilike/);
 assert.match(paymentsApi, /\.order\("received_at"/);
 assert.match(customersApi, /\.range\(from, to\)/);
+assert.match(customersApi, /workspace_settings/);
 assert.match(invoiceRegister, /50/);
 assert.match(invoiceRegister, /nextCursor/);
 assert.match(invoiceDetailApi, /invoice_lines\(\*\)/);
@@ -104,5 +107,7 @@ assert.match(scalabilityMigration, /gin_trgm_ops/);
 assert.match(scalabilityMigration, /create or replace view public\.accounts_workspace_summary/);
 assert.match(scalabilityMigration, /security_invoker = true/);
 assert.match(scalabilityMigration, /revoke all on public\.accounts_workspace_summary from anon/);
+assert.match(invoiceCursorMigration, /invoices_workspace_created_cursor_idx/);
+assert.match(invoiceCursorMigration, /workspace_id, created_at desc, id desc/);
 
 console.log("Accounts preserves immutable financial commands while high-volume reads use bounded registers, dedicated detail loading and indexed database search.");
