@@ -117,6 +117,7 @@ export async function POST(request: Request) {
         p_description: body.description === undefined ? null : optionalText(body.description, 500),
         p_notes: body.notes === undefined ? null : optionalText(body.notes, 2000),
         p_lines: action === "invoice-create-manual" ? lines(body.lines, "Invoice") : [],
+        p_sales_order_reference: body.salesOrderReference === undefined ? null : optionalText(body.salesOrderReference, 64),
       });
     } else if (action === "credit-note-create") {
       result = await admin.rpc("create_and_issue_credit_note_command", {

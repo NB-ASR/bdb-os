@@ -46,7 +46,7 @@ select ok(position('on conflict' in lower(pg_get_functiondef('private.next_busin
 select ok(exists(select 1 from pg_trigger where tgrelid='public.invoices'::regclass and tgname='invoices_assign_issue_identity' and not tgisinternal),'Invoice issue transition assigns legal identity and number');
 select ok(position('next_business_document_number' in pg_get_functiondef('private.assign_invoice_issue_identity()'::regprocedure))>0,'Invoice issue uses shared sequential numbering');
 
-select ok(position('Credit Note quantity exceeds the uncredited Invoice quantity' in pg_get_functiondef('private.write_credit_note_lines(uuid,uuid,uuid,jsonb)'::regprocedure))>0,'Credit Note prevents line over-crediting');
+select ok(position('Credit Note quantity exceeds the uncredited Invoice quantity' in pg_get_functiondef('private.write_credit_note_lines_by_quantity(uuid,uuid,uuid,jsonb)'::regprocedure))>0,'Legacy quantity Credit Note path prevents line over-crediting');
 select ok(position('Credit Note exceeds the remaining Invoice value' in pg_get_functiondef('public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)'::regprocedure))>0,'Credit Note prevents total over-crediting at issue');
 select ok(position('Only an issued Invoice can be credited' in pg_get_functiondef('public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)'::regprocedure))>0,'Credit Notes require an issued Invoice');
 select ok(position('invoice_record.number' in pg_get_functiondef('public.apply_credit_note_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,text,jsonb)'::regprocedure))>0,'Credit Note activity preserves original Invoice reference');

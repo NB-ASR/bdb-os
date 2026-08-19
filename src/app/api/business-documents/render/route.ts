@@ -64,6 +64,7 @@ export async function GET(request: Request) {
         kind: "invoice", title: "Invoice", number: String(row.number), draft: String(row.status) === "draft",
         date: formatDocumentDate(String(row.issued_at)), supplyDate: row.supply_date ? formatDocumentDate(String(row.supply_date)) : null,
         description: String(row.description ?? "") || null,
+        salesOrderReference: String(row.sales_order_reference ?? "") || null,
         currency: String(row.currency),
         supplier: {
           name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
@@ -89,14 +90,17 @@ export async function GET(request: Request) {
       if (noteResult.error) throw noteResult.error;
       const row = noteResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Credit Note could not be found.", 404);
-      const invoiceResult = await supabase.from("invoices").select("number").eq("workspace_id", workspaceId).eq("id", String(row.invoice_id)).maybeSingle();
+      const invoiceResult = await supabase.from("invoices").select("number,sales_order_reference").eq("workspace_id", workspaceId).eq("id", String(row.invoice_id)).maybeSingle();
       if (invoiceResult.error) throw invoiceResult.error;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       const lines = ((row.credit_note_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
         kind: "credit_note", title: "Credit Note", number: String(row.number), draft: String(row.status) === "draft",
-        date: formatDocumentDate(String(row.issued_at ?? String(row.created_at).slice(0, 10))), originalInvoiceNumber: String(invoiceResult.data?.number ?? ""), reason: String(row.reason), currency: String(row.currency),
+        date: formatDocumentDate(String(row.issued_at ?? String(row.created_at).slice(0, 10))),
+        originalInvoiceNumber: String(invoiceResult.data?.number ?? ""),
+        salesOrderReference: String(row.sales_order_reference ?? invoiceResult.data?.sales_order_reference ?? "") || null,
+        reason: String(row.reason), currency: String(row.currency),
         supplier: {
           name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
           address: String(row.supplier_address_snapshot ?? settings.business_address ?? ""), vatNumber: String(row.supplier_vat_number_snapshot ?? settings.vat_number ?? "") || null,
