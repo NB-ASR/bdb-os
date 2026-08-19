@@ -71,7 +71,9 @@ const canonicalProductionHistory = [
   "20260819132042_accounts_catalogue_credit_rules.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260819143500_business_document_branding_snapshots.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
