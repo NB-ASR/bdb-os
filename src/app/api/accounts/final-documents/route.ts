@@ -1,10 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { CommandError, parseCommandBody, requireWorkspaceCommand, runCommand } from "@/lib/server/command";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DOCUMENT_TYPES = new Set(["invoice", "credit_note", "delivery_note"]);
 const ACTIONS = new Set([
   "invoice-create-manual",
   "invoice-create-sale",
@@ -67,6 +69,28 @@ function friendly(error: { message: string; code?: string | null }) {
   return new CommandError("ACCOUNTS_COMMAND_FAILED", error.message, 400);
 }
 
+export async function GET(request: Request) {
+  return runCommand(async () => {
+    const url = new URL(request.url);
+    const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace") as string;
+    const documentId = uuid(url.searchParams.get("documentId"), "Document") as string;
+    const documentType = String(url.searchParams.get("documentType") ?? "").trim();
+    if (!DOCUMENT_TYPES.has(documentType)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Business document type is invalid.");
+    await requireWorkspaceCommand(request, workspaceId);
+    const supabase = await createClient();
+    if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
+    const notes = await supabase
+      .from("business_document_notes")
+      .select("id,note,created_at,created_by")
+      .eq("workspace_id", workspaceId)
+      .eq("document_type", documentType)
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: true });
+    if (notes.error) throw notes.error;
+    return { notes: notes.data ?? [] };
+  });
+}
+
 export async function POST(request: Request) {
   return runCommand(async () => {
     const body = await parseCommandBody<Body>(request);
@@ -124,7 +148,7 @@ export async function POST(request: Request) {
       });
     } else {
       const documentType = String(body.documentType ?? "").trim();
-      if (!["invoice", "credit_note", "delivery_note"].includes(documentType)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Business document type is invalid.");
+      if (!DOCUMENT_TYPES.has(documentType)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Business document type is invalid.");
       result = await admin.rpc("add_business_document_note", {
         p_workspace_id: workspaceId,
         p_note_id: uuid(body.id, "Note ID"),
