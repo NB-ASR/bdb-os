@@ -69,11 +69,10 @@ const canonicalProductionHistory = [
   "20260819111532_accounts_invoice_total_precision_hotfix.sql",
   "20260819122420_accounts_partial_credit_sales_order.sql",
   "20260819132042_accounts_catalogue_credit_rules.sql",
+  "20260819145020_business_document_branding_snapshots.sql",
 ];
 
-const pendingMigrations = [
-  "20260819143500_business_document_branding_snapshots.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
@@ -114,7 +113,7 @@ for (const group of domainMigrations) {
   const firstIndex = releaseSourceFiles.indexOf(group.firstSource);
   const lastIndex = releaseSourceFiles.indexOf(group.lastSource);
   assert.notEqual(firstIndex, -1, `Missing first source ${group.firstSource}.`);
-  assert.notEqual(lastIndex, -1, `Missing last source ${group.lastSource}.`);
+  assert.notEqual(lastIndex, -1, `Missing last source ${group.file}.`);
   assert.ok(lastIndex >= firstIndex, `Invalid source range for ${group.file}.`);
   const groupSources = releaseSourceFiles.slice(firstIndex, lastIndex + 1);
   assignedReleaseSources.push(...groupSources);
