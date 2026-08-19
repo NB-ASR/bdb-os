@@ -116,7 +116,7 @@ export default function AccountsPage() {
   const [bundle, setBundle] = useState<AccountsBundle>(emptyBundle);
   const bundleRef = useRef(bundle);
   const [tab, setTab] = useState<Tab>("documents");
-  const [filter, setFilter] = useState<"all" | DocumentType>("all");
+  const [filter, setFilter] = useState<DocumentType>("invoice");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(true);
@@ -229,9 +229,20 @@ export default function AccountsPage() {
 
   const documents = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return bundle.documents.filter((document) => (filter === "all" || document.document_type === filter)
-      && (!needle || [document.number, document.customer_name, document.status, documentLabel(document.document_type)].join(" ").toLowerCase().includes(needle)));
-  }, [bundle.documents, filter, query]);
+    const createdAt = (document: DocumentIndex) => {
+      if (document.document_type === "credit_note") {
+        return bundle.creditNotes.find((note) => note.id === document.id)?.created_at ?? document.document_date;
+      }
+      if (document.document_type === "delivery_note") {
+        return bundle.deliveryNotes.find((note) => note.id === document.id)?.created_at ?? document.document_date;
+      }
+      return bundle.invoices.find((invoice) => invoice.id === document.id)?.issued_at ?? document.document_date;
+    };
+    return bundle.documents
+      .filter((document) => document.document_type === filter
+        && (!needle || [document.number, document.customer_name, document.status, documentLabel(document.document_type)].join(" ").toLowerCase().includes(needle)))
+      .sort((left, right) => new Date(createdAt(right)).getTime() - new Date(createdAt(left)).getTime());
+  }, [bundle.creditNotes, bundle.deliveryNotes, bundle.documents, bundle.invoices, filter, query]);
 
   const invoicePreview = useMemo(() => calculateInvoiceTotals(invoiceLines.map((line) => {
     const quantity = Number(line.quantity || 0);
@@ -301,21 +312,15 @@ export default function AccountsPage() {
       };
     }).filter((line) => line.remainingQuantity > 0);
   }
-  function chooseCreditInvoice(invoice: Invoice, resetReason = false) {
-    setCreditInvoiceId(invoice.id); setCreditInvoiceNumber(invoice.number); setCreditLines(prepareCreditLines(invoice)); setCreditMode("full");
-    if (resetReason) setCreditReason("");
-  }
   function resolveCreditInvoiceNumber(value: string) {
     setCreditInvoiceNumber(value);
     const target = eligibleCreditInvoices.find((invoice) => invoice.number.toLowerCase() === value.trim().toLowerCase());
     setCreditInvoiceId(target?.id ?? ""); setCreditLines(target ? prepareCreditLines(target) : []); setCreditMode("full");
   }
-  function openCredit(invoice?: Invoice) {
+  function openCredit() {
     setNewMenu(false);
     if (!eligibleCreditInvoices.length) return setError("There is no issued Invoice with value remaining to credit.");
-    setCreditReason(""); setCreditMode("full");
-    if (invoice) chooseCreditInvoice(invoice);
-    else { setCreditInvoiceId(""); setCreditInvoiceNumber(""); setCreditLines([]); }
+    setCreditReason(""); setCreditMode("full"); setCreditInvoiceId(""); setCreditInvoiceNumber(""); setCreditLines([]);
     setCreditOpen(true);
   }
   const creditPreview = useMemo(() => {
@@ -366,13 +371,10 @@ export default function AccountsPage() {
       setDeliveryLines((sale?.sale_lines ?? []).map((line) => ({ id: crypto.randomUUID(), sourceLineId: line.id, code: line.code_snapshot, description: line.description_snapshot, selected: true, quantity: String(line.quantity) })));
     }
   }
-  async function openDelivery(invoice?: Invoice) {
+  async function openDelivery() {
     setNewMenu(false); await loadSaleSources(); setDeliveryDate(isoDate()); setDeliveryNotes("");
-    if (invoice) populateDelivery("invoice", invoice.id);
-    else {
-      const firstCustomer = bundle.customers[0]; setDeliverySourceType("manual"); setDeliverySourceId(""); setDeliveryCustomerId(firstCustomer?.id ?? "");
-      setDeliveryAddress(firstCustomer?.address ?? ""); setDeliveryLines([manualDeliveryLine()]);
-    }
+    const firstCustomer = bundle.customers[0]; setDeliverySourceType("manual"); setDeliverySourceId(""); setDeliveryCustomerId(firstCustomer?.id ?? "");
+    setDeliveryAddress(firstCustomer?.address ?? ""); setDeliveryLines([manualDeliveryLine()]);
     setDeliveryOpen(true);
   }
   function changeDeliverySource(type: DeliverySourceType) {
@@ -416,9 +418,9 @@ export default function AccountsPage() {
     const ok = await dispatch("document-note-add", { id: crypto.randomUUID(), documentType: notesDocument.document_type, documentId: notesDocument.id, note: noteText });
     if (!ok) return; setNewDocumentNote(""); if (online) await openDocumentNotes(notesDocument); else setNotesOpen(false);
   }
-  function openPayment(invoice?: Invoice) {
-    const customerId = invoice?.customer_id ?? bundle.customers[0]?.id ?? "";
-    setPaymentCustomerId(customerId); setPaymentInvoiceId(invoice?.id ?? ""); setPaymentAmount(invoice ? String(invoice.outstanding_amount) : "");
+  function openPayment() {
+    const customerId = bundle.customers[0]?.id ?? "";
+    setPaymentCustomerId(customerId); setPaymentInvoiceId(""); setPaymentAmount("");
     setPaymentMethod("bank_transfer"); setPaymentReceivedAt(localDateTime()); setPaymentReference(""); setPaymentOpen(true);
   }
   async function savePayment(event: FormEvent) {
@@ -445,15 +447,6 @@ export default function AccountsPage() {
     if (!response.ok || !json.ok) return setError(json.error ?? "Document identity could not be saved.");
     setIdentityOpen(false); setNotice("Business document identity updated."); await load();
   }
-  async function issueDocument(document: DocumentIndex) {
-    if (document.document_type === "invoice") {
-      const invoice = bundle.invoices.find((item) => item.id === document.id); if (invoice) await dispatch("invoice-issue", { id: invoice.id, expectedVersion: invoice.version }, true);
-    } else if (document.document_type === "credit_note") {
-      const note = bundle.creditNotes.find((item) => item.id === document.id); if (note) await dispatch("credit-note-issue", { id: note.id, expectedVersion: note.version }, true);
-    } else {
-      const note = bundle.deliveryNotes.find((item) => item.id === document.id); if (note) await dispatch("delivery-note-issue", { id: note.id, expectedVersion: note.version }, true);
-    }
-  }
   function emailDocument(document: DocumentIndex) {
     const customer = bundle.customers.find((item) => item.id === document.customer_id);
     if (!customer?.email) return setError("This Customer does not have an email address recorded.");
@@ -461,6 +454,27 @@ export default function AccountsPage() {
     const body = `Hello ${customer.name},\n\nPlease find your ${documentLabel(document.document_type).toLowerCase()} attached.\n\nBDB OS does not yet send external email automatically, so download the PDF and attach it in your email application.`;
     window.location.href = `mailto:${encodeURIComponent(customer.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     setNotice("Email composer opened. Attach the downloaded PDF before sending; BDB OS has not recorded external delivery.");
+  }
+
+  function linkedCreditNotes(invoiceId: string) {
+    return bundle.creditNotes
+      .filter((note) => note.invoice_id === invoiceId && note.status === "issued")
+      .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+  }
+  function documentActions(document: DocumentIndex) {
+    return <div className={styles.rowActions}>
+      <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html"), "_blank")}><MoreHorizontal size={15} /> View</Button>
+      <Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html", true), "_blank")}><Printer size={15} /> Print</Button>
+      <a className={styles.actionLink} href={businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "pdf")}><Download size={15} /> PDF</a>
+      <Button variant="quiet" onClick={() => void openDocumentNotes(document)}><MessageSquareText size={15} /> Notes</Button>
+      <Button variant="quiet" onClick={() => emailDocument(document)}><Mail size={15} /> Email</Button>
+    </div>;
+  }
+  function documentStatusTone(document: DocumentIndex): "neutral" | "green" | "red" | "gold" {
+    if (document.status === "draft") return "neutral";
+    if (document.status === "paid" || document.status === "cancelled") return "green";
+    if (document.status === "overdue") return "red";
+    return "gold";
   }
 
   const canWrite = Boolean(bundle.workspaceId) && !supportReadOnly;
@@ -477,12 +491,60 @@ export default function AccountsPage() {
     {notice ? <div className={styles.quietNotice}><span>{notice}</span><button aria-label="Dismiss" onClick={() => setNotice("")}><X size={14} /></button></div> : null}
 
     {tab === "documents" ? <section className={styles.section}>
-      <div className={styles.documentToolbar}><div className={styles.filters}>{(["all", "invoice", "credit_note", "delivery_note"] as const).map((item) => <button key={item} data-active={filter === item} onClick={() => setFilter(item)}>{item === "all" ? "All" : `${documentLabel(item)}s`}</button>)}</div><input className="filter-input" placeholder="Search documents or Customers…" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      <Card className="table-card"><div className={styles.tableScroll}><table><thead><tr><th>Document</th><th>Customer</th><th>Date</th><th>Status</th><th className={styles.money}>Original total</th><th className={styles.money}>Credits</th><th className={styles.money}>Balance</th><th aria-label="Actions" /></tr></thead><tbody>{documents.map((document) => {
-        const isDraft = document.status === "draft";
-        const invoice = document.document_type === "invoice" ? bundle.invoices.find((item) => item.id === document.id) : null;
-        return <tr key={`${document.document_type}-${document.id}`}><td><div className={styles.documentCell}><span className={styles.documentIcon}>{document.document_type === "credit_note" ? <FileMinus2 size={16} /> : document.document_type === "delivery_note" ? <PackageCheck size={16} /> : <FileText size={16} />}</span><span><strong>{documentLabel(document.document_type)}</strong><small>{isDraft ? "Legacy draft" : document.number}{invoice?.sales_order_reference ? ` · SO ${invoice.sales_order_reference}` : ""}</small></span></div></td><td>{document.customer_name}</td><td>{formatDate(document.document_date)}</td><td><Badge tone={isDraft ? "neutral" : document.status === "paid" || document.status === "cancelled" ? "green" : document.status === "overdue" ? "red" : "gold"}>{document.status.replaceAll("_", " ")}</Badge></td><td className={styles.money}>{document.document_type === "delivery_note" ? "—" : formatMoney(Number(document.total_amount ?? 0), document.currency ?? currency)}</td><td className={styles.money}>{invoice ? formatMoney(Number(invoice.credited_amount ?? 0), invoice.currency) : "—"}</td><td className={styles.money}>{invoice ? formatMoney(Number(invoice.outstanding_amount ?? 0), invoice.currency) : "—"}</td><td><div className={styles.rowActions}><Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html"), "_blank")}><MoreHorizontal size={15} /> View</Button><Button variant="quiet" onClick={() => window.open(businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "html", true), "_blank")}><Printer size={15} /> Print</Button><a className={styles.actionLink} href={businessDocumentUrl(bundle.workspaceId, document.document_type, document.id, "pdf")}><Download size={15} /> PDF</a><Button variant="quiet" onClick={() => void openDocumentNotes(document)}><MessageSquareText size={15} /> Notes</Button>{!isDraft ? <Button variant="quiet" onClick={() => emailDocument(document)}><Mail size={15} /> Email</Button> : null}{isDraft ? <Button variant="secondary" disabled={!online || Boolean(busy)} onClick={() => void issueDocument(document)}>Issue legacy draft</Button> : null}{invoice && !isDraft && !["void", "cancelled"].includes(invoice.display_status) ? <><Button variant="quiet" onClick={() => openCredit(invoice)}>Credit</Button>{invoice.invoice_lines.length ? <Button variant="quiet" onClick={() => void openDelivery(invoice)}>Deliver</Button> : null}{invoice.outstanding_amount > 0 ? <Button variant="quiet" onClick={() => openPayment(invoice)}>Payment</Button> : null}</> : null}</div></td></tr>;
-      })}</tbody></table></div>{!documents.length ? <div className={styles.empty}><FileText size={26} /><strong>No business documents yet</strong><span>Create an Invoice, Credit Note or Delivery Note from one place.</span></div> : null}</Card>
+      <div className={styles.documentToolbar}>
+        <div className={styles.filters}>{(["invoice", "credit_note", "delivery_note"] as const).map((item) => <button key={item} data-active={filter === item} onClick={() => setFilter(item)}>{documentLabel(item)}s</button>)}</div>
+        <input className="filter-input" placeholder={`Search ${documentLabel(filter)}s or Customers…`} value={query} onChange={(event) => setQuery(event.target.value)} />
+      </div>
+
+      {filter === "invoice" ? <Card className="table-card">
+        <div className={styles.tableScroll}><table><thead><tr>
+          <th>Document</th><th>Customer</th><th>Date</th><th>Status</th>
+          <th className={styles.money}>Original total</th><th>Credit Note</th><th className={styles.money}>Remaining balance</th><th aria-label="Actions" />
+        </tr></thead><tbody>{documents.map((document) => {
+          const invoice = bundle.invoices.find((item) => item.id === document.id);
+          if (!invoice) return null;
+          const creditNotes = linkedCreditNotes(invoice.id);
+          const creditedTotal = creditNotes.reduce((sum, note) => sum + Number(note.total_amount), 0);
+          return <tr key={document.id}>
+            <td><div className={styles.documentCell}><span className={styles.documentIcon}><FileText size={16} /></span><span><strong>Invoice</strong><small>{document.status === "draft" ? "Legacy draft" : document.number}{invoice.sales_order_reference ? ` · SO ${invoice.sales_order_reference}` : ""}</small></span></div></td>
+            <td>{document.customer_name}</td>
+            <td>{formatDate(document.document_date)}</td>
+            <td><Badge tone={documentStatusTone(document)}>{document.status.replaceAll("_", " ")}</Badge></td>
+            <td className={styles.money}>{formatMoney(Number(document.total_amount ?? invoice.total_amount), invoice.currency)}</td>
+            <td>{creditNotes.length ? <span><strong>{creditNotes.map((note) => note.number).join(", ")}</strong><small className={styles.subtle}>{formatMoney(creditedTotal, invoice.currency)} credited</small></span> : "—"}</td>
+            <td className={styles.money}><strong>{formatMoney(Number(invoice.outstanding_amount ?? 0), invoice.currency)}</strong></td>
+            <td>{documentActions(document)}</td>
+          </tr>;
+        })}</tbody></table></div>
+        {!documents.length ? <div className={styles.empty}><FileText size={26} /><strong>No Invoices yet</strong><span>Create an Invoice from New Document.</span></div> : null}
+      </Card> : null}
+
+      {filter === "credit_note" ? <Card className="table-card">
+        <div className={styles.tableScroll}><table><thead><tr>
+          <th>Document</th><th>Customer</th><th>Date</th><th>Status</th><th className={styles.money}>Total</th><th aria-label="Actions" />
+        </tr></thead><tbody>{documents.map((document) => <tr key={document.id}>
+          <td><div className={styles.documentCell}><span className={styles.documentIcon}><FileMinus2 size={16} /></span><span><strong>Credit Note</strong><small>{document.status === "draft" ? "Legacy draft" : document.number}</small></span></div></td>
+          <td>{document.customer_name}</td>
+          <td>{formatDate(document.document_date)}</td>
+          <td><Badge tone={documentStatusTone(document)}>{document.status.replaceAll("_", " ")}</Badge></td>
+          <td className={styles.money}>{formatMoney(Number(document.total_amount ?? 0), document.currency ?? currency)}</td>
+          <td>{documentActions(document)}</td>
+        </tr>)}</tbody></table></div>
+        {!documents.length ? <div className={styles.empty}><FileMinus2 size={26} /><strong>No Credit Notes yet</strong><span>Credit Notes appear here in creation order.</span></div> : null}
+      </Card> : null}
+
+      {filter === "delivery_note" ? <Card className="table-card">
+        <div className={styles.tableScroll}><table><thead><tr>
+          <th>Document</th><th>Customer</th><th>Date</th><th>Status</th><th aria-label="Actions" />
+        </tr></thead><tbody>{documents.map((document) => <tr key={document.id}>
+          <td><div className={styles.documentCell}><span className={styles.documentIcon}><PackageCheck size={16} /></span><span><strong>Delivery Note</strong><small>{document.status === "draft" ? "Legacy draft" : document.number}</small></span></div></td>
+          <td>{document.customer_name}</td>
+          <td>{formatDate(document.document_date)}</td>
+          <td><Badge tone={documentStatusTone(document)}>{document.status.replaceAll("_", " ")}</Badge></td>
+          <td>{documentActions(document)}</td>
+        </tr>)}</tbody></table></div>
+        {!documents.length ? <div className={styles.empty}><PackageCheck size={26} /><strong>No Delivery Notes yet</strong><span>Delivery Notes appear here in creation order.</span></div> : null}
+      </Card> : null}
     </section> : null}
 
     {tab === "payments" ? <section className={styles.section}><SectionHeading title="Payments" description="Money received stays separate from the permanent Invoice document." action={<Button disabled={!canWrite || bundle.customers.length === 0} onClick={() => openPayment()}><Banknote size={16} /> Record Payment</Button>} /><Card className="table-card"><div className={styles.tableScroll}><table><thead><tr><th>Reference</th><th>Customer</th><th>Date</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Unallocated</th></tr></thead><tbody>{bundle.payments.map((payment) => <tr key={payment.id}><td><strong>{payment.reference}</strong>{payment.external_reference ? <small className={styles.subtle}>{payment.external_reference}</small> : null}</td><td>{payment.customer_name_snapshot}</td><td>{formatDate(payment.received_at)}</td><td>{payment.payment_method.replaceAll("_", " ")}</td><td><Badge tone={payment.status === "posted" ? "green" : "neutral"}>{payment.status}</Badge></td><td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</td></tr>)}</tbody></table></div>{!bundle.payments.length ? <div className={styles.empty}><Banknote size={24} /><strong>No Payments recorded</strong></div> : null}</Card></section> : null}
