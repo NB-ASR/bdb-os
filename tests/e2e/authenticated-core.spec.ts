@@ -49,7 +49,6 @@ test.describe("authenticated owner journey", () => {
       ["/accounts/sales/invoices", "Invoice register"],
       ["/accounts/sales/credit-notes", "Credit Notes"],
       ["/accounts/sales/delivery-notes", "Delivery Notes"],
-      ["/accounts/sales/new", "New document"],
       ["/accounts/sales/invoices/new", "New Invoice"],
       ["/accounts/sales/credit-notes/new", "New Credit Note"],
       ["/accounts/sales/delivery-notes/new", "New Delivery Note"],
@@ -65,6 +64,11 @@ test.describe("authenticated owner journey", () => {
       await expect(page).not.toHaveURL(/\/accounts\/operations/);
     }
 
+    await page.goto("/accounts/sales/new");
+    await expect(page).toHaveURL(/\/accounts\/sales$/);
+    await expect(page.getByRole("heading", { name: "Sales documents", exact: true })).toBeVisible();
+
+    await page.goto("/accounts/settings");
     await page.reload();
     await expect(page.getByRole("heading", { name: "Document setup", exact: true })).toBeVisible();
 
