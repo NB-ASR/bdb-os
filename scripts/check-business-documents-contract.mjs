@@ -72,10 +72,9 @@ assert.match(finalDocumentsApi, /Credit Notes cannot be created from an arbitrar
 assert.match(finalDocumentsApi, /from\("products"\)/);
 assert.match(finalDocumentsApi, /from\("services"\)/);
 
-assert.match(newDocumentPage, /Catalogue price and VAT remain authoritative/);
-assert.match(newDocumentPage, /\/accounts\/sales\/invoices\/new/);
-assert.match(newDocumentPage, /\/accounts\/sales\/credit-notes\/new/);
-assert.match(newDocumentPage, /\/accounts\/sales\/delivery-notes\/new/);
+// The redundant chooser is retired; accounting rules live with the dedicated composers.
+assert.match(newDocumentPage, /redirect\("\/accounts\/sales"\)/);
+assert.doesNotMatch(newDocumentPage, /\/accounts\/sales\/(?:invoices|credit-notes|delivery-notes)\/new/);
 assert.match(invoiceComposer, /Catalogue price and VAT stay authoritative/);
 assert.match(invoiceComposer, /Discount %/);
 assert.match(invoiceComposer, /Sales Order reference is required/);
@@ -112,7 +111,9 @@ assert.match(renderRoute, /if \(model\.draft\)/);
 assert.match(renderRoute, /discountPercent/);
 assert.match(renderRoute, /salesOrderReference/);
 assert.match(renderer, /Discount/);
-assert.match(renderer, /Subtotal after discount/);
+assert.match(renderer, /Credit subtotal/);
+assert.match(renderer, /"Subtotal"/);
+assert.doesNotMatch(renderer, /Subtotal after discount/);
 assert.match(renderer, /Credit total/);
 assert.doesNotMatch(renderer, /Balance due/);
 assert.doesNotMatch(renderer, /Payment acknowledgement/);
