@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, FileMinus2, FileText, PackageCheck, Plus, Settings2 } from "lucide-react";
+import { ArrowRight, FileMinus2, FileText, PackageCheck, Settings2 } from "lucide-react";
 import styles from "../accounts-workspace.module.css";
 
 export default function AccountsSalesPage() {
@@ -13,7 +13,6 @@ export default function AccountsSalesPage() {
         </div>
         <div className={styles.heroActions}>
           <Link className={styles.secondaryLink} href="/accounts/settings"><Settings2 size={16} /> Document setup</Link>
-          <Link className={styles.primaryLink} href="/accounts/sales/new"><Plus size={16} /> New document</Link>
         </div>
       </section>
 
@@ -35,12 +34,6 @@ export default function AccountsSalesPage() {
           <h3>Delivery Notes</h3>
           <p>Fulfilment documents remain separate from financial balances and now have their own scalable register.</p>
           <div className={styles.cardFooter}><Link className={styles.quietLink} href="/accounts/sales/delivery-notes">Open Delivery Notes <ArrowRight size={15} /></Link></div>
-        </article>
-        <article className={styles.card}>
-          <span className={styles.cardIcon}><Plus size={19} /></span>
-          <h3>Create a document</h3>
-          <p>Choose Invoice, Credit Note or Delivery Note in one clean flow that stays inside Accounts and uses the validated financial command engine.</p>
-          <div className={styles.cardFooter}><Link className={styles.quietLink} href="/accounts/sales/new">Choose document type <ArrowRight size={15} /></Link></div>
         </article>
       </section>
     </main>
