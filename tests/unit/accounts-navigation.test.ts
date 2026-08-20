@@ -16,10 +16,12 @@ test("Accounts navigation stays inside dedicated workspaces", async () => {
     source("src/app/accounts/sales/delivery-notes/page.tsx"),
   ]);
 
-  assert.match(overview, /href="\/accounts\/sales\/new"/);
+  assert.match(overview, /href="\/accounts\/sales\/invoices\/new"/);
+  assert.doesNotMatch(overview, /href="\/accounts\/sales\/new"/);
   assert.match(overview, /href="\/accounts\/payments"/);
   assert.match(overview, /href="\/accounts\/customers"/);
-  assert.match(sales, /href="\/accounts\/sales\/new"/);
+  assert.doesNotMatch(sales, /href="\/accounts\/sales\/new"/);
+  assert.doesNotMatch(sales, /Create a document|New document/);
   assert.match(sales, /href="\/accounts\/settings"/);
   assert.match(payments, /href="\/accounts\/payments\/new"/);
   assert.match(invoiceRegister, /href="\/accounts\/sales\/invoices\/new"/);
@@ -31,7 +33,7 @@ test("Accounts navigation stays inside dedicated workspaces", async () => {
   }
 });
 
-test("New Document resolves to dedicated final-first composers", async () => {
+test("redundant Sales chooser is retired while dedicated final-first composers remain direct", async () => {
   const [chooser, invoiceRoute, creditRoute, deliveryRoute, paymentRoute] = await Promise.all([
     source("src/app/accounts/sales/new/page.tsx"),
     source("src/app/accounts/sales/invoices/new/page.tsx"),
@@ -40,9 +42,8 @@ test("New Document resolves to dedicated final-first composers", async () => {
     source("src/app/accounts/payments/new/page.tsx"),
   ]);
 
-  assert.match(chooser, /\/accounts\/sales\/invoices\/new/);
-  assert.match(chooser, /\/accounts\/sales\/credit-notes\/new/);
-  assert.match(chooser, /\/accounts\/sales\/delivery-notes\/new/);
+  assert.match(chooser, /redirect\("\/accounts\/sales"\)/);
+  assert.doesNotMatch(chooser, /\/accounts\/sales\/(?:invoices|credit-notes|delivery-notes)\/new/);
   assert.match(invoiceRoute, /InvoiceComposer/);
   assert.match(creditRoute, /CreditNoteComposer/);
   assert.match(deliveryRoute, /DeliveryNoteComposer/);
