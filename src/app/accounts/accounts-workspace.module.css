@@ -90,10 +90,15 @@
 }
 
 .statGrid,
-.salesGrid,
-.detailGrid {
+.salesGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -381,13 +386,20 @@
 }
 
 .kvRow {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(92px, 0.7fr) minmax(0, 1.3fr);
   gap: 16px;
+  align-items: start;
 }
 
 .kvRow span {
   color: var(--muted);
+}
+
+.kvRow strong {
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .lineTable {
@@ -470,8 +482,7 @@
 
 @media (max-width: 1100px) {
   .statGrid,
-  .salesGrid,
-  .detailGrid {
+  .salesGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
