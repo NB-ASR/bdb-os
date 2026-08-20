@@ -32,7 +32,7 @@ The original Accounts page loaded complete collections of Invoices, Payments, Cu
 - Search and cursor indexes are added to the financial source tables.
 - Trigram indexes support contains-search for operational identifiers and customer names.
 - `accounts_workspace_summary` is a `security_invoker` view so the overview remains workspace/RLS scoped.
-- Existing offline Accounts commands and creation composers remain unchanged in the operational workbench during the navigation split.
+- Existing offline Accounts commands remain authoritative. The Accounts UX Consolidation extracts focused composer components into dedicated routes; `/accounts/operations` now redirects to Overview and is no longer a user-facing workbench.
 
 ## Offline behaviour
 

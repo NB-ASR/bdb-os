@@ -1,0 +1,523 @@
+.workspace {
+  display: grid;
+  gap: 18px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(181, 145, 76, 0.08), rgba(255, 255, 255, 0.018) 48%, rgba(255, 255, 255, 0.01));
+}
+
+.heading {
+  display: grid;
+  gap: 7px;
+  max-width: 800px;
+}
+
+.heading h1,
+.heading p,
+.eyebrow,
+.sectionHeading h2,
+.sectionHeading p {
+  margin: 0;
+}
+
+.heading > p:last-child,
+.sectionHeading p,
+.hint,
+.lookupEmpty {
+  color: var(--muted);
+}
+
+.eyebrow {
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-weight: 820;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.backLink,
+.primaryLink,
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 9px 13px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
+.backLink,
+.secondaryLink {
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.primaryLink {
+  background: var(--gold);
+  color: #14130f;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.notice[data-tone="error"] {
+  border-color: rgba(218, 119, 119, 0.35);
+}
+
+.notice > div {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.notice strong {
+  color: var(--foreground);
+}
+
+.notice button {
+  border: 0;
+  padding: 3px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.formPanel {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.014);
+  overflow: hidden;
+}
+
+.formSection {
+  display: grid;
+  gap: 16px;
+  padding: 23px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.sectionHeading > div {
+  display: grid;
+  gap: 5px;
+}
+
+.sectionHeading h2 {
+  font-size: 1rem;
+}
+
+.formGrid,
+.copyGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.field,
+.searchField {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.field input,
+.field select,
+.field textarea,
+.searchField input,
+.sourceToolbar input,
+.sourceToolbar select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  background: #171714;
+  color: var(--foreground);
+  font: inherit;
+}
+
+.field textarea {
+  min-height: 108px;
+  resize: vertical;
+}
+
+.field input:read-only {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.lookup {
+  display: grid;
+  gap: 10px;
+}
+
+.searchInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding-left: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #171714;
+}
+
+.searchInput input {
+  min-height: 38px;
+  padding-left: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+
+.lookupResults,
+.catalogueResults,
+.sourceResults {
+  display: grid;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.lookupResults button,
+.catalogueResults button,
+.sourceResults button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.01);
+  text-align: left;
+  cursor: pointer;
+}
+
+.lookupResults button:last-child,
+.catalogueResults button:last-child,
+.sourceResults button:last-child {
+  border-bottom: 0;
+}
+
+.lookupResults button:hover,
+.catalogueResults button:hover,
+.sourceResults button:hover,
+.lookupResults button[data-selected="true"] {
+  background: rgba(181, 145, 76, 0.075);
+}
+
+.lookupResults button span,
+.catalogueResults button span,
+.sourceResults button span,
+.selectedRecord span {
+  display: grid;
+  gap: 3px;
+}
+
+.lookupResults small,
+.catalogueResults small,
+.sourceResults small,
+.selectedRecord small {
+  color: var(--muted);
+}
+
+.lookupEmpty {
+  padding: 14px;
+  font-size: 0.82rem;
+}
+
+.selectedRecord {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 13px;
+  border: 1px solid rgba(181, 145, 76, 0.38);
+  border-radius: 11px;
+  background: rgba(181, 145, 76, 0.055);
+}
+
+.selectedRecord button,
+.textButton,
+.removeButton {
+  border: 0;
+  color: var(--gold);
+  background: transparent;
+  font: inherit;
+  font-weight: 740;
+  cursor: pointer;
+}
+
+.catalogueToolbar,
+.sourceToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(150px, 0.7fr);
+  gap: 10px;
+}
+
+.catalogueResults button > strong {
+  color: var(--gold);
+  font-size: 0.8rem;
+}
+
+.lineList {
+  display: grid;
+  gap: 10px;
+}
+
+.invoiceLine {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) 92px 140px 112px 94px 38px;
+  align-items: end;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.lineIdentity {
+  display: grid;
+  gap: 3px;
+  align-self: center;
+}
+
+.lineIdentity small {
+  color: var(--muted);
+}
+
+.removeButton {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 42px;
+  color: var(--muted);
+}
+
+.summary {
+  display: grid;
+  width: min(100%, 430px);
+  margin-left: auto;
+}
+
+.summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.summary span {
+  color: var(--muted);
+}
+
+.summary > div:last-child {
+  padding-top: 12px;
+  border-bottom: 2px solid rgba(181, 145, 76, 0.55);
+}
+
+.summary > div:last-child span,
+.summary > div:last-child strong {
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+.selectionList {
+  display: grid;
+  gap: 10px;
+}
+
+.selectionRow {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 130px;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.selectionRow > span {
+  display: grid;
+  gap: 3px;
+}
+
+.selectionRow small {
+  color: var(--muted);
+}
+
+.selectionRow input[type="number"] {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 10px;
+  color: var(--foreground);
+  background: #171714;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 24px;
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.actions > div {
+  display: flex;
+  gap: 9px;
+}
+
+.actions button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.025);
+  font: inherit;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.actions button[type="submit"] {
+  border-color: transparent;
+  color: #14130f;
+  background: var(--gold);
+}
+
+.actions button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.documentChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.documentChoice {
+  display: grid;
+  gap: 12px;
+  min-height: 190px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.018);
+  text-decoration: none;
+}
+
+.documentChoice svg {
+  color: var(--gold);
+}
+
+.documentChoice h2,
+.documentChoice p {
+  margin: 0;
+}
+
+.documentChoice p {
+  color: var(--muted);
+}
+
+.documentChoice span {
+  margin-top: auto;
+  color: var(--gold);
+  font-weight: 760;
+}
+
+@media (max-width: 980px) {
+  .invoiceLine {
+    grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(100px, 1fr));
+  }
+
+  .removeButton {
+    grid-column: 3;
+  }
+}
+
+@media (max-width: 720px) {
+  .header,
+  .sectionHeading,
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .formGrid,
+  .copyGrid,
+  .catalogueToolbar,
+  .sourceToolbar,
+  .documentChoiceGrid,
+  .invoiceLine {
+    grid-template-columns: 1fr;
+  }
+
+  .wide,
+  .removeButton {
+    grid-column: auto;
+  }
+
+  .selectionRow {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .selectionRow input[type="number"] {
+    grid-column: 2;
+  }
+
+  .actions > div {
+    width: 100%;
+  }
+
+  .actions button,
+  .actions a {
+    flex: 1;
+  }
+}

@@ -18,7 +18,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
       .map((item) => ({ id: item.id, title: item.name, detail: `${item.code} · ${item.company}`, href: `/customers/${item.id}`, type: "Customer", icon: <UserRound size={18} /> }));
     const invoices = state.invoices
       .filter((item) => [item.number, item.description, item.status].join(" ").toLowerCase().includes(term))
-      .map((item) => ({ id: item.id, title: item.number, detail: item.description, href: "/accounts", type: "Invoice", icon: <ReceiptText size={18} /> }));
+      .map((item) => ({ id: item.id, title: item.number, detail: item.description, href: `/accounts/sales/invoices/${item.id}`, type: "Invoice", icon: <ReceiptText size={18} /> }));
     const documents = state.documents
       .filter((item) => [item.name, item.linkedTo, item.type].join(" ").toLowerCase().includes(term))
       .map((item) => ({ id: item.id, title: item.name, detail: item.linkedTo, href: "/documents", type: "Document", icon: <FileText size={18} /> }));
