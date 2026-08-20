@@ -83,7 +83,7 @@ export default function AccountsOverviewPage() {
     <main className={styles.workspace}>
       <section className={styles.hero}>
         <div className={styles.heroCopy}><p className={styles.eyebrow}>Accounts workspace</p><h1>Financial control without the clutter</h1><p>Owners see what needs attention here. High-volume finance work lives in dedicated registers underneath, so BDB OS never needs to load the whole accounting history into one page.</p></div>
-        <div className={styles.heroActions}><Link className={styles.primaryLink} href="/accounts/sales/new"><FileText size={16} /> New document</Link><Link className={styles.secondaryLink} href="/accounts/sales/invoices">Open Invoices <ArrowRight size={16} /></Link></div>
+        <div className={styles.heroActions}><Link className={styles.primaryLink} href="/accounts/sales/invoices/new"><FileText size={16} /> New Invoice</Link><Link className={styles.secondaryLink} href="/accounts/sales/invoices">Open Invoices <ArrowRight size={16} /></Link></div>
       </section>
 
       {cached ? <div className={styles.notice}><RefreshCw size={17} /><div><strong>Offline-ready snapshot</strong><br />Showing the last verified Accounts overview while live data reconnects.</div></div> : null}

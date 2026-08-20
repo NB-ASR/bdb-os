@@ -83,10 +83,13 @@ assert.match(operationsPage, /redirect\("\/accounts"\)/i);
 assert.doesNotMatch(operationsPage, /enqueueAccountsCommand|invoice_account_balances/i);
 assert.match(salesLayout, /Invoices & Payments/i);
 
-// Dedicated composers remain inside the scalable Accounts route tree.
-assert.match(newDocumentPage, /\/accounts\/sales\/invoices\/new/);
-assert.match(newDocumentPage, /\/accounts\/sales\/credit-notes\/new/);
-assert.match(newDocumentPage, /\/accounts\/sales\/delivery-notes\/new/);
+// Dedicated composers remain direct; the redundant Sales chooser is retired safely.
+assert.match(newDocumentPage, /redirect\("\/accounts\/sales"\)/);
+assert.doesNotMatch(newDocumentPage, /\/accounts\/sales\/(?:invoices|credit-notes|delivery-notes)\/new/);
+assert.doesNotMatch(salesPage, /href="\/accounts\/sales\/new"/);
+assert.doesNotMatch(salesPage, /Create a document|New document/);
+assert.match(overviewPage, /href="\/accounts\/sales\/invoices\/new"/);
+assert.doesNotMatch(overviewPage, /href="\/accounts\/sales\/new"/);
 assert.match(invoiceComposer, /invoice-create-manual/);
 assert.match(invoiceComposer, /Catalogue price and VAT stay authoritative/);
 assert.match(invoiceComposer, /Discount %/);
