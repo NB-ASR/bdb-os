@@ -89,10 +89,15 @@
   padding-inline: 6px;
 }
 
-.statGrid,
-.salesGrid {
+.statGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.salesGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
