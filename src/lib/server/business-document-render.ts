@@ -82,7 +82,7 @@ export function businessDocumentHtml(document: BusinessDocumentModel, printOnLoa
 
   const totals = priced ? `
     <section class="totals">
-      <div><span>${document.kind === "credit_note" ? "Credit subtotal" : "Subtotal after discount"}</span><strong>${money(document.netAmount, document.currency)}</strong></div>
+      <div><span>${document.kind === "credit_note" ? "Credit subtotal" : "Subtotal"}</span><strong>${money(document.netAmount, document.currency)}</strong></div>
       <div><span>VAT</span><strong>${money(document.vatAmount, document.currency)}</strong></div>
       <div class="grand"><span>${document.kind === "credit_note" ? "Credit total" : "Total"}</span><strong>${money(document.totalAmount, document.currency)}</strong></div>
     </section>` : "";
@@ -109,6 +109,7 @@ function pdfSafe(value: unknown) {
     .replace(/[ġĠ]/g, (m) => m === "Ġ" ? "G" : "g")
     .replace(/[ħĦ]/g, (m) => m === "Ħ" ? "H" : "h")
     .replace(/[żŻ]/g, (m) => m === "Ż" ? "Z" : "z")
+    .replace(/[–—]/g, "-")
     .normalize("NFKD").replace(/[^\x20-\x7E]/g, "?")
     .replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
@@ -163,7 +164,7 @@ function documentPages(document: BusinessDocumentModel) {
       content.push("0.86 G 0.35 w 48 " + (y - 5) + " m 547 " + (y - 5) + " l S"); y -= 18;
     }
     if (page === totalPages - 1 && priced) {
-      y -= 6; content.push(textCommand(365, y, document.kind === "credit_note" ? "Credit subtotal" : "Subtotal after discount", 8)); content.push(textCommand(485, y, money(document.netAmount, document.currency), 8, true));
+      y -= 6; content.push(textCommand(365, y, document.kind === "credit_note" ? "Credit subtotal" : "Subtotal", 8)); content.push(textCommand(485, y, money(document.netAmount, document.currency), 8, true));
       y -= 17; content.push(textCommand(365, y, "VAT", 8)); content.push(textCommand(485, y, money(document.vatAmount, document.currency), 8, true));
       y -= 20; content.push("0.11 0.11 0.10 RG 1.2 w 365 " + (y + 12) + " m 547 " + (y + 12) + " l S"); content.push(textCommand(365, y, document.kind === "credit_note" ? "Credit total" : "Total", 10, true)); content.push(textCommand(485, y, money(document.totalAmount, document.currency), 10, true));
       if (document.kind === "invoice") { const signatureY = Math.max(90, y - 65); content.push("0.45 G 0.6 w 350 " + signatureY + " m 535 " + signatureY + " l S"); content.push(textCommand(395, signatureY - 14, "Client signature", 8, true)); content.push(textCommand(350, signatureY - 38, "Date", 6.5)); content.push("0.55 G 0.5 w 378 " + (signatureY - 38) + " m 535 " + (signatureY - 38) + " l S"); }
