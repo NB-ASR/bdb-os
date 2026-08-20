@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, Banknote, ExternalLink, FileMinus2, FileText, Mail, MessageSquareText, PackageCheck, Printer } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Banknote, ExternalLink, FileMinus2, FileText, Mail, MessageSquarePlus, MessageSquareText, PackageCheck, Printer } from "lucide-react";
+import { useAccountsCommandRuntime } from "@/components/accounts/accounts-command-runtime";
 import { formatDate, formatMoney } from "@/lib/format";
 import styles from "../../../accounts-workspace.module.css";
 
@@ -73,6 +74,8 @@ export default function InvoiceDetailPage() {
   const [bundle, setBundle] = useState<DetailBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const noteRuntime = useAccountsCommandRuntime();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,9 +105,23 @@ export default function InvoiceDetailPage() {
   const emailHref = useMemo(() => {
     if (!invoice || !bundle?.customer?.email) return null;
     const subject = encodeURIComponent(`Invoice ${invoice.number}`);
-    const body = encodeURIComponent(`Please find Invoice ${invoice.number} attached / available from BDB OS.`);
+    const body = encodeURIComponent(`Please find Invoice ${invoice.number} from BDB OS.\n\nDownload the PDF from BDB OS and attach it before sending.`);
     return `mailto:${bundle.customer.email}?subject=${subject}&body=${body}`;
   }, [bundle?.customer?.email, invoice]);
+
+  async function addNote(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!invoice || !newNote.trim()) return;
+    const result = await noteRuntime.dispatch("document-note-add", {
+      id: crypto.randomUUID(),
+      documentType: "invoice",
+      documentId: invoice.id,
+      note: newNote.trim(),
+    });
+    if (!result.ok) return;
+    setNewNote("");
+    if (!result.pending) await load();
+  }
 
   if (loading && !invoice) return <main className={styles.workspace}><div className={styles.emptyState}>Loading Invoice…</div></main>;
   if (!invoice || !bundle) return <main className={styles.workspace}><div className={styles.notice}><AlertTriangle size={17} /><div><strong>Invoice could not be opened</strong><br />{error || "The requested Invoice is unavailable."}</div></div><Link className={styles.secondaryLink} href="/accounts/sales/invoices"><ArrowLeft size={15} /> Back to Invoices</Link></main>;
@@ -123,6 +140,7 @@ export default function InvoiceDetailPage() {
           <a className={styles.secondaryLink} href={documentUrl(bundle.workspaceId, invoice.id, "html", true)} target="_blank" rel="noreferrer"><Printer size={15} /> Print</a>
           <a className={styles.secondaryLink} href={documentUrl(bundle.workspaceId, invoice.id, "pdf")}><FileText size={15} /> PDF</a>
           {emailHref ? <a className={styles.secondaryLink} href={emailHref}><Mail size={15} /> Email</a> : null}
+          {Number(invoice.credited_amount) < Number(invoice.total_amount) ? <Link className={styles.secondaryLink} href={`/accounts/sales/credit-notes/new?invoiceId=${invoice.id}`}><FileMinus2 size={15} /> Credit Note</Link> : null}
         </div>
       </section>
 
@@ -196,6 +214,13 @@ export default function InvoiceDetailPage() {
         <article className={styles.detailCard}>
           <h3><MessageSquareText size={16} /> Internal history</h3>
           <div className={styles.linkList}>{bundle.notes.length ? bundle.notes.map((note) => <div className={styles.linkRow} key={note.id}><span><strong>{note.note}</strong><span className={styles.subtle}>{formatDate(note.created_at)}</span></span></div>) : <span className={styles.muted}>No internal notes.</span>}</div>
+          {noteRuntime.error ? <div className={styles.inlineNotice}>{noteRuntime.error}</div> : null}
+          {noteRuntime.notice ? <div className={styles.inlineNotice}>{noteRuntime.notice}</div> : null}
+          <form className={styles.noteForm} onSubmit={addNote}>
+            <label htmlFor="invoice-internal-note">Append an internal Note</label>
+            <textarea id="invoice-internal-note" required maxLength={2000} value={newNote} onChange={(event) => setNewNote(event.target.value)} placeholder="Add context without changing the issued Invoice…" />
+            <button className={styles.secondaryLink} type="submit" disabled={!newNote.trim() || Boolean(noteRuntime.busy) || noteRuntime.loading || noteRuntime.supportReadOnly}><MessageSquarePlus size={15} /> {noteRuntime.busy ? "Saving…" : "Append Note"}</button>
+          </form>
         </article>
       </section>
     </main>

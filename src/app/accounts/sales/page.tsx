@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, FileMinus2, FileText, PackageCheck, Plus } from "lucide-react";
+import { ArrowRight, FileMinus2, FileText, PackageCheck, Plus, Settings2 } from "lucide-react";
 import styles from "../accounts-workspace.module.css";
 
 export default function AccountsSalesPage() {
@@ -12,7 +12,8 @@ export default function AccountsSalesPage() {
           <p>Invoices, Credit Notes and Delivery Notes each have their own bounded register while sharing the same validated document engine underneath.</p>
         </div>
         <div className={styles.heroActions}>
-          <Link className={styles.primaryLink} href="/accounts/operations"><Plus size={16} /> New document</Link>
+          <Link className={styles.secondaryLink} href="/accounts/settings"><Settings2 size={16} /> Document setup</Link>
+          <Link className={styles.primaryLink} href="/accounts/sales/new"><Plus size={16} /> New document</Link>
         </div>
       </section>
 
@@ -37,9 +38,9 @@ export default function AccountsSalesPage() {
         </article>
         <article className={styles.card}>
           <span className={styles.cardIcon}><Plus size={19} /></span>
-          <h3>Document workbench</h3>
-          <p>The validated creation and correction commands remain here during the workspace split so navigation changes do not duplicate financial write logic.</p>
-          <div className={styles.cardFooter}><Link className={styles.quietLink} href="/accounts/operations">Create / correct documents <ArrowRight size={15} /></Link></div>
+          <h3>Create a document</h3>
+          <p>Choose Invoice, Credit Note or Delivery Note in one clean flow that stays inside Accounts and uses the validated financial command engine.</p>
+          <div className={styles.cardFooter}><Link className={styles.quietLink} href="/accounts/sales/new">Choose document type <ArrowRight size={15} /></Link></div>
         </article>
       </section>
     </main>

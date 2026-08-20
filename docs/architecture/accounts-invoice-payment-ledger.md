@@ -5,7 +5,7 @@
 BDB OS separates the commercial transaction, the amount due, money received and the allocation of that money.
 
 - **Sales** owns the completed commercial transaction.
-- **Accounts** owns invoice drafts, issued invoices and invoice lines.
+- **Accounts** owns issued invoices, invoice lines, Credit Notes, Delivery Notes, Payments and allocations. Legacy drafts remain compatibility data only.
 - **Payments** records immutable money received from a Customer.
 - **Payment allocations** connect Payments to issued invoices through an append-only ledger.
 - **Customer balances** are derived from issued invoices, posted Payments and allocation deltas.
@@ -30,7 +30,7 @@ Treating these as one status creates incorrect balances, prevents partial Paymen
 
 ### Sales
 
-Sales owns completed Product and Service lines, commercial prices, discounts and VAT snapshots. A completed Sale may create one active invoice draft through an explicit Accounts command.
+Sales owns completed Product and Service lines, commercial prices, discounts and VAT snapshots. A completed Sale may explicitly issue one final Invoice through the Accounts command boundary.
 
 ### Accounts
 
@@ -51,17 +51,17 @@ Banking will later own imported bank transactions and reconciliation evidence. R
 
 The existing `public.invoices` table is upgraded in place and remains the canonical Invoice identity.
 
-An Invoice is:
+Modern user-facing Invoice creation is final-first: one idempotent command validates the Customer and canonical catalogue lines, assigns the permanent workspace sequence number, snapshots commercial/tax/branding evidence and issues the official document atomically.
 
-- `draft` while reviewable
-- `sent` after explicit issue
+An issued Invoice may display as:
+
 - `overdue` when the due date has passed and an amount remains outstanding
 - `paid` when posted allocations cover the total
-- `void` when cancelled with a reason and no active allocation remains
+- `cancelled` when remaining quantities have been reversed by issued Credit Notes
 
-Draft invoice lines may be edited. Issued invoice lines are immutable.
+Issued Invoice headers, lines, totals and branding snapshots are immutable. Legacy drafts and lifecycle commands remain only for migration/backward-compatibility safety and are not exposed in the normal UX. Cancellation is performed through a quantity-backed Credit Note, never by directly voiding an issued Invoice.
 
-A Sale may have one non-void Invoice. A voided Invoice remains in history and permits a replacement Invoice to be created from the same Sale.
+A Sale may have one active Invoice. Historical legacy void records remain preserved; modern cancellation uses Credit Notes and does not delete or rewrite the original Invoice.
 
 ## Sale-to-Invoice boundary
 
@@ -81,11 +81,17 @@ The Accounts command copies the completed Sale's:
 
 The Sale remains immutable and separate. Creating or issuing an Invoice creates no Payment and no Banking activity.
 
-## Manual Invoices
+## Direct Invoices
 
-Accounts may also create a manual Invoice draft linked directly to a Customer.
+Accounts may issue an Invoice directly for a Customer through the dedicated composer.
 
-Manual lines use VAT-inclusive prices. The database calculates gross, discount, net, VAT and total values. The draft may be reviewed until it is issued.
+Financial lines must reference canonical Products or Services. The server re-reads catalogue VAT and VAT-exclusive standard price, then applies Quantity → Discount % → VAT. The user cannot enter an arbitrary financial line or VAT percentage. Product or mixed Invoices require a Sales Order reference bridge; service-only Invoices do not.
+
+## Credit Notes and Delivery Notes
+
+Credit Notes originate from one Invoice. Full cancellation reverses remaining uncredited source-line quantities; partial Credit Notes represent genuine quantity/service reduction. Price, Discount and VAT derive from the immutable Invoice line snapshots, so arbitrary-money credit is prohibited.
+
+Delivery Notes may be standalone or linked to an issued Invoice/completed Sale. Issued Invoice, Credit Note and Delivery Note renderings use their immutable branding snapshots rather than current workspace branding.
 
 ## Payment ledger
 
@@ -181,9 +187,11 @@ Invoice and Payment commands use one workspace-scoped Accounts queue.
 
 The queue supports:
 
-- Manual Invoice creation and review
-- Sale Invoice creation
-- Invoice issue and void
+- Direct final-first Invoice issue
+- Sale-derived Invoice issue
+- Quantity-backed Credit Note issue
+- Delivery Note issue
+- Append-only document Notes
 - Payment recording
 - Payment allocation
 - Allocation reversal
@@ -239,15 +247,15 @@ Rejected for this slice. Bank imports, duplicate detection, transfer identificat
 
 ### Automatically issue an Invoice when a Sale completes
 
-Rejected. Accounts needs an explicit review point for Customer details, due date and invoice issue.
+Rejected. Accounts keeps explicit issue intent and a stable command boundary; completing a Sale does not silently create financial evidence.
 
 ## Risks
 
 - Legacy baseline Invoices had direct browser mutation grants; these are explicitly revoked.
 - Legacy `bank_transactions.matched_invoice_id` remains until Banking migration and must not be interpreted as Payment allocation.
 - Multi-currency allocation is prohibited in Version 1; conversion and exchange differences are deferred.
-- Credit notes and refunds require a later explicit lifecycle rather than negative edits to issued Invoices or Payments.
-- Email delivery and legal invoice rendering are separate Documents and Communications integrations.
+- Refund movement remains separate from the Credit Note evidence and Payment allocation ledgers.
+- Email delivery remains a Communications concern; Accounts supplies permanent rendered documents and an email hand-off.
 
 ## Future implications
 
@@ -257,7 +265,7 @@ This foundation supports:
 - Partial Payments and deposits
 - Payment allocation across multiple invoices
 - Aged receivables
-- Credit notes and refunds
+- Refund workflows
 - Bank reconciliation
 - Invoice Documents and email delivery
 - Customer-profile financial history

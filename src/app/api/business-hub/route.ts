@@ -136,7 +136,7 @@ export async function GET(request: Request) {
       { key: "customer", label: "Add Customer", href: "/customers?create=1", allowed: access.customers?.create },
       { key: "appointment", label: "Create Appointment", href: "/calendar?create=1", allowed: access.calendar?.create },
       { key: "sale", label: "Record Sale", href: "/sales?create=1", allowed: access.sales?.create },
-      { key: "invoice", label: "Create Invoice", href: "/accounts?tab=invoices&create=1", allowed: access.accounts?.create },
+      { key: "invoice", label: "Create Invoice", href: "/accounts/sales/invoices/new", allowed: access.accounts?.create },
       { key: "communication", label: "Record Communication", href: "/communications?create=1", allowed: access.communications?.create },
     ].filter((action) => action.allowed);
 

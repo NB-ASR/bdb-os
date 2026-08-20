@@ -9,7 +9,7 @@ const entries = [
   { href: "/accounts", label: "Overview", icon: CircleDollarSign, match: (path: string) => path === "/accounts" },
   { href: "/accounts/sales", label: "Sales", icon: FileText, match: (path: string) => path.startsWith("/accounts/sales") },
   { href: "/accounts/payments", label: "Payments", icon: CreditCard, match: (path: string) => path.startsWith("/accounts/payments") },
-  { href: "/accounts/customers", label: "Customers", icon: Users, match: (path: string) => path.startsWith("/accounts/customers") },
+  { href: "/accounts/customers", label: "Customer Balances", icon: Users, match: (path: string) => path.startsWith("/accounts/customers") },
   { href: "/accounts/payables", label: "Supplier Payables", icon: Truck, match: (path: string) => path.startsWith("/accounts/payables") },
 ] as const;
 

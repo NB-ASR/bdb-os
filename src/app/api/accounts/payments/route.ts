@@ -42,6 +42,15 @@ function pageSize(value: string | null) {
   return Number.isInteger(parsed) ? Math.min(Math.max(parsed, 25), 100) : 50;
 }
 
+function dateFilter(value: string | null, field: string) {
+  const result = String(value ?? "").trim();
+  if (!result) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(result) || Number.isNaN(Date.parse(`${result}T00:00:00.000Z`))) {
+    throw new CommandError("INVALID_ACCOUNTS_INPUT", `${field} is invalid.`);
+  }
+  return result;
+}
+
 function encodeCursor(row: PaymentRow) {
   return Buffer.from(JSON.stringify({ receivedAt: row.received_at, id: row.id } satisfies Cursor)).toString("base64url");
 }
@@ -71,9 +80,12 @@ export async function GET(request: Request) {
     const status = String(url.searchParams.get("status") ?? "all").trim();
     const method = String(url.searchParams.get("method") ?? "all").trim();
     const allocation = String(url.searchParams.get("allocation") ?? "any").trim();
+    const dateFrom = dateFilter(url.searchParams.get("dateFrom"), "Payment start date");
+    const dateTo = dateFilter(url.searchParams.get("dateTo"), "Payment end date");
     if (status !== "all" && !STATUSES.has(status)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Payment status filter is invalid.");
     if (method !== "all" && !METHODS.has(method)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Payment method filter is invalid.");
     if (!ALLOCATION_STATES.has(allocation)) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Payment allocation filter is invalid.");
+    if (dateFrom && dateTo && dateFrom > dateTo) throw new CommandError("INVALID_ACCOUNTS_INPUT", "Payment start date must not be after the end date.");
 
     let query = supabase
       .from("payment_account_balances")
@@ -91,6 +103,11 @@ export async function GET(request: Request) {
     if (method !== "all") query = query.eq("payment_method", method);
     if (allocation === "unallocated") query = query.gt("unallocated_amount", 0);
     if (allocation === "allocated") query = query.eq("unallocated_amount", 0);
+    if (dateFrom) query = query.gte("received_at", `${dateFrom}T00:00:00.000Z`);
+    if (dateTo) {
+      const exclusiveEnd = new Date(Date.parse(`${dateTo}T00:00:00.000Z`) + 86_400_000).toISOString();
+      query = query.lt("received_at", exclusiveEnd);
+    }
     if (cursor) query = query.or(`received_at.lt.${cursor.receivedAt},and(received_at.eq.${cursor.receivedAt},id.lt.${cursor.id})`);
 
     const result = await query;

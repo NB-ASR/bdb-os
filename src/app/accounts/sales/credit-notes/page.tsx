@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, FileMinus2, Search, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, FileMinus2, FileText, Search, TriangleAlert } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import styles from "../../accounts-workspace.module.css";
 
@@ -21,6 +21,10 @@ type Row = {
   sales_order_reference: string | null;
 };
 type PageResult = { workspaceId: string; rows: Row[]; hasMore: boolean; nextCursor: string | null };
+
+function documentUrl(workspaceId: string, documentId: string, format: "html" | "pdf") {
+  return `/api/business-documents/render?${new URLSearchParams({ workspaceId, type: "credit_note", id: documentId, format }).toString()}`;
+}
 
 export default function CreditNotesRegisterPage() {
   const [workspaceId, setWorkspaceId] = useState("");
@@ -57,7 +61,12 @@ export default function CreditNotesRegisterPage() {
     finally { setLoading(false); }
   }, [q, status, workspaceId]);
 
-  useEffect(() => { const timer = window.setTimeout(() => void load(null, "", "all"), 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(null, "", "all"), 0);
+    return () => window.clearTimeout(timer);
+    // Initial workspace load is intentionally not coupled to filter state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function applyFilters() { const search = draftQ.trim(); setQ(search); setCursor(null); setHistory([]); void load(null, search, status); }
   function clearFilters() { setDraftQ(""); setQ(""); setStatus("all"); setCursor(null); setHistory([]); void load(null, "", "all"); }
@@ -65,9 +74,9 @@ export default function CreditNotesRegisterPage() {
   function previousPage() { const previous = history.at(-1) ?? null; setHistory((current) => current.slice(0, -1)); setCursor(previous); void load(previous); }
 
   return <main className={styles.workspace}>
-    <section className={styles.hero}><div className={styles.heroCopy}><p className={styles.eyebrow}>Accounts · Sales</p><h1>Credit Notes</h1><p>Quantity-backed reversals remain tied to their original Invoice while the register scales independently of the full Accounts history.</p></div><div className={styles.heroActions}><Link className={styles.primaryLink} href="/accounts/operations"><FileMinus2 size={16} /> New Credit Note</Link></div></section>
+    <section className={styles.hero}><div className={styles.heroCopy}><p className={styles.eyebrow}>Accounts · Sales</p><h1>Credit Notes</h1><p>Quantity-backed reversals remain tied to their original Invoice while the register scales independently of the full Accounts history.</p></div><div className={styles.heroActions}><Link className={styles.primaryLink} href="/accounts/sales/credit-notes/new"><FileMinus2 size={16} /> New Credit Note</Link></div></section>
     {error ? <div className={styles.notice}><TriangleAlert size={17} /><div><strong>Credit Notes needs attention</strong><br />{error}</div></div> : null}
     <section className={styles.filterPanel}><div className={styles.filters}><label>Search<input value={draftQ} onChange={(event) => setDraftQ(event.target.value)} placeholder="CN, customer, reason, SO…" /></label><label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All</option><option value="issued">Issued</option><option value="draft">Legacy drafts</option></select></label></div><div className={styles.filterActions}><button onClick={applyFilters}><Search size={14} /> Apply</button><button onClick={clearFilters}>Clear</button></div></section>
-    <section className={styles.tableCard}><div className={styles.tableScroll}><table className={styles.table}><thead><tr><th>Credit Note</th><th>Customer</th><th>Date</th><th>Status</th><th>Reason</th><th>SO</th><th className={styles.money}>Total</th><th>Invoice</th></tr></thead><tbody>{rows.map((note) => <tr key={note.id}><td><strong>{note.number}</strong></td><td>{note.customer_name_snapshot}</td><td>{formatDate(note.issued_at ?? note.created_at)}</td><td><span className={styles.status} data-tone={note.status === "issued" ? "good" : undefined}>{note.status}</span></td><td>{note.reason}</td><td>{note.sales_order_reference ?? "—"}</td><td className={styles.money}>{formatMoney(Number(note.total_amount), note.currency)}</td><td><Link className={styles.quietLink} href={`/accounts/sales/invoices/${note.invoice_id}`}>Open Invoice</Link></td></tr>)}</tbody></table></div>{!rows.length ? <div className={styles.emptyState}>{loading ? "Loading Credit Notes…" : "No Credit Notes match these filters."}</div> : null}<div className={styles.pagination}><span className={styles.helper}>{loading ? "Refreshing…" : `${rows.length} rows on this page`}</span><div className={styles.inlineActions}><button disabled={!history.length || loading} onClick={previousPage}><ArrowLeft size={14} /> Back</button><button disabled={!hasMore || !nextCursor || loading} onClick={nextPage}>Next <ArrowRight size={14} /></button></div></div></section>
+    <section className={styles.tableCard}><div className={styles.tableScroll}><table className={styles.table}><thead><tr><th>Credit Note</th><th>Customer</th><th>Date</th><th>Status</th><th>Reason</th><th>SO</th><th className={styles.money}>Total</th><th>Invoice</th><th>Document</th></tr></thead><tbody>{rows.map((note) => <tr key={note.id}><td><strong>{note.number}</strong></td><td>{note.customer_name_snapshot}</td><td>{formatDate(note.issued_at ?? note.created_at)}</td><td><span className={styles.status} data-tone={note.status === "issued" ? "good" : undefined}>{note.status}</span></td><td>{note.reason}</td><td>{note.sales_order_reference ?? "—"}</td><td className={styles.money}>{formatMoney(Number(note.total_amount), note.currency)}</td><td><Link className={styles.quietLink} href={`/accounts/sales/invoices/${note.invoice_id}`}>Open Invoice</Link></td><td><div className={styles.inlineActions}><a className={styles.quietLink} href={documentUrl(workspaceId, note.id, "html")} target="_blank" rel="noreferrer"><ExternalLink size={14} /> View</a><a className={styles.quietLink} href={documentUrl(workspaceId, note.id, "pdf")}><FileText size={14} /> PDF</a></div></td></tr>)}</tbody></table></div>{!rows.length ? <div className={styles.emptyState}>{loading ? "Loading Credit Notes…" : "No Credit Notes match these filters."}</div> : null}<div className={styles.pagination}><span className={styles.helper}>{loading ? "Refreshing…" : `${rows.length} rows on this page`}</span><div className={styles.inlineActions}><button disabled={!history.length || loading} onClick={previousPage}><ArrowLeft size={14} /> Back</button><button disabled={!hasMore || !nextCursor || loading} onClick={nextPage}>Next <ArrowRight size={14} /></button></div></div></section>
   </main>;
 }

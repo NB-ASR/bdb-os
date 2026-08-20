@@ -192,7 +192,7 @@ export default function InvoiceRegisterPage() {
         </div>
         <div className={styles.heroActions}>
           <Link className={styles.secondaryLink} href="/accounts/sales"><ArrowLeft size={16} /> Sales</Link>
-          <Link className={styles.primaryLink} href="/accounts/operations"><Plus size={16} /> New Invoice</Link>
+          <Link className={styles.primaryLink} href="/accounts/sales/invoices/new"><Plus size={16} /> New Invoice</Link>
         </div>
       </section>
 

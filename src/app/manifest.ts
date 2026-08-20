@@ -17,7 +17,7 @@ export default function manifest(): MetadataRoute.Manifest {
     shortcuts: [
       { name: "Calendar", short_name: "Calendar", url: "/calendar", icons: [{ src: "/bdb-mark.svg", sizes: "any", type: "image/svg+xml" }] },
       { name: "Customers", short_name: "Customers", url: "/customers", icons: [{ src: "/bdb-mark.svg", sizes: "any", type: "image/svg+xml" }] },
-      { name: "New invoice", short_name: "Invoice", url: "/accounts", icons: [{ src: "/bdb-mark.svg", sizes: "any", type: "image/svg+xml" }] },
+      { name: "New invoice", short_name: "Invoice", url: "/accounts/sales/invoices/new", icons: [{ src: "/bdb-mark.svg", sizes: "any", type: "image/svg+xml" }] },
     ],
   };
 }
