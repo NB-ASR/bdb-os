@@ -73,6 +73,7 @@ const canonicalProductionHistory = [
   "20260819221325_accounts_scalable_registers.sql",
   "20260819222047_accounts_invoice_register_cursor.sql",
   "20260821112427_accounts_engine_hardening_pass1.sql",
+  "20260821132042_accounts_document_permanence.sql",
 ];
 
 const pendingMigrations = [];
