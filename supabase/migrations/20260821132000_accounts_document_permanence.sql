@@ -32,7 +32,16 @@ alter table public.delivery_notes
 -- ---------------------------------------------------------------------------
 -- Freeze legacy issued records at their currently rendered values.
 -- Existing legal/customer snapshots win; only missing values are filled.
+--
+-- Credit Notes and Delivery Notes already reject every UPDATE after issue. This
+-- migration is the one controlled exception required to freeze the values those
+-- historical rows render today. The trigger disable/enable is transactional: if
+-- any backfill statement fails, PostgreSQL rolls the migration back and restores
+-- the original trigger state.
 -- ---------------------------------------------------------------------------
+
+alter table public.credit_notes disable trigger credit_notes_immutability;
+alter table public.delivery_notes disable trigger delivery_notes_immutability;
 
 update public.invoices invoice
 set
@@ -95,6 +104,9 @@ where note.workspace_id = settings.workspace_id
   and note.workspace_id = customer.workspace_id
   and note.customer_id = customer.id
   and note.status = 'issued';
+
+alter table public.credit_notes enable trigger credit_notes_immutability;
+alter table public.delivery_notes enable trigger delivery_notes_immutability;
 
 -- ---------------------------------------------------------------------------
 -- Future issue-time capture and post-issue snapshot preservation
