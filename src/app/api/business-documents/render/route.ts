@@ -174,8 +174,8 @@ export async function GET(request: Request) {
     const admin = createAdminClient();
     let logoPath = model.draft ? null : logoSnapshotPath;
 
-    // Draft previews may use today's workspace branding. Issued documents only use
-    // the logo snapshot captured at issue time; there is no live-branding fallback.
+    // Draft previews may use today's workspace branding. Issued documents never fall back to live branding:
+    // they only use the logo snapshot captured at issue time.
     if (model.draft) {
       const customBrandingEnabled = ((featureResult.data ?? []) as Array<{ feature_key: string; enabled: boolean }>).some((feature) => feature.feature_key === "custom_branding" && feature.enabled);
       if (customBrandingEnabled && admin) {
