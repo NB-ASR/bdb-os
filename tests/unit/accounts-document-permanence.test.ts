@@ -7,7 +7,7 @@ async function source(path: string) {
 }
 
 test("Pass 2 migration captures mutable document identity at issue time", async () => {
-  const migration = await source("supabase/migrations/20260821132000_accounts_document_permanence.sql");
+  const migration = await source("supabase/migrations/20260821132042_accounts_document_permanence.sql");
 
   for (const field of [
     "supplier_email_snapshot",
@@ -33,7 +33,7 @@ test("Pass 2 migration captures mutable document identity at issue time", async 
 });
 
 test("legacy issued-document snapshot backfill temporarily and transactionally bypasses existing immutability guards", async () => {
-  const migration = await source("supabase/migrations/20260821132000_accounts_document_permanence.sql");
+  const migration = await source("supabase/migrations/20260821132042_accounts_document_permanence.sql");
 
   assert.match(migration, /alter table public\.credit_notes disable trigger credit_notes_immutability;/);
   assert.match(migration, /alter table public\.delivery_notes disable trigger delivery_notes_immutability;/);
@@ -66,7 +66,7 @@ test("issued document rendering switches from live values to permanent snapshots
 
 test("Pass 2 does not change financial totals or balance rendering", async () => {
   const [migration, route] = await Promise.all([
-    source("supabase/migrations/20260821132000_accounts_document_permanence.sql"),
+    source("supabase/migrations/20260821132042_accounts_document_permanence.sql"),
     source("src/app/api/business-documents/render/route.ts"),
   ]);
 
