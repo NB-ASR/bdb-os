@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { CommandError, parseCommandBody, requireWorkspaceCommand, runCommand } from "@/lib/server/command";
+import { hashJson } from "@/lib/server/workspace-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ function friendly(error: { message: string; code?: string | null }) {
   const message = error.message.toLowerCase();
   if (message.includes("access denied")) return new CommandError("ACCOUNTS_FORBIDDEN", "You do not have permission to perform this Accounts action.", 403);
   if (message.includes("not found") || message.includes("unavailable")) return new CommandError("ACCOUNTS_NOT_FOUND", error.message, 404);
-  if (message.includes("exceeds") || message.includes("issued") || message.includes("cancelled") || message.includes("immutable") || message.includes("catalogue") || error.code === "23505") return new CommandError("ACCOUNTS_STATE_CONFLICT", error.message, 409);
+  if (message.includes("idempotency key") || message.includes("exceeds") || message.includes("issued") || message.includes("cancelled") || message.includes("immutable") || message.includes("catalogue") || error.code === "23505") return new CommandError("ACCOUNTS_STATE_CONFLICT", error.message, 409);
   return new CommandError("ACCOUNTS_COMMAND_FAILED", error.message, 400);
 }
 
@@ -109,11 +110,15 @@ async function catalogueInvoiceLines(admin: ReturnType<typeof adminClient>, work
 }
 
 function quantityCreditLines(value: unknown) {
+  const sourceIds = new Set<string>();
   return lines(value, "Credit Note").map((raw, index) => {
     if (raw.amount !== undefined && raw.amount !== null && raw.amount !== "") throw new CommandError("INVALID_CREDIT_NOTE_LINES", "Credit Notes cannot be created from an arbitrary monetary amount. Use full cancellation or a genuine Product / Service quantity.");
+    const sourceInvoiceLineId = uuid(raw.sourceInvoiceLineId, `Credit Note line ${index + 1} source`) as string;
+    if (sourceIds.has(sourceInvoiceLineId)) throw new CommandError("INVALID_CREDIT_NOTE_LINES", "Each original Invoice line can appear only once on a Credit Note.");
+    sourceIds.add(sourceInvoiceLineId);
     return {
       id: uuid(raw.id, `Credit Note line ${index + 1} ID`),
-      sourceInvoiceLineId: uuid(raw.sourceInvoiceLineId, `Credit Note line ${index + 1} source`),
+      sourceInvoiceLineId,
       quantity: numberValue(raw.quantity, `Credit Note line ${index + 1} quantity`, { positive: true, maximum: 100000 }),
     };
   });
@@ -144,6 +149,13 @@ export async function POST(request: Request) {
     const context = await requireWorkspaceCommand(request, workspaceId);
     if (!context.idempotencyKey) throw new CommandError("IDEMPOTENCY_REQUIRED", "An idempotency key is required for financial changes.");
     const admin = adminClient();
+    const claim = await admin.rpc("claim_accounts_command", {
+      p_workspace_id: workspaceId,
+      p_idempotency_key: context.idempotencyKey,
+      p_request_hash: hashJson({ workspaceId, action, body }),
+    });
+    if (claim.error) throw friendly(claim.error);
+
     let result: { data: unknown; error: { message: string; code?: string | null } | null };
 
     if (action === "invoice-create-manual" || action === "invoice-create-sale") {

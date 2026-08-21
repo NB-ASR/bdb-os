@@ -6,15 +6,15 @@ import {
   requireWorkspaceCommand,
   runCommand,
 } from "@/lib/server/command";
+import { hashJson } from "@/lib/server/workspace-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Official business documents now mutate only through /api/accounts/final-documents.
+// This legacy route retains read compatibility but accepts Payment lifecycle writes only.
 const ACTIONS = new Set([
-  "invoice-create-manual", "invoice-create-sale", "invoice-update", "invoice-issue", "invoice-void",
-  "credit-note-create", "credit-note-update", "credit-note-issue",
-  "delivery-note-create", "delivery-note-update", "delivery-note-issue",
   "payment-record", "payment-allocate", "allocation-reverse", "payment-reverse",
 ]);
 const PAYMENT_METHODS = new Set(["cash", "card", "bank_transfer", "cheque", "other"]);
@@ -113,12 +113,16 @@ function invoiceLines(value: unknown) {
 
 function creditLines(value: unknown) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) throw new CommandError("INVALID_CREDIT_NOTE_LINES", "A Credit Note must contain between 1 and 100 lines.");
+  const sourceIds = new Set<string>();
   return value.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new CommandError("INVALID_CREDIT_NOTE_LINES", `Credit Note line ${index + 1} is invalid.`);
     const line = raw as LineInput;
+    const sourceInvoiceLineId = line.sourceInvoiceLineId ? uuid(line.sourceInvoiceLineId, `Credit Note line ${index + 1} source`) : null;
+    if (sourceInvoiceLineId && sourceIds.has(sourceInvoiceLineId)) throw new CommandError("INVALID_CREDIT_NOTE_LINES", "Each original Invoice line can appear only once on a Credit Note.");
+    if (sourceInvoiceLineId) sourceIds.add(sourceInvoiceLineId);
     return {
       id: uuid(line.id, `Credit Note line ${index + 1} ID`),
-      sourceInvoiceLineId: line.sourceInvoiceLineId ? uuid(line.sourceInvoiceLineId, `Credit Note line ${index + 1} source`) : null,
+      sourceInvoiceLineId,
       quantity: line.quantity === null || line.quantity === undefined || line.quantity === "" ? null : numberValue(line.quantity, `Credit Note line ${index + 1} quantity`, { positive: true }),
       amount: line.amount === null || line.amount === undefined || line.amount === "" ? null : numberValue(line.amount, `Credit Note line ${index + 1} amount`, { positive: true }),
     };
@@ -127,12 +131,16 @@ function creditLines(value: unknown) {
 
 function deliveryLines(value: unknown) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) throw new CommandError("INVALID_DELIVERY_NOTE_LINES", "A Delivery Note must contain between 1 and 100 lines.");
+  const sourceIds = new Set<string>();
   return value.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new CommandError("INVALID_DELIVERY_NOTE_LINES", `Delivery Note line ${index + 1} is invalid.`);
     const line = raw as LineInput;
+    const sourceLineId = uuid(line.sourceLineId, `Delivery Note line ${index + 1} source`) as string;
+    if (sourceIds.has(sourceLineId)) throw new CommandError("INVALID_DELIVERY_NOTE_LINES", "Each source line can appear only once on a Delivery Note.");
+    sourceIds.add(sourceLineId);
     return {
       id: uuid(line.id, `Delivery Note line ${index + 1} ID`),
-      sourceLineId: uuid(line.sourceLineId, `Delivery Note line ${index + 1} source`),
+      sourceLineId,
       quantity: numberValue(line.quantity, `Delivery Note line ${index + 1} quantity`, { positive: true }),
     };
   });
@@ -157,7 +165,7 @@ function friendlyAccountsError(error: { message: string; code?: string | null })
   if (message.includes("access denied")) return new CommandError("ACCOUNTS_FORBIDDEN", "You do not have permission to perform this financial action.", 403);
   if (message.includes("changed on another device")) return new CommandError("ACCOUNTS_VERSION_CONFLICT", error.message, 409);
   if (message.includes("not found")) return new CommandError("ACCOUNTS_NOT_FOUND", error.message, 404);
-  if (message.includes("already") || message.includes("exceeds") || message.includes("immutable") || message.includes("unavailable") || message.includes("only an issued") || error.code === "23505") {
+  if (message.includes("idempotency key") || message.includes("already") || message.includes("exceeds") || message.includes("immutable") || message.includes("unavailable") || message.includes("only an issued") || error.code === "23505") {
     return new CommandError("ACCOUNTS_STATE_CONFLICT", error.message, 409);
   }
   return new CommandError("ACCOUNTS_COMMAND_FAILED", error.message, 400);
@@ -225,6 +233,13 @@ export async function POST(request: Request) {
     const context = await requireWorkspaceCommand(request, workspaceId);
     if (!context.idempotencyKey) throw new CommandError("IDEMPOTENCY_REQUIRED", "An idempotency key is required for financial changes.");
     const admin = adminClient();
+    const claim = await admin.rpc("claim_accounts_command", {
+      p_workspace_id: workspaceId,
+      p_idempotency_key: context.idempotencyKey,
+      p_request_hash: hashJson({ workspaceId, action, body }),
+    });
+    if (claim.error) throw friendlyAccountsError(claim.error);
+
     let result: { data: unknown; error: { message: string; code?: string | null } | null };
 
     if (action.startsWith("invoice-")) {
