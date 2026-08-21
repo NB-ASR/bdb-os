@@ -22,6 +22,10 @@ function uuid(value: string | null, field: string) {
   return result;
 }
 function num(value: unknown) { return value === null || value === undefined ? null : Number(value); }
+function text(value: unknown) { return String(value ?? ""); }
+function permanentValue(snapshotReady: boolean, snapshot: unknown, live: unknown) {
+  return text(snapshotReady ? snapshot : live);
+}
 function discountPercent(line: Record<string, unknown>) {
   const gross = Number(line.gross_amount ?? (Number(line.quantity ?? 0) * Number(line.unit_price ?? 0)));
   const discount = Number(line.discount_amount ?? 0);
@@ -52,6 +56,7 @@ export async function GET(request: Request) {
     if (!workspaceResult.data) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Workspace could not be found.", 404);
 
     const settings = (settingsResult.data ?? {}) as Record<string, unknown>;
+    const liveSupplierName = workspaceResult.data.legal_name ?? workspaceResult.data.name;
     let model: BusinessDocumentModel;
     let logoSnapshotPath: string | null = null;
 
@@ -60,94 +65,117 @@ export async function GET(request: Request) {
       if (invoiceResult.error) throw invoiceResult.error;
       const row = invoiceResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Invoice could not be found.", 404);
-      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
+      const draft = String(row.status) === "draft";
+      const snapshotReady = !draft && Boolean(row.document_permanence_snapshot_at);
+      logoSnapshotPath = text(row.supplier_logo_path_snapshot) || null;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       const lines = ((row.invoice_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
-        kind: "invoice", title: "Invoice", number: String(row.number), draft: String(row.status) === "draft",
+        kind: "invoice", title: "Invoice", number: String(row.number), draft,
         date: formatDocumentDate(String(row.issued_at)), supplyDate: row.supply_date ? formatDocumentDate(String(row.supply_date)) : null,
-        description: String(row.description ?? "") || null,
-        salesOrderReference: String(row.sales_order_reference ?? "") || null,
+        description: text(row.description) || null,
+        salesOrderReference: text(row.sales_order_reference) || null,
         currency: String(row.currency),
         supplier: {
-          name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
-          address: String(row.supplier_address_snapshot ?? settings.business_address ?? ""),
-          vatNumber: String(row.supplier_vat_number_snapshot ?? settings.vat_number ?? "") || null,
-          registrationNumber: String(row.supplier_registration_number_snapshot ?? settings.company_registration_number ?? "") || null,
-          email: String(settings.email ?? "") || null, phone: String(settings.phone ?? "") || null,
+          name: permanentValue(snapshotReady, row.supplier_name_snapshot, liveSupplierName) || "Supplier",
+          address: permanentValue(snapshotReady, row.supplier_address_snapshot, settings.business_address) || null,
+          vatNumber: permanentValue(snapshotReady, row.supplier_vat_number_snapshot, settings.vat_number) || null,
+          registrationNumber: permanentValue(snapshotReady, row.supplier_registration_number_snapshot, settings.company_registration_number) || null,
+          email: permanentValue(snapshotReady, row.supplier_email_snapshot, settings.email) || null,
+          phone: permanentValue(snapshotReady, row.supplier_phone_snapshot, settings.phone) || null,
         },
         customer: {
-          name: String(row.customer_name_snapshot ?? customerResult.data?.name ?? "Customer"),
-          address: String(row.customer_address_snapshot ?? customerResult.data?.address ?? "") || null,
-          vatNumber: String(row.customer_vat_number_snapshot ?? customerResult.data?.vat_number ?? "") || null,
+          name: permanentValue(snapshotReady, row.customer_name_snapshot, customerResult.data?.name) || "Customer",
+          address: permanentValue(snapshotReady, row.customer_address_snapshot, customerResult.data?.address) || null,
+          vatNumber: permanentValue(snapshotReady, row.customer_vat_number_snapshot, customerResult.data?.vat_number) || null,
         },
         lines: lines.map((line): BusinessDocumentLine => ({
           code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity),
           unitPrice: num(line.unit_price), discountAmount: num(line.discount_amount), discountPercent: discountPercent(line),
           netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount),
         })),
-        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount), footer: String(settings.document_footer ?? "") || null,
+        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount),
+        footer: permanentValue(snapshotReady, row.document_footer_snapshot, settings.document_footer) || null,
       };
     } else if (type === "credit_note") {
       const noteResult = await supabase.from("credit_notes").select("*,credit_note_lines(*)").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
       if (noteResult.error) throw noteResult.error;
       const row = noteResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Credit Note could not be found.", 404);
-      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
+      const draft = String(row.status) === "draft";
+      const snapshotReady = !draft && Boolean(row.document_permanence_snapshot_at);
+      logoSnapshotPath = text(row.supplier_logo_path_snapshot) || null;
       const invoiceResult = await supabase.from("invoices").select("number,sales_order_reference").eq("workspace_id", workspaceId).eq("id", String(row.invoice_id)).maybeSingle();
       if (invoiceResult.error) throw invoiceResult.error;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       const lines = ((row.credit_note_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
-        kind: "credit_note", title: "Credit Note", number: String(row.number), draft: String(row.status) === "draft",
+        kind: "credit_note", title: "Credit Note", number: String(row.number), draft,
         date: formatDocumentDate(String(row.issued_at ?? String(row.created_at).slice(0, 10))),
-        originalInvoiceNumber: String(invoiceResult.data?.number ?? ""),
-        salesOrderReference: String(row.sales_order_reference ?? invoiceResult.data?.sales_order_reference ?? "") || null,
+        originalInvoiceNumber: text(invoiceResult.data?.number),
+        salesOrderReference: text(row.sales_order_reference ?? invoiceResult.data?.sales_order_reference) || null,
         reason: String(row.reason), currency: String(row.currency),
         supplier: {
-          name: String(row.supplier_name_snapshot ?? workspaceResult.data.legal_name ?? workspaceResult.data.name),
-          address: String(row.supplier_address_snapshot ?? settings.business_address ?? ""), vatNumber: String(row.supplier_vat_number_snapshot ?? settings.vat_number ?? "") || null,
-          registrationNumber: String(row.supplier_registration_number_snapshot ?? settings.company_registration_number ?? "") || null,
+          name: permanentValue(snapshotReady, row.supplier_name_snapshot, liveSupplierName) || "Supplier",
+          address: permanentValue(snapshotReady, row.supplier_address_snapshot, settings.business_address) || null,
+          vatNumber: permanentValue(snapshotReady, row.supplier_vat_number_snapshot, settings.vat_number) || null,
+          registrationNumber: permanentValue(snapshotReady, row.supplier_registration_number_snapshot, settings.company_registration_number) || null,
         },
-        customer: { name: String(row.customer_name_snapshot ?? customerResult.data?.name ?? "Customer"), address: String(row.customer_address_snapshot ?? customerResult.data?.address ?? "") || null, vatNumber: String(row.customer_vat_number_snapshot ?? customerResult.data?.vat_number ?? "") || null },
+        customer: {
+          name: permanentValue(snapshotReady, row.customer_name_snapshot, customerResult.data?.name) || "Customer",
+          address: permanentValue(snapshotReady, row.customer_address_snapshot, customerResult.data?.address) || null,
+          vatNumber: permanentValue(snapshotReady, row.customer_vat_number_snapshot, customerResult.data?.vat_number) || null,
+        },
         lines: lines.map((line): BusinessDocumentLine => ({
           code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity), unitPrice: num(line.unit_price),
           discountAmount: num(line.discount_amount), discountPercent: discountPercent(line), netAmount: num(line.net_amount), vatRate: num(line.vat_rate), vatAmount: num(line.vat_amount), totalAmount: num(line.total_amount),
         })),
-        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount), footer: String(settings.document_footer ?? "") || null,
+        netAmount: num(row.net_amount), vatAmount: num(row.vat_amount), totalAmount: num(row.total_amount),
+        footer: permanentValue(snapshotReady, row.document_footer_snapshot, settings.document_footer) || null,
       };
     } else {
       const noteResult = await supabase.from("delivery_notes").select("*,delivery_note_lines(*)").eq("workspace_id", workspaceId).eq("id", id).maybeSingle();
       if (noteResult.error) throw noteResult.error;
       const row = noteResult.data as Record<string, unknown> | null;
       if (!row) throw new CommandError("BUSINESS_DOCUMENT_NOT_FOUND", "Delivery Note could not be found.", 404);
-      logoSnapshotPath = String(row.supplier_logo_path_snapshot ?? "") || null;
+      const draft = String(row.status) === "draft";
+      const snapshotReady = !draft && Boolean(row.document_permanence_snapshot_at);
+      logoSnapshotPath = text(row.supplier_logo_path_snapshot) || null;
       const customerResult = await supabase.from("customers").select("name,address,vat_number").eq("workspace_id", workspaceId).eq("id", String(row.customer_id)).maybeSingle();
       if (customerResult.error) throw customerResult.error;
       let originalInvoiceNumber: string | null = null;
       if (row.source_invoice_id) {
         const invoiceResult = await supabase.from("invoices").select("number").eq("workspace_id", workspaceId).eq("id", String(row.source_invoice_id)).maybeSingle();
         if (invoiceResult.error) throw invoiceResult.error;
-        originalInvoiceNumber = String(invoiceResult.data?.number ?? "") || null;
+        originalInvoiceNumber = text(invoiceResult.data?.number) || null;
       }
       const lines = ((row.delivery_note_lines ?? []) as Array<Record<string, unknown>>).sort((a, b) => Number(a.line_number) - Number(b.line_number));
       model = {
-        kind: "delivery_note", title: "Delivery Note", number: String(row.number), draft: String(row.status) === "draft", date: formatDocumentDate(String(row.delivery_date)), originalInvoiceNumber,
-        supplier: { name: String(workspaceResult.data.legal_name ?? workspaceResult.data.name), address: String(settings.business_address ?? ""), vatNumber: String(settings.vat_number ?? "") || null, registrationNumber: String(settings.company_registration_number ?? "") || null },
-        customer: { name: String(row.customer_name_snapshot ?? customerResult.data?.name ?? "Customer"), address: String(customerResult.data?.address ?? "") || null, vatNumber: String(customerResult.data?.vat_number ?? "") || null },
-        deliveryAddress: String(row.delivery_address ?? customerResult.data?.address ?? "") || null,
+        kind: "delivery_note", title: "Delivery Note", number: String(row.number), draft, date: formatDocumentDate(String(row.delivery_date)), originalInvoiceNumber,
+        supplier: {
+          name: permanentValue(snapshotReady, row.supplier_name_snapshot, liveSupplierName) || "Supplier",
+          address: permanentValue(snapshotReady, row.supplier_address_snapshot, settings.business_address) || null,
+          vatNumber: permanentValue(snapshotReady, row.supplier_vat_number_snapshot, settings.vat_number) || null,
+          registrationNumber: permanentValue(snapshotReady, row.supplier_registration_number_snapshot, settings.company_registration_number) || null,
+        },
+        customer: {
+          name: permanentValue(snapshotReady, row.customer_name_snapshot, customerResult.data?.name) || "Customer",
+          address: permanentValue(snapshotReady, row.customer_address_snapshot, customerResult.data?.address) || null,
+          vatNumber: permanentValue(snapshotReady, row.customer_vat_number_snapshot, customerResult.data?.vat_number) || null,
+        },
+        deliveryAddress: text(row.delivery_address) || null,
         lines: lines.map((line): BusinessDocumentLine => ({ code: String(line.code_snapshot), description: String(line.description_snapshot), quantity: Number(line.quantity) })),
-        footer: String(settings.document_footer ?? "") || null,
+        footer: permanentValue(snapshotReady, row.document_footer_snapshot, settings.document_footer) || null,
       };
     }
 
     const admin = createAdminClient();
     let logoPath = model.draft ? null : logoSnapshotPath;
 
-    // Legacy drafts are not issued records, so they may preview today's enabled workspace branding.
-    // Issued documents never fall back to live branding: only their captured snapshot may render.
+    // Draft previews may use today's workspace branding. Issued documents only use
+    // the logo snapshot captured at issue time; there is no live-branding fallback.
     if (model.draft) {
       const customBrandingEnabled = ((featureResult.data ?? []) as Array<{ feature_key: string; enabled: boolean }>).some((feature) => feature.feature_key === "custom_branding" && feature.enabled);
       if (customBrandingEnabled && admin) {
