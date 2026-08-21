@@ -75,7 +75,9 @@ const canonicalProductionHistory = [
   "20260821112427_accounts_engine_hardening_pass1.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260821132000_accounts_document_permanence.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
