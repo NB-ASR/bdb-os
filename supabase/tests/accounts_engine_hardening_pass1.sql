@@ -21,16 +21,16 @@ select throws_ok(
   'The same Accounts idempotency key cannot be reused with changed input'
 );
 
-select ok(not has_function_privilege(
+select ok(coalesce(not has_function_privilege(
   'authenticated',
-  'public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)',
+  to_regprocedure('public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)'),
   'EXECUTE'
-), 'Legacy arbitrary-amount Invoice RPC is retired from browser roles');
-select ok(not has_function_privilege(
+), true), 'Legacy arbitrary-amount Invoice RPC is absent or retired from browser roles');
+select ok(coalesce(not has_function_privilege(
   'authenticated',
-  'public.reconcile_bank_transaction(uuid,uuid,uuid)',
+  to_regprocedure('public.reconcile_bank_transaction(uuid,uuid,uuid)'),
   'EXECUTE'
-), 'Legacy direct Invoice reconciliation RPC is retired from browser roles');
+), true), 'Legacy direct Invoice reconciliation RPC is absent or retired from browser roles');
 
 select ok(not has_function_privilege(
   'authenticated',
