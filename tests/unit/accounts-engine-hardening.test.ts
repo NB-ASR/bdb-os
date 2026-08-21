@@ -43,7 +43,7 @@ test("Accounts command parsing rejects duplicate Credit and Delivery source rows
 });
 
 test("Pass 1 migration keeps financial safeguards at the database boundary", async () => {
-  const migration = await source("supabase/migrations/20260821004000_accounts_engine_hardening_pass1.sql");
+  const migration = await source("supabase/migrations/20260821112427_accounts_engine_hardening_pass1.sql");
 
   assert.match(migration, /invoice_record\.total_amount - invoice_credited - invoice_allocated/);
   assert.match(migration, /source_line\.total_amount - credited_total/);
