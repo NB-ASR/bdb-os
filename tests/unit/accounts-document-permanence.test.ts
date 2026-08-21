@@ -32,6 +32,25 @@ test("Pass 2 migration captures mutable document identity at issue time", async 
   assert.match(migration, /old\.status = 'issued'/);
 });
 
+test("legacy issued-document snapshot backfill temporarily and transactionally bypasses existing immutability guards", async () => {
+  const migration = await source("supabase/migrations/20260821132000_accounts_document_permanence.sql");
+
+  assert.match(migration, /alter table public\.credit_notes disable trigger credit_notes_immutability;/);
+  assert.match(migration, /alter table public\.delivery_notes disable trigger delivery_notes_immutability;/);
+  assert.match(migration, /alter table public\.credit_notes enable trigger credit_notes_immutability;/);
+  assert.match(migration, /alter table public\.delivery_notes enable trigger delivery_notes_immutability;/);
+
+  const creditDisable = migration.indexOf("alter table public.credit_notes disable trigger credit_notes_immutability;");
+  const creditBackfill = migration.indexOf("update public.credit_notes note");
+  const creditEnable = migration.indexOf("alter table public.credit_notes enable trigger credit_notes_immutability;");
+  const deliveryDisable = migration.indexOf("alter table public.delivery_notes disable trigger delivery_notes_immutability;");
+  const deliveryBackfill = migration.indexOf("update public.delivery_notes note");
+  const deliveryEnable = migration.indexOf("alter table public.delivery_notes enable trigger delivery_notes_immutability;");
+
+  assert.ok(creditDisable >= 0 && creditDisable < creditBackfill && creditBackfill < creditEnable);
+  assert.ok(deliveryDisable >= 0 && deliveryDisable < deliveryBackfill && deliveryBackfill < deliveryEnable);
+});
+
 test("issued document rendering switches from live values to permanent snapshots", async () => {
   const route = await source("src/app/api/business-documents/render/route.ts");
 
