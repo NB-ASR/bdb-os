@@ -774,8 +774,20 @@ grant execute on function public.add_business_document_note(uuid,uuid,text,uuid,
 -- Retire browser-executable legacy financial bypasses and private helpers
 -- ---------------------------------------------------------------------------
 
-revoke all on function public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text) from public, anon, authenticated;
-revoke all on function public.reconcile_bank_transaction(uuid,uuid,uuid) from public, anon, authenticated;
+-- These two RPCs exist on older Production histories but not on a clean replay of
+-- the canonical repository migrations. Revoke them when present without forcing
+-- disposable/staging databases to recreate obsolete definitions solely for cleanup.
+do $migration$
+begin
+  if to_regprocedure('public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)') is not null then
+    execute 'revoke all on function public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text) from public, anon, authenticated';
+  end if;
+
+  if to_regprocedure('public.reconcile_bank_transaction(uuid,uuid,uuid)') is not null then
+    execute 'revoke all on function public.reconcile_bank_transaction(uuid,uuid,uuid) from public, anon, authenticated';
+  end if;
+end;
+$migration$;
 
 revoke all on function private.insert_payment_allocation(uuid,uuid,uuid,uuid,numeric,uuid,uuid,timestamptz) from public, anon, authenticated;
 revoke all on function private.refresh_invoice_payment_status(uuid,uuid,uuid) from public, anon, authenticated;
