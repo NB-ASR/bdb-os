@@ -7,6 +7,10 @@ import {
   readAccountsQueue,
   type AccountsCommandAction,
 } from "@/lib/modules/accounts-queue";
+import {
+  cacheAccountsWorkspaceContext,
+  readAccountsWorkspaceContext,
+} from "@/lib/modules/accounts-working-cache";
 
 type DispatchResult = { ok: boolean; pending: boolean };
 
@@ -48,13 +52,24 @@ export function useAccountsCommandRuntime() {
           throw new Error(result.error ?? "The current workspace could not be resolved.");
         }
         if (!active) return;
+        cacheAccountsWorkspaceContext(result);
         const id = String(result.currentWorkspaceId);
         workspaceRef.current = id;
         setWorkspaceId(id);
         setSupportReadOnly(Boolean(result.supportAccess && result.supportAccessMode !== "test_write"));
         refreshQueue(id);
       } catch (initialError) {
-        if (active) setError(initialError instanceof Error ? initialError.message : "Accounts could not be opened.");
+        if (!active) return;
+        const cached = readAccountsWorkspaceContext();
+        if (cached?.currentWorkspaceId) {
+          workspaceRef.current = cached.currentWorkspaceId;
+          setWorkspaceId(cached.currentWorkspaceId);
+          setSupportReadOnly(Boolean(cached.supportAccess && cached.supportAccessMode !== "test_write"));
+          refreshQueue(cached.currentWorkspaceId);
+          setNotice("Offline working context loaded. New Accounts changes will remain Pending sync until the live workspace is verified again.");
+        } else {
+          setError(initialError instanceof Error ? initialError.message : "Accounts could not be opened.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -97,7 +112,7 @@ export function useAccountsCommandRuntime() {
     const command = enqueueAccountsCommand(workspaceId, action, payload);
     refreshQueue(workspaceId);
     if (!navigator.onLine) {
-      setNotice("Saved as Pending sync. A permanent document number will be assigned safely after reconnection.");
+      setNotice("Saved as Pending sync. It will be revalidated and applied safely after reconnection.");
       return { ok: true, pending: true };
     }
 

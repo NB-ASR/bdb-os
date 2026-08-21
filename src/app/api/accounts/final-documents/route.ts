@@ -73,6 +73,8 @@ async function catalogueInvoiceLines(admin: ReturnType<typeof adminClient>, work
       serviceId: lineType === "service" ? uuid(raw.serviceId, `Invoice line ${index + 1} Service`) : null,
       quantity: numberValue(raw.quantity, `Invoice line ${index + 1} quantity`, { positive: true, maximum: 100000 }),
       discountPercent: numberValue(raw.discountPercent ?? 0, `Invoice line ${index + 1} discount`, { minimum: 0, maximum: 100 }),
+      catalogueUnitPrice: numberValue(raw.catalogueUnitPrice, `Invoice line ${index + 1} captured catalogue price`, { minimum: 0 }),
+      catalogueVatRate: numberValue(raw.catalogueVatRate, `Invoice line ${index + 1} captured VAT rate`, { minimum: 0, maximum: 100 }),
     };
   });
   const productIds = parsed.flatMap((line) => line.productId ? [line.productId] : []);
@@ -92,6 +94,13 @@ async function catalogueInvoiceLines(admin: ReturnType<typeof adminClient>, work
     const unitPrice = line.lineType === "product" ? Number("selling_price" in source ? source.selling_price : 0) : Number("price" in source ? source.price : 0);
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new CommandError("ACCOUNTS_STATE_CONFLICT", `Invoice line ${index + 1} catalogue price is unavailable.`, 409);
     const vatRate = Number(source.vat_rate ?? 0);
+    if (round4(line.catalogueUnitPrice) !== round4(unitPrice) || round4(line.catalogueVatRate) !== round4(vatRate)) {
+      throw new CommandError(
+        "ACCOUNTS_CATALOGUE_REVIEW_REQUIRED",
+        `Catalogue price or VAT changed for ${String(source.name ?? `Invoice line ${index + 1}`)}. Review the Invoice against the current catalogue before issuing.`,
+        409,
+      );
+    }
     const gross = round4(line.quantity * unitPrice);
     const discountAmount = round4(gross * line.discountPercent / 100);
     return {

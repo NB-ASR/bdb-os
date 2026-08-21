@@ -2,9 +2,18 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ArrowRight, Banknote, FileText, RefreshCw, Scale, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, FileText, RefreshCw, Scale, Trash2, Users } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
-import { readAccountsQueue } from "@/lib/modules/accounts-queue";
+import {
+  flushAccountsQueue,
+  readAccountsQueue,
+  removeAccountsCommand,
+  type AccountsQueuedCommand,
+} from "@/lib/modules/accounts-queue";
+import {
+  cacheAccountsWorkspaceContext,
+  readAccountsWorkspaceContext,
+} from "@/lib/modules/accounts-working-cache";
 import styles from "./accounts-workspace.module.css";
 
 type Summary = {
@@ -48,24 +57,38 @@ function documentHref(workspaceId: string, document: RecentDocument) {
   const params = new URLSearchParams({ workspaceId, type: document.document_type, id: document.id, format: "html" });
   return `/api/business-documents/render?${params.toString()}`;
 }
+function actionLabel(action: string) {
+  return action.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export default function AccountsOverviewPage() {
   const [bundle, setBundle] = useState<OverviewBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cached, setCached] = useState(false);
-  const [pendingSync, setPendingSync] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<AccountsQueuedCommand[]>([]);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
-      const context = await contextResponse.json().catch(() => ({}));
-      if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current workspace could not be resolved.");
-      const workspaceId = String(context.currentWorkspaceId);
+      let workspaceId = "";
+      if (navigator.onLine) {
+        const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
+        const context = await contextResponse.json().catch(() => ({}));
+        if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current workspace could not be resolved.");
+        cacheAccountsWorkspaceContext(context);
+        workspaceId = String(context.currentWorkspaceId);
+      } else {
+        workspaceId = readAccountsWorkspaceContext()?.currentWorkspaceId ?? "";
+        if (!workspaceId) throw new Error("The current Accounts workspace has not been cached on this device yet.");
+      }
+
       const local = readCache(workspaceId);
       if (local) { setBundle(local); setCached(true); }
-      setPendingSync(readAccountsQueue(workspaceId).length);
+      setPendingCommands(readAccountsQueue(workspaceId));
+      if (!navigator.onLine) return;
+
       const response = await fetch(`/api/accounts/overview?workspaceId=${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.ok) throw new Error(result.error ?? "Accounts overview could not be loaded.");
@@ -79,6 +102,26 @@ export default function AccountsOverviewPage() {
   const summary = bundle?.summary;
   const currency = summary?.currency ?? "EUR";
 
+  async function retryPending() {
+    if (!bundle?.workspaceId || !navigator.onLine) return;
+    setSyncing(true); setError("");
+    const result = await flushAccountsQueue(bundle.workspaceId);
+    setPendingCommands(readAccountsQueue(bundle.workspaceId));
+    setSyncing(false);
+    if (result.remaining) {
+      setError(readAccountsQueue(bundle.workspaceId)[0]?.lastError ?? "Accounts synchronisation stopped for review.");
+      return;
+    }
+    await load();
+  }
+
+  function discardPending(command: AccountsQueuedCommand) {
+    if (!bundle?.workspaceId) return;
+    if (!window.confirm("Discard this unsynchronised Accounts change? This removes the local queued command and cannot be undone.")) return;
+    removeAccountsCommand(bundle.workspaceId, command.id);
+    setPendingCommands(readAccountsQueue(bundle.workspaceId));
+  }
+
   return (
     <main className={styles.workspace}>
       <section className={styles.hero}>
@@ -87,7 +130,7 @@ export default function AccountsOverviewPage() {
       </section>
 
       {cached ? <div className={styles.notice}><RefreshCw size={17} /><div><strong>Offline-ready snapshot</strong><br />Showing the last verified Accounts overview while live data reconnects.</div></div> : null}
-      {pendingSync ? <div className={styles.notice}><RefreshCw size={17} /><div><strong>{pendingSync} Accounts change{pendingSync === 1 ? "" : "s"} Pending sync</strong><br />Queued financial commands remain separate from this read-only overview.</div></div> : null}
+      {pendingCommands.length ? <section className={styles.detailCard}><h3><RefreshCw size={16} /> Pending sync · {pendingCommands.length}</h3><p className={styles.muted}>Queued financial changes are preserved locally and applied in order. A failed command stops the queue for review rather than silently changing accounting data.</p><div className={styles.linkList}>{pendingCommands.slice(0, 5).map((command, index) => <div className={styles.linkRow} key={command.id}><span><strong>{actionLabel(command.action)}</strong><span className={styles.subtle}>{command.lastError || `Queued ${formatDate(command.createdAt)}`}</span></span>{index === 0 ? <button className={styles.secondaryLink} type="button" onClick={() => discardPending(command)}><Trash2 size={14} /> Discard blocked change</button> : <span className={styles.muted}>Waiting</span>}</div>)}</div><div className={styles.inlineActions}><button className={styles.secondaryLink} type="button" disabled={syncing} onClick={() => void retryPending()}><RefreshCw size={14} /> {syncing ? "Synchronising…" : "Retry queue"}</button></div></section> : null}
       {error ? <div className={styles.notice}><AlertTriangle size={17} /><div><strong>Accounts needs attention</strong><br />{error}</div></div> : null}
 
       <section className={styles.statGrid} aria-label="Accounts attention summary">

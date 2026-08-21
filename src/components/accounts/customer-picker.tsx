@@ -2,6 +2,10 @@
 
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  cacheAccountsCustomers,
+  searchAccountsCustomers,
+} from "@/lib/modules/accounts-working-cache";
 import type { CustomerOption } from "./composer-types";
 import styles from "./accounts-composer.module.css";
 
@@ -17,6 +21,7 @@ export function CustomerPicker({
   const [query, setQuery] = useState("");
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [cached, setCached] = useState(false);
   const [error, setError] = useState("");
   const selectedCustomerId = value?.id ?? "";
 
@@ -24,6 +29,19 @@ export function CustomerPicker({
     if (!workspaceId || selectedCustomerId) return;
     let active = true;
     const timer = window.setTimeout(async () => {
+      const local = searchAccountsCustomers(workspaceId, query) as CustomerOption[];
+      if (local.length && active) {
+        setCustomers(local);
+        setCached(true);
+      }
+      if (!navigator.onLine) {
+        if (active) {
+          setLoading(false);
+          setError(local.length ? "" : "No cached Customers are available for this workspace yet.");
+        }
+        return;
+      }
+
       setLoading(true);
       setError("");
       try {
@@ -32,9 +50,22 @@ export function CustomerPicker({
         const response = await fetch(`/api/accounts/composer?${params.toString()}`, { cache: "no-store" });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.error ?? "Customers could not be searched.");
-        if (active) setCustomers(result.result?.customers ?? []);
+        const live = (result.result?.customers ?? []) as CustomerOption[];
+        cacheAccountsCustomers(workspaceId, live);
+        if (active) {
+          setCustomers(live);
+          setCached(false);
+        }
       } catch (lookupError) {
-        if (active) setError(lookupError instanceof Error ? lookupError.message : "Customers could not be searched.");
+        if (!active) return;
+        const fallback = searchAccountsCustomers(workspaceId, query) as CustomerOption[];
+        if (fallback.length) {
+          setCustomers(fallback);
+          setCached(true);
+          setError("");
+        } else {
+          setError(lookupError instanceof Error ? lookupError.message : "Customers could not be searched.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -56,6 +87,7 @@ export function CustomerPicker({
           </button>
         ))}
         {!customers.length ? <span className={styles.lookupEmpty}>{loading ? "Searching Customers…" : error || "No matching Customers."}</span> : null}
+        {cached && customers.length ? <span className={styles.lookupEmpty}>Showing the cached Customer working set until live search reconnects.</span> : null}
       </div> : null}
     </div>
   );
