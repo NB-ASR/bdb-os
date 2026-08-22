@@ -17,7 +17,9 @@ CUSTOMER="51000000-0000-4000-8000-000000000003"
 
 psql_exec <<SQL
 insert into auth.users(id,email) values ('${USER_ID}'::uuid,'pass4-concurrency@bdb.invalid');
-insert into public.profiles(id,full_name,is_active) values ('${USER_ID}'::uuid,'Pass 4 Concurrency Actor',true);
+update public.profiles
+set full_name='Pass 4 Concurrency Actor', is_active=true
+where id='${USER_ID}'::uuid;
 insert into public.workspaces(id,slug,name) values ('${WORKSPACE}'::uuid,'pass4-concurrency','Pass 4 Concurrency');
 update public.workspaces
 set status='active',
