@@ -1,6 +1,6 @@
 begin;
 
-select plan(32);
+select plan(34);
 
 select ok(not has_function_privilege('authenticated','public.create_and_issue_invoice_command(uuid,uuid,text,text,uuid,uuid,uuid,uuid,date,text,text,jsonb,text)','EXECUTE'),'Browser roles cannot execute final Invoice creation directly');
 select ok(not has_function_privilege('authenticated','public.create_and_issue_credit_note_command(uuid,uuid,text,uuid,uuid,uuid,text,jsonb)','EXECUTE'),'Browser roles cannot execute final Credit Note creation directly');
