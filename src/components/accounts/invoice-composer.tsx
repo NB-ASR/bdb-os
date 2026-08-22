@@ -49,8 +49,13 @@ export function InvoiceComposer() {
     if (!workspaceId) return;
     let active = true;
     const cached = readAccountsSettings(workspaceId);
-    if (cached) setCurrency(cached.currency || "EUR");
-    if (!navigator.onLine) return () => { active = false; };
+    const cachedTimer = cached
+      ? window.setTimeout(() => { if (active) setCurrency(cached.currency || "EUR"); }, 0)
+      : null;
+    if (!navigator.onLine) return () => {
+      active = false;
+      if (cachedTimer !== null) window.clearTimeout(cachedTimer);
+    };
 
     async function loadSettings() {
       try {
@@ -66,7 +71,10 @@ export function InvoiceComposer() {
       }
     }
     void loadSettings();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (cachedTimer !== null) window.clearTimeout(cachedTimer);
+    };
   }, [setRuntimeError, workspaceId]);
 
   useEffect(() => {

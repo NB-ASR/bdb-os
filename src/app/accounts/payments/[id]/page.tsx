@@ -98,7 +98,9 @@ export default function PaymentDetailPage() {
   }, [paymentId, runtime.workspaceId]);
 
   useEffect(() => {
-    if (!runtime.loading && runtime.workspaceId) void load();
+    if (runtime.loading || !runtime.workspaceId) return;
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load, runtime.loading, runtime.workspaceId]);
 
   const payment = bundle?.payment;
