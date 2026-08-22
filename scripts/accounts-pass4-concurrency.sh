@@ -17,7 +17,12 @@ CUSTOMER="51000000-0000-4000-8000-000000000003"
 
 psql_exec <<SQL
 insert into auth.users(id,email) values ('${USER_ID}'::uuid,'pass4-concurrency@bdb.invalid');
+insert into public.profiles(id,full_name,is_active) values ('${USER_ID}'::uuid,'Pass 4 Concurrency Actor',true);
 insert into public.workspaces(id,slug,name) values ('${WORKSPACE}'::uuid,'pass4-concurrency','Pass 4 Concurrency');
+update public.workspaces
+set status='active',
+    plan_id=(select plan_id from public.workspaces where slug='bdb-os')
+where id='${WORKSPACE}'::uuid;
 insert into public.workspace_memberships(workspace_id,user_id,role,status,access_profile,joined_at)
 values ('${WORKSPACE}'::uuid,'${USER_ID}'::uuid,'owner','active','owner',now());
 insert into public.customers(id,workspace_id,code,name,company)
@@ -54,6 +59,9 @@ values
 ('54000000-0000-4000-8000-000000000005'::uuid,'${WORKSPACE}'::uuid,'54000000-0000-4000-8000-000000000003'::uuid,'54000000-0000-4000-8000-000000000002'::uuid,1,'manual','P4-DN','Delivery race line',6),
 ('54000000-0000-4000-8000-000000000006'::uuid,'${WORKSPACE}'::uuid,'54000000-0000-4000-8000-000000000004'::uuid,'54000000-0000-4000-8000-000000000002'::uuid,1,'manual','P4-DN','Delivery race line',6);
 SQL
+
+CAN_WRITE="$(psql_exec -Atc "select private.accounts_actor_can_write('${WORKSPACE}'::uuid,'${USER_ID}'::uuid,'edit');")"
+[[ "${CAN_WRITE}" == "t" ]] || { echo "Concurrency actor does not have Accounts edit permission" >&2; exit 1; }
 
 run_parallel_pair() {
   local sql_a="$1"
