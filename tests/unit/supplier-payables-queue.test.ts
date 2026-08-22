@@ -37,12 +37,17 @@ test("Supplier Payables stable command IDs are queued only once", () => {
   assert.equal(readSupplierPayablesQueue("workspace-a").length, 1);
 });
 
-test("Supplier Payables commands can be discarded without affecting another workspace", () => {
+test("fresh Supplier financial commands cannot be discarded before their outcome is known", () => {
   installStorage();
   enqueueSupplierPayablesCommand("workspace-a", "payable-reverse", { payableId: "payable-a" }, "remove-command");
   enqueueSupplierPayablesCommand("workspace-b", "payment-reverse", { paymentId: "payment-b" }, "keep-command");
-  removeSupplierPayablesCommand("workspace-a", "remove-command");
 
+  assert.equal(removeSupplierPayablesCommand("workspace-a", "remove-command"), false);
+  assert.deepEqual(readSupplierPayablesQueue("workspace-a").map((command) => command.id), ["remove-command"]);
+  assert.equal(readSupplierPayablesQueue("workspace-b").length, 1);
+
+  // Force-removal is reserved for the queue's internal confirmed-success cleanup path.
+  assert.equal(removeSupplierPayablesCommand("workspace-a", "remove-command", true), true);
   assert.deepEqual(readSupplierPayablesQueue("workspace-a"), []);
   assert.equal(readSupplierPayablesQueue("workspace-b").length, 1);
 });
