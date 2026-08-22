@@ -122,15 +122,20 @@ export function enqueueAccountsCommand(
   return command;
 }
 
-export function removeAccountsCommand(workspaceId: string, commandId: string) {
-  writeAccountsQueue(
-    workspaceId,
-    readAccountsQueue(workspaceId).filter((command) => command.id !== commandId),
-  );
-}
-
 export function canDiscardAccountsCommand(command: AccountsQueuedCommand) {
   return Boolean(command.lastError) && command.failureKind === "confirmed_rejection";
+}
+
+export function removeAccountsCommand(workspaceId: string, commandId: string, force = false) {
+  const queue = readAccountsQueue(workspaceId);
+  const command = queue.find((item) => item.id === commandId);
+  if (!command) return false;
+  if (!force && !canDiscardAccountsCommand(command)) return false;
+  writeAccountsQueue(
+    workspaceId,
+    queue.filter((item) => item.id !== commandId),
+  );
+  return true;
 }
 
 export function failAccountsCommand(
@@ -201,7 +206,7 @@ export async function flushAccountsQueue(
   for (const command of readAccountsQueue(workspaceId)) {
     try {
       await submitAccountsCommand(command);
-      removeAccountsCommand(workspaceId, command.id);
+      removeAccountsCommand(workspaceId, command.id, true);
       completed += 1;
       onProgress?.(readAccountsQueue(workspaceId).length);
     } catch (error) {
