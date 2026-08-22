@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   enqueueAccountsCommand,
   failAccountsCommand,
+  flushAccountsQueue,
   readAccountsQueue,
   removeAccountsCommand,
   writeAccountsQueue,
@@ -19,6 +20,13 @@ function installStorage() {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: { localStorage: new MemoryStorage() },
+  });
+}
+
+function installOnline() {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: true },
   });
 }
 
@@ -48,18 +56,91 @@ test("failed Accounts commands retain diagnostics and block later review orderin
   const commands = readAccountsQueue("workspace-a");
   assert.equal(commands[0]?.attempts, 1);
   assert.equal(commands[0]?.lastError, "allocation was already reversed");
+  assert.equal(commands[0]?.failureKind, "ambiguous");
   assert.equal(commands[1]?.id, "later-command");
 });
 
-test("Accounts commands can be removed or discarded without affecting other workspaces", () => {
+test("fresh and ambiguous Accounts financial commands cannot be discarded", () => {
   installStorage();
-  enqueueAccountsCommand("workspace-a", "invoice-void", { id: "invoice-a" }, "remove-command");
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-a" }, "fresh-command");
   enqueueAccountsCommand("workspace-b", "payment-record", { id: "payment-b" }, "keep-command");
-  removeAccountsCommand("workspace-a", "remove-command");
 
+  assert.equal(removeAccountsCommand("workspace-a", "fresh-command"), false);
+  failAccountsCommand("workspace-a", "fresh-command", "connection disappeared", { failureKind: "ambiguous" });
+  assert.equal(removeAccountsCommand("workspace-a", "fresh-command"), false);
+  assert.deepEqual(readAccountsQueue("workspace-a").map((command) => command.id), ["fresh-command"]);
+  assert.deepEqual(readAccountsQueue("workspace-b").map((command) => command.id), ["keep-command"]);
+});
+
+test("only confirmed Accounts rejections may be discarded without force", () => {
+  installStorage();
+  enqueueAccountsCommand("workspace-a", "payment-allocate", { id: "allocation-a" }, "rejected-command");
+  failAccountsCommand("workspace-a", "rejected-command", "allocation exceeds outstanding", {
+    status: 409,
+    failureKind: "confirmed_rejection",
+  });
+
+  assert.equal(removeAccountsCommand("workspace-a", "rejected-command"), true);
   assert.deepEqual(readAccountsQueue("workspace-a"), []);
-  assert.equal(readAccountsQueue("workspace-b").length, 1);
 
-  writeAccountsQueue("workspace-b", []);
-  assert.deepEqual(readAccountsQueue("workspace-b"), []);
+  enqueueAccountsCommand("workspace-a", "payment-reverse", { id: "payment-a" }, "completed-command");
+  assert.equal(removeAccountsCommand("workspace-a", "completed-command", true), true);
+  assert.deepEqual(readAccountsQueue("workspace-a"), []);
+
+  writeAccountsQueue("workspace-a", []);
+});
+
+test("offline replay stops at the first ambiguous command so later financial work cannot arrive out of order", async () => {
+  installStorage();
+  installOnline();
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-first" }, "ordered-command-1");
+  enqueueAccountsCommand("workspace-a", "payment-reverse", { paymentId: "payment-first" }, "ordered-command-2");
+
+  let calls = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => {
+      calls += 1;
+      throw new Error("response lost after submit");
+    },
+  });
+
+  const result = await flushAccountsQueue("workspace-a");
+  const queue = readAccountsQueue("workspace-a");
+  assert.deepEqual(result, { completed: 0, remaining: 2 });
+  assert.equal(calls, 1);
+  assert.equal(queue[0]?.id, "ordered-command-1");
+  assert.equal(queue[0]?.failureKind, "ambiguous");
+  assert.equal(queue[1]?.id, "ordered-command-2");
+  assert.equal(queue[1]?.attempts, 0);
+});
+
+test("a lost response retries the same stable idempotency key and removes the command only after confirmed success", async () => {
+  installStorage();
+  installOnline();
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-retry" }, "stable-retry-command");
+
+  const keys: Array<string | null> = [];
+  let attempt = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      attempt += 1;
+      keys.push(new Headers(init?.headers).get("Idempotency-Key"));
+      if (attempt === 1) throw new Error("connection reset after server commit");
+      return new Response(JSON.stringify({ ok: true, result: { id: "payment-retry" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  const first = await flushAccountsQueue("workspace-a");
+  assert.deepEqual(first, { completed: 0, remaining: 1 });
+  assert.deepEqual(readAccountsQueue("workspace-a").map((command) => command.id), ["stable-retry-command"]);
+
+  const second = await flushAccountsQueue("workspace-a");
+  assert.deepEqual(second, { completed: 1, remaining: 0 });
+  assert.deepEqual(readAccountsQueue("workspace-a"), []);
+  assert.deepEqual(keys, ["stable-retry-command", "stable-retry-command"]);
 });

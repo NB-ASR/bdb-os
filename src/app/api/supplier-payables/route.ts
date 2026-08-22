@@ -6,6 +6,8 @@ import {
   requireWorkspaceCommand,
   runCommand,
 } from "@/lib/server/command";
+import { readSupplierPayablesView } from "@/lib/server/supplier-payables-registers";
+import { hashJson } from "@/lib/server/workspace-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +94,7 @@ function friendlyError(error: { message: string; code?: string | null }) {
     || message.includes("unavailable")
     || message.includes("only approved")
     || message.includes("only supplier")
+    || message.includes("idempotency key was reused")
     || error.code === "23505"
   ) {
     return new CommandError("SUPPLIER_PAYABLES_STATE_CONFLICT", error.message, 409);
@@ -110,94 +113,12 @@ function adminClient() {
 
 export async function GET(request: Request) {
   return runCommand(async () => {
-    const workspaceId = uuid(new URL(request.url).searchParams.get("workspaceId"), "Workspace");
+    const url = new URL(request.url);
+    const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
     await requireWorkspaceCommand(request, workspaceId);
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
-
-    const [
-      documentsResult,
-      payablesResult,
-      paymentsResult,
-      paymentAllocationsResult,
-      creditAllocationsResult,
-      balancesResult,
-      suppliersResult,
-      settingsResult,
-    ] = await Promise.all([
-      supabase
-        .from("supplier_documents")
-        .select("id,supplier_id,document_type,document_number,document_date,due_date,currency,gross_amount,status,accounts_posting_status,approved_at")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "approved")
-        .in("accounts_posting_status", ["ready", "posted", "reversed"])
-        .order("approved_at", { ascending: false }),
-      supabase
-        .from("supplier_payable_balances")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("posted_at", { ascending: false }),
-      supabase
-        .from("supplier_payment_balances")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("paid_at", { ascending: false }),
-      supabase
-        .from("supplier_payment_allocations")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("occurred_at", { ascending: false }),
-      supabase
-        .from("supplier_credit_allocations")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("occurred_at", { ascending: false }),
-      supabase
-        .from("supplier_account_balances")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("supplier_name"),
-      supabase
-        .from("suppliers")
-        .select("id,code,name,supplier_type,document_currency,status")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "active")
-        .order("name"),
-      supabase
-        .from("workspace_settings")
-        .select("currency,timezone")
-        .eq("workspace_id", workspaceId)
-        .maybeSingle(),
-    ]);
-
-    const failed = [
-      documentsResult,
-      payablesResult,
-      paymentsResult,
-      paymentAllocationsResult,
-      creditAllocationsResult,
-      balancesResult,
-      suppliersResult,
-      settingsResult,
-    ].find((result) => result.error);
-    if (failed?.error) throw failed.error;
-
-    const supplierMap = new Map((suppliersResult.data ?? []).map((supplier) => [supplier.id, supplier]));
-
-    return {
-      workspaceId,
-      settings: settingsResult.data ?? { currency: "EUR", timezone: "UTC" },
-      documents: (documentsResult.data ?? []).map((document) => ({
-        ...document,
-        supplier: document.supplier_id ? supplierMap.get(document.supplier_id) ?? null : null,
-      })),
-      payables: payablesResult.data ?? [],
-      payments: paymentsResult.data ?? [],
-      paymentAllocations: paymentAllocationsResult.data ?? [],
-      creditAllocations: creditAllocationsResult.data ?? [],
-      supplierBalances: balancesResult.data ?? [],
-      suppliers: suppliersResult.data ?? [],
-    };
+    return readSupplierPayablesView(supabase, workspaceId, url);
   });
 }
 
@@ -215,6 +136,13 @@ export async function POST(request: Request) {
       throw new CommandError("IDEMPOTENCY_REQUIRED", "An idempotency key is required for Supplier financial changes.");
     }
     const admin = adminClient();
+    const claim = await admin.rpc("claim_accounts_command", {
+      p_workspace_id: workspaceId,
+      p_idempotency_key: context.idempotencyKey,
+      p_request_hash: hashJson({ workspaceId, action, body }),
+    });
+    if (claim.error) throw friendlyError(claim.error);
+
     let result: { data: unknown; error: { message: string; code?: string | null } | null };
 
     if (action === "payable-post") {
@@ -307,7 +235,7 @@ export async function POST(request: Request) {
         p_actor_user_id: context.userId,
         p_command_id: context.commandId,
         p_reason: text(body.reason, "Reversal reason", 5, 500),
-        p_occurred_at: body.occurredAt ? timestamp(body.occurredAt, "Reversal date") : new Date().toISOString(),
+        p_occurred_at: body.occurredAt ? timestamp(body.occurredAt, "Credit allocation date") : new Date().toISOString(),
       });
     }
 

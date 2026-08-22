@@ -8,6 +8,8 @@ export type SupplierPayablesCommandAction =
   | "credit-allocate"
   | "credit-allocation-reverse";
 
+export type SupplierPayablesQueueFailureKind = "confirmed_rejection" | "ambiguous";
+
 export type SupplierPayablesQueuedCommand = {
   id: string;
   workspaceId: string;
@@ -16,10 +18,24 @@ export type SupplierPayablesQueuedCommand = {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  lastErrorCode?: string;
+  lastErrorStatus?: number;
+  failureKind?: SupplierPayablesQueueFailureKind;
+};
+
+type SupplierPayablesSubmissionError = Error & {
+  code?: string;
+  status?: number;
+  failureKind?: SupplierPayablesQueueFailureKind;
 };
 
 const QUEUE_PREFIX = "bdb-supplier-payables-queue-v1";
 const queueKey = (workspaceId: string) => `${QUEUE_PREFIX}:${workspaceId}`;
+
+function confirmedServerRejection(status: number) {
+  if (status < 400 || status >= 500) return false;
+  return !new Set([401, 403, 408, 425, 429]).has(status);
+}
 
 export function readSupplierPayablesQueue(workspaceId: string): SupplierPayablesQueuedCommand[] {
   if (typeof window === "undefined") return [];
@@ -43,7 +59,8 @@ export function readSupplierPayablesQueue(workspaceId: string): SupplierPayables
 
 function writeQueue(workspaceId: string, queue: SupplierPayablesQueuedCommand[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(queueKey(workspaceId), JSON.stringify(queue));
+  if (!queue.length) window.localStorage.removeItem(queueKey(workspaceId));
+  else window.localStorage.setItem(queueKey(workspaceId), JSON.stringify(queue));
 }
 
 export function enqueueSupplierPayablesCommand(
@@ -67,26 +84,65 @@ export function enqueueSupplierPayablesCommand(
   return command;
 }
 
-export function removeSupplierPayablesCommand(workspaceId: string, id: string) {
-  writeQueue(workspaceId, readSupplierPayablesQueue(workspaceId).filter((item) => item.id !== id));
+export function canDiscardSupplierPayablesCommand(command: SupplierPayablesQueuedCommand) {
+  return Boolean(command.lastError) && command.failureKind === "confirmed_rejection";
+}
+
+export function removeSupplierPayablesCommand(workspaceId: string, id: string, force = false) {
+  const queue = readSupplierPayablesQueue(workspaceId);
+  const command = queue.find((item) => item.id === id);
+  if (!command) return false;
+  if (!force && !canDiscardSupplierPayablesCommand(command)) return false;
+  writeQueue(workspaceId, queue.filter((item) => item.id !== id));
+  return true;
+}
+
+function failSupplierPayablesCommand(
+  workspaceId: string,
+  commandId: string,
+  error: string,
+  details: { code?: string; status?: number; failureKind?: SupplierPayablesQueueFailureKind } = {},
+) {
+  writeQueue(workspaceId, readSupplierPayablesQueue(workspaceId).map((item) => item.id === commandId
+    ? {
+      ...item,
+      attempts: item.attempts + 1,
+      lastError: error.slice(0, 240),
+      lastErrorCode: details.code,
+      lastErrorStatus: details.status,
+      failureKind: details.failureKind ?? "ambiguous",
+    }
+    : item));
 }
 
 export async function submitSupplierPayablesCommand(command: SupplierPayablesQueuedCommand) {
-  const response = await fetch("/api/supplier-payables", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": command.id,
-    },
-    body: JSON.stringify({
-      workspaceId: command.workspaceId,
-      action: command.action,
-      ...command.payload,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/supplier-payables", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": command.id,
+      },
+      body: JSON.stringify({
+        workspaceId: command.workspaceId,
+        action: command.action,
+        ...command.payload,
+      }),
+    });
+  } catch (cause) {
+    const error = new Error(cause instanceof Error ? cause.message : "The Supplier Accounts command transport failed.") as SupplierPayablesSubmissionError;
+    error.failureKind = "ambiguous";
+    throw error;
+  }
+
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.ok) {
-    throw new Error(result.error ?? "The Supplier Accounts command could not be completed.");
+    const error = new Error(result.error ?? "The Supplier Accounts command could not be completed.") as SupplierPayablesSubmissionError;
+    error.code = result.code;
+    error.status = response.status;
+    error.failureKind = confirmedServerRejection(response.status) ? "confirmed_rejection" : "ambiguous";
+    throw error;
   }
   return result.result as Record<string, unknown>;
 }
@@ -97,13 +153,16 @@ export async function flushSupplierPayablesQueue(workspaceId: string) {
   for (const command of queue) {
     try {
       await submitSupplierPayablesCommand(command);
-      removeSupplierPayablesCommand(workspaceId, command.id);
+      removeSupplierPayablesCommand(workspaceId, command.id, true);
       completed += 1;
     } catch (error) {
+      const failure = error as SupplierPayablesSubmissionError;
       const message = error instanceof Error ? error.message : "The Supplier Accounts command could not be completed.";
-      writeQueue(workspaceId, readSupplierPayablesQueue(workspaceId).map((item) => item.id === command.id
-        ? { ...item, attempts: item.attempts + 1, lastError: message }
-        : item));
+      failSupplierPayablesCommand(workspaceId, command.id, message, {
+        code: failure.code,
+        status: failure.status,
+        failureKind: failure.failureKind ?? "ambiguous",
+      });
       throw new Error(message);
     }
   }

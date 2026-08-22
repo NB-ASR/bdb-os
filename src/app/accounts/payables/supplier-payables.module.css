@@ -65,6 +65,13 @@
   color: var(--muted);
 }
 
+.queueStatus {
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .tabs {
   display: flex;
   gap: 8px;
@@ -89,6 +96,32 @@
   border-color: rgba(181, 145, 76, 0.55);
   color: var(--gold);
   background: rgba(181, 145, 76, 0.08);
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.searchBar svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.searchBar input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
 }
 
 .stack {
@@ -158,6 +191,17 @@
   text-align: center;
 }
 
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .formGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -201,9 +245,19 @@
 @media (max-width: 760px) {
   .headerActions,
   .queueCard,
-  .panelHeader {
+  .panelHeader,
+  .pagination {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .searchBar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .searchBar input {
+    min-width: 180px;
   }
 
   .formGrid {
