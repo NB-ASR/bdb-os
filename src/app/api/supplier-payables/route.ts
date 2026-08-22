@@ -6,6 +6,7 @@ import {
   requireWorkspaceCommand,
   runCommand,
 } from "@/lib/server/command";
+import { hashJson } from "@/lib/server/workspace-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -215,6 +216,13 @@ export async function POST(request: Request) {
       throw new CommandError("IDEMPOTENCY_REQUIRED", "An idempotency key is required for Supplier financial changes.");
     }
     const admin = adminClient();
+    const claim = await admin.rpc("claim_accounts_command", {
+      p_workspace_id: workspaceId,
+      p_idempotency_key: context.idempotencyKey,
+      p_request_hash: hashJson({ workspaceId, action, body }),
+    });
+    if (claim.error) throw friendlyError(claim.error);
+
     let result: { data: unknown; error: { message: string; code?: string | null } | null };
 
     if (action === "payable-post") {
