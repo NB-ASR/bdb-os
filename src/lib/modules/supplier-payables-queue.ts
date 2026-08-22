@@ -84,12 +84,17 @@ export function enqueueSupplierPayablesCommand(
   return command;
 }
 
-export function removeSupplierPayablesCommand(workspaceId: string, id: string) {
-  writeQueue(workspaceId, readSupplierPayablesQueue(workspaceId).filter((item) => item.id !== id));
-}
-
 export function canDiscardSupplierPayablesCommand(command: SupplierPayablesQueuedCommand) {
   return Boolean(command.lastError) && command.failureKind === "confirmed_rejection";
+}
+
+export function removeSupplierPayablesCommand(workspaceId: string, id: string, force = false) {
+  const queue = readSupplierPayablesQueue(workspaceId);
+  const command = queue.find((item) => item.id === id);
+  if (!command) return false;
+  if (!force && !canDiscardSupplierPayablesCommand(command)) return false;
+  writeQueue(workspaceId, queue.filter((item) => item.id !== id));
+  return true;
 }
 
 function failSupplierPayablesCommand(
@@ -148,7 +153,7 @@ export async function flushSupplierPayablesQueue(workspaceId: string) {
   for (const command of queue) {
     try {
       await submitSupplierPayablesCommand(command);
-      removeSupplierPayablesCommand(workspaceId, command.id);
+      removeSupplierPayablesCommand(workspaceId, command.id, true);
       completed += 1;
     } catch (error) {
       const failure = error as SupplierPayablesSubmissionError;
