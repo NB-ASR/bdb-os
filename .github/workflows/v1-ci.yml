@@ -125,6 +125,10 @@ jobs:
         shell: bash
         run: bash scripts/accounts-pass4-scale-torture.sh
 
+      - name: Audit customer-side Accounts query plans
+        shell: bash
+        run: bash scripts/accounts-pass4-customer-plans.sh
+
       - name: Destroy disposable local database
         if: always()
         run: supabase stop --no-backup
