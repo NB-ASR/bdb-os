@@ -48,18 +48,36 @@ test("failed Accounts commands retain diagnostics and block later review orderin
   const commands = readAccountsQueue("workspace-a");
   assert.equal(commands[0]?.attempts, 1);
   assert.equal(commands[0]?.lastError, "allocation was already reversed");
+  assert.equal(commands[0]?.failureKind, "ambiguous");
   assert.equal(commands[1]?.id, "later-command");
 });
 
-test("Accounts commands can be removed or discarded without affecting other workspaces", () => {
+test("fresh and ambiguous Accounts financial commands cannot be discarded", () => {
   installStorage();
-  enqueueAccountsCommand("workspace-a", "invoice-void", { id: "invoice-a" }, "remove-command");
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-a" }, "fresh-command");
   enqueueAccountsCommand("workspace-b", "payment-record", { id: "payment-b" }, "keep-command");
-  removeAccountsCommand("workspace-a", "remove-command");
 
+  assert.equal(removeAccountsCommand("workspace-a", "fresh-command"), false);
+  failAccountsCommand("workspace-a", "fresh-command", "connection disappeared", { failureKind: "ambiguous" });
+  assert.equal(removeAccountsCommand("workspace-a", "fresh-command"), false);
+  assert.deepEqual(readAccountsQueue("workspace-a").map((command) => command.id), ["fresh-command"]);
+  assert.deepEqual(readAccountsQueue("workspace-b").map((command) => command.id), ["keep-command"]);
+});
+
+test("only confirmed Accounts rejections may be discarded without force", () => {
+  installStorage();
+  enqueueAccountsCommand("workspace-a", "payment-allocate", { id: "allocation-a" }, "rejected-command");
+  failAccountsCommand("workspace-a", "rejected-command", "allocation exceeds outstanding", {
+    status: 409,
+    failureKind: "confirmed_rejection",
+  });
+
+  assert.equal(removeAccountsCommand("workspace-a", "rejected-command"), true);
   assert.deepEqual(readAccountsQueue("workspace-a"), []);
-  assert.equal(readAccountsQueue("workspace-b").length, 1);
 
-  writeAccountsQueue("workspace-b", []);
-  assert.deepEqual(readAccountsQueue("workspace-b"), []);
+  enqueueAccountsCommand("workspace-a", "payment-reverse", { id: "payment-a" }, "completed-command");
+  assert.equal(removeAccountsCommand("workspace-a", "completed-command", true), true);
+  assert.deepEqual(readAccountsQueue("workspace-a"), []);
+
+  writeAccountsQueue("workspace-a", []);
 });
