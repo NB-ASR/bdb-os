@@ -24,7 +24,7 @@ for pair in \
   "credit_notes_workspace_created_cursor_idx|${CREDIT_PLAN}" \
   "delivery_notes_workspace_created_cursor_idx|${DELIVERY_PLAN}" \
   "payments_workspace_received_cursor_idx|${PAYMENT_PLAN}" \
-  "customers_workspace_name_idx|${CUSTOMER_PLAN}"; do
+  "customers_workspace_name_cursor_idx|${CUSTOMER_PLAN}"; do
   expected="${pair%%|*}"
   plan="${pair#*|}"
   if ! grep -q "${expected}" <<<"${plan}"; then
