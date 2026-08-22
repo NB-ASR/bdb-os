@@ -7,6 +7,7 @@ const posting = await readFile("supabase/release-sources/vanita-integration-2026
 const settlement = await readFile("supabase/release-sources/vanita-integration-20260813/20260731111500_supplier_payables_settlement_commands.sql", "utf8");
 const readBoundary = await readFile("supabase/release-sources/vanita-integration-20260813/20260731112000_supplier_payables_cross_department_read.sql", "utf8");
 const api = await readFile("src/app/api/supplier-payables/route.ts", "utf8");
+const registers = await readFile("src/lib/server/supplier-payables-registers.ts", "utf8");
 const page = await readFile("src/app/accounts/payables/page.tsx", "utf8");
 const queue = await readFile("src/lib/modules/supplier-payables-queue.ts", "utf8");
 const purchasingStatus = await readFile("src/app/documents/purchasing/purchasing-accounts-status.tsx", "utf8");
@@ -55,8 +56,11 @@ assert.match(settlement, /exceeds the unallocated Payment amount/i, "Supplier Pa
 assert.doesNotMatch(settlement, /insert into public\.bank_transactions/i, "Supplier Payment recording must not imply Banking reconciliation.");
 assert.match(settlement, /grant execute[\s\S]*to service_role/i, "Supplier finance commands must remain service-role-only.");
 
-assert.match(api, /supplier_payable_balances/i, "Supplier Payables API must expose derived payable balances.");
-assert.match(api, /supplier_account_balances/i, "Supplier Payables API must expose derived Supplier balances.");
+assert.match(api, /readSupplierPayablesView/i, "Supplier Payables API must delegate reads to the bounded register layer.");
+assert.match(registers, /supplier_payable_balances/i, "Supplier Payables register layer must expose derived payable balances.");
+assert.match(registers, /supplier_account_balances/i, "Supplier Payables register layer must expose derived Supplier balances.");
+assert.match(registers, /limit\(limit \+ 1\)/i, "Supplier financial registers must remain bounded.");
+assert.match(registers, /nextCursor/i, "Supplier financial registers must expose keyset cursor progress.");
 assert.match(api, /post_supplier_document_payable/i, "Supplier Payables API must use the trusted posting command.");
 assert.match(api, /record_supplier_payment/i, "Supplier Payables API must use the trusted Payment command.");
 assert.match(api, /SUPPLIER_PAYABLES_STATE_CONFLICT/i, "Supplier finance conflicts need an operational response.");
@@ -64,6 +68,7 @@ assert.match(api, /SUPPLIER_PAYABLES_STATE_CONFLICT/i, "Supplier finance conflic
 assert.match(queue, /bdb-supplier-payables-queue-v1/i, "Supplier Payables queue must be workspace-scoped.");
 assert.match(queue, /for \(const command of queue\)/i, "Supplier Payables queue must replay sequentially.");
 assert.match(queue, /throw new Error\(message\)/i, "Supplier Payables queue must stop on the first failure.");
+assert.match(queue, /canDiscardSupplierPayablesCommand/i, "Ambiguous Supplier financial outcomes must not be discardable.");
 assert.match(page, /enqueueSupplierPayablesCommand/i, "Supplier Payables UI must use the offline queue.");
 assert.match(page, /Banking remains separate/i, "Supplier Payables UI must preserve the Banking boundary.");
 assert.match(page, /Supplier balances by currency/i, "Supplier balances must not mix currencies.");
