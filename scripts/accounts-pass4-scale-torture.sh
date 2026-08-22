@@ -92,7 +92,7 @@ where workspace_id='${WORKSPACE}'::uuid;
 insert into public.payments(
   id,workspace_id,reference,customer_id,customer_code_snapshot,customer_name_snapshot,currency,amount,payment_method,received_at,posted_by
 )
-select md5('pass4-payment-'||g)::uuid,'${WORKSPACE}'::uuid,'P4PAY-'||g,
+select md5('pass4-payment-'||g)::uuid,'${WORKSPACE}'::uuid,'P4PAY-'||lpad(g::text,6,'0'),
   md5('pass4-customer-'||(((g-1)%5000)+1))::uuid,'P4C-'||lpad((((g-1)%5000)+1)::text,6,'0'),'Pass 4 Customer '||(((g-1)%5000)+1),
   'EUR',30,'bank_transfer',now()-(g||' seconds')::interval,'${USER_ID}'::uuid
 from generate_series(1,5000) g;
