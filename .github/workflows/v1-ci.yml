@@ -85,7 +85,7 @@ jobs:
   database-migrations:
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out tested commit
         uses: actions/checkout@v4
@@ -116,6 +116,10 @@ jobs:
 
       - name: Run pgTAP database security tests
         run: supabase test db
+
+      - name: Run Accounts Pass 4 multi-session concurrency torture
+        shell: bash
+        run: bash scripts/accounts-pass4-concurrency.sh
 
       - name: Destroy disposable local database
         if: always()
