@@ -1,4 +1,5 @@
-const CACHE_NAME = "bdb-os-static-v5";
+const CACHE_NAME = "bdb-os-static-v6";
+const ACCOUNTS_SHELL_CACHE = "bdb-os-accounts-shell-v1";
 const PRECACHE_ASSETS = ["/bdb-mark.svg"];
 
 function isCacheableStaticAsset(requestUrl) {
@@ -6,6 +7,12 @@ function isCacheableStaticAsset(requestUrl) {
   if (url.origin !== self.location.origin) return false;
   if (url.pathname.startsWith("/_next/static/")) return true;
   return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
+}
+
+function isAccountsNavigation(request) {
+  if (request.method !== "GET" || request.mode !== "navigate") return false;
+  const url = new URL(request.url);
+  return url.origin === self.location.origin && (url.pathname === "/accounts" || url.pathname.startsWith("/accounts/"));
 }
 
 function safeNotificationUrl(value) {
@@ -27,13 +34,34 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== ACCOUNTS_SHELL_CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+
+  if (isAccountsNavigation(request)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const contentType = response.headers.get("content-type") ?? "";
+          if (response.ok && !response.redirected && contentType.includes("text/html")) {
+            const copy = response.clone();
+            void caches.open(ACCOUNTS_SHELL_CACHE).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const exact = await caches.match(request);
+          if (exact) return exact;
+          throw new Error("No cached Accounts shell is available.");
+        }),
+    );
+    return;
+  }
+
   if (request.method !== "GET" || !isCacheableStaticAsset(request.url)) return;
 
   event.respondWith(

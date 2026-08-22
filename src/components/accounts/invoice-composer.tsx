@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { formatMoney } from "@/lib/format";
 import { calculateInvoiceTotals } from "@/lib/invoice-pricing";
+import {
+  cacheAccountsCatalogue,
+  cacheAccountsSettings,
+  readAccountsSettings,
+  searchAccountsCatalogue,
+} from "@/lib/modules/accounts-working-cache";
 import { AccountsComposerFrame } from "./accounts-composer-frame";
 import { useAccountsCommandRuntime } from "./accounts-command-runtime";
 import type { CatalogueOption, CustomerOption } from "./composer-types";
@@ -36,29 +42,58 @@ export function InvoiceComposer() {
   const [catalogueKind, setCatalogueKind] = useState<"all" | "product" | "service">("all");
   const [catalogue, setCatalogue] = useState<CatalogueOption[]>([]);
   const [catalogueLoading, setCatalogueLoading] = useState(false);
+  const [catalogueCached, setCatalogueCached] = useState(false);
   const [lines, setLines] = useState<DraftLine[]>([]);
 
   useEffect(() => {
     if (!workspaceId) return;
     let active = true;
+    const cached = readAccountsSettings(workspaceId);
+    const cachedTimer = cached
+      ? window.setTimeout(() => { if (active) setCurrency(cached.currency || "EUR"); }, 0)
+      : null;
+    if (!navigator.onLine) return () => {
+      active = false;
+      if (cachedTimer !== null) window.clearTimeout(cachedTimer);
+    };
+
     async function loadSettings() {
-      const params = new URLSearchParams({ workspaceId, resource: "settings" });
-      const response = await fetch(`/api/accounts/composer?${params.toString()}`, { cache: "no-store" });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        if (active) setRuntimeError(result.error ?? "Invoice settings could not be loaded.");
-        return;
+      try {
+        const params = new URLSearchParams({ workspaceId, resource: "settings" });
+        const response = await fetch(`/api/accounts/composer?${params.toString()}`, { cache: "no-store" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error ?? "Invoice settings could not be loaded.");
+        const settings = result.result?.settings;
+        if (settings) cacheAccountsSettings(workspaceId, settings);
+        if (active) setCurrency(settings?.currency ?? cached?.currency ?? "EUR");
+      } catch (lookupError) {
+        if (active && !cached) setRuntimeError(lookupError instanceof Error ? lookupError.message : "Invoice settings could not be loaded.");
       }
-      if (active) setCurrency(result.result?.settings?.currency ?? "EUR");
     }
     void loadSettings();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (cachedTimer !== null) window.clearTimeout(cachedTimer);
+    };
   }, [setRuntimeError, workspaceId]);
 
   useEffect(() => {
     if (!workspaceId) return;
     let active = true;
     const timer = window.setTimeout(async () => {
+      const local = searchAccountsCatalogue(workspaceId, catalogueQuery, catalogueKind) as CatalogueOption[];
+      if (local.length && active) {
+        setCatalogue(local);
+        setCatalogueCached(true);
+      }
+      if (!navigator.onLine) {
+        if (active) {
+          setCatalogueLoading(false);
+          if (!local.length) setRuntimeError("No cached catalogue items match this search. Reconnect to refresh the working set.");
+        }
+        return;
+      }
+
       setCatalogueLoading(true);
       try {
         const params = new URLSearchParams({ workspaceId, resource: "catalogue", kind: catalogueKind });
@@ -66,9 +101,21 @@ export function InvoiceComposer() {
         const response = await fetch(`/api/accounts/composer?${params.toString()}`, { cache: "no-store" });
         const result = await response.json().catch(() => ({}));
         if (!response.ok || !result.ok) throw new Error(result.error ?? "The catalogue could not be searched.");
-        if (active) setCatalogue(result.result?.items ?? []);
+        const live = (result.result?.items ?? []) as CatalogueOption[];
+        cacheAccountsCatalogue(workspaceId, live);
+        if (active) {
+          setCatalogue(live);
+          setCatalogueCached(false);
+        }
       } catch (lookupError) {
-        if (active) setRuntimeError(lookupError instanceof Error ? lookupError.message : "The catalogue could not be searched.");
+        if (!active) return;
+        const fallback = searchAccountsCatalogue(workspaceId, catalogueQuery, catalogueKind) as CatalogueOption[];
+        if (fallback.length) {
+          setCatalogue(fallback);
+          setCatalogueCached(true);
+        } else {
+          setRuntimeError(lookupError instanceof Error ? lookupError.message : "The catalogue could not be searched.");
+        }
       } finally {
         if (active) setCatalogueLoading(false);
       }
@@ -120,6 +167,8 @@ export function InvoiceComposer() {
         serviceId: line.item.type === "service" ? line.item.id : null,
         quantity: Number(line.quantity),
         discountPercent: Math.min(Math.max(Number(line.discountPercent || 0), 0), 100),
+        catalogueUnitPrice: Number(line.item.unitPrice),
+        catalogueVatRate: Number(line.item.vatRate),
       })),
     });
     if (!result.ok) return;
@@ -132,8 +181,8 @@ export function InvoiceComposer() {
       eyebrow="Accounts · Sales · Invoice"
       title="New Invoice"
       description="Issue the official document now. Catalogue price and VAT stay authoritative; Discount % is the controlled commercial adjustment."
-      backHref="/accounts/sales/new"
-      backLabel="Document types"
+      backHref="/accounts/sales"
+      backLabel="Sales"
       online={runtime.online}
       pendingCount={runtime.pendingCount}
       loading={runtime.loading}
@@ -149,7 +198,7 @@ export function InvoiceComposer() {
         </section>
 
         <section className={styles.formSection}>
-          <div className={styles.sectionHeading}><div><h2>Catalogue items</h2><p>Search the live Product and Service catalogue. Only the selected working lines stay in the browser.</p></div></div>
+          <div className={styles.sectionHeading}><div><h2>Catalogue items</h2><p>Search the Product and Service working set. Cached items remain available offline and are revalidated before issue.</p></div></div>
           <div className={styles.catalogueToolbar}>
             <label className={styles.searchField}><span>Search catalogue</span><span className={styles.searchInput}><Search size={15} /><input value={catalogueQuery} onChange={(event) => setCatalogueQuery(event.target.value)} placeholder="Code or name…" /></span></label>
             <label className={styles.field}><span>Type</span><select value={catalogueKind} onChange={(event) => setCatalogueKind(event.target.value as typeof catalogueKind)}><option value="all">Products & Services</option><option value="product">Products</option><option value="service">Services</option></select></label>
@@ -157,11 +206,12 @@ export function InvoiceComposer() {
           <div className={styles.catalogueResults}>
             {catalogue.map((item) => <button key={`${item.type}:${item.id}`} type="button" onClick={() => addItem(item)}><span><strong>{item.code} · {item.name}</strong><small>{item.type} · VAT {Number(item.vatRate).toLocaleString()}%</small></span><strong><Plus size={13} /> {item.unitPrice == null ? "No price" : formatMoney(Number(item.unitPrice), currency)}</strong></button>)}
             {!catalogue.length ? <span className={styles.lookupEmpty}>{catalogueLoading ? "Searching catalogue…" : "No matching catalogue items."}</span> : null}
+            {catalogueCached && catalogue.length ? <span className={styles.lookupEmpty}>Cached catalogue working set · price and VAT will be checked again before issue.</span> : null}
           </div>
         </section>
 
         <section className={styles.formSection}>
-          <div className={styles.sectionHeading}><div><h2>Invoice lines</h2><p>Quantity and Discount % are editable. Price and VAT are frozen from the catalogue when the Invoice is issued.</p></div></div>
+          <div className={styles.sectionHeading}><div><h2>Invoice lines</h2><p>Quantity and Discount % are editable. Price and VAT are validated against the catalogue again when the Invoice is issued.</p></div></div>
           <div className={styles.lineList}>
             {lines.map((line, index) => (
               <div className={styles.invoiceLine} key={line.id}>
@@ -175,7 +225,7 @@ export function InvoiceComposer() {
             ))}
             {!lines.length ? <span className={styles.lookupEmpty}>Add catalogue items above to build this Invoice.</span> : null}
           </div>
-          <div className={styles.summary}><div><span>Subtotal after discounts</span><strong>{formatMoney(totals.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(totals.vatAmount, currency)}</strong></div><div><span>Total</span><strong>{formatMoney(totals.totalAmount, currency)}</strong></div></div>
+          <div className={styles.summary}><div><span>Subtotal</span><strong>{formatMoney(totals.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(totals.vatAmount, currency)}</strong></div><div><span>Total</span><strong>{formatMoney(totals.totalAmount, currency)}</strong></div></div>
         </section>
 
         {needsSalesOrder ? <section className={styles.formSection}><div className={styles.sectionHeading}><div><h2>Sales Order bridge</h2><p>A Product or mixed Invoice requires its Sales Order reference.</p></div></div><label className={`${styles.field} ${styles.wide}`}><span>Sales Order reference</span><input required maxLength={64} value={salesOrderReference} onChange={(event) => setSalesOrderReference(event.target.value)} placeholder="SO123" /></label></section> : null}
@@ -185,7 +235,7 @@ export function InvoiceComposer() {
           <div className={styles.copyGrid}><label className={styles.field}><span>Description · visible to Customer</span><textarea required maxLength={500} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What is this Invoice for?" /></label><label className={styles.field}><span>Internal notes</span><textarea maxLength={2000} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Private context for your team" /></label></div>
         </section>
 
-        <footer className={styles.actions}><span className={styles.hint}>Once issued, the Invoice document and branding snapshot never change.</span><div><button type="button" onClick={() => router.push("/accounts/sales/invoices")}>Cancel</button><button type="submit" disabled={Boolean(runtime.busy) || runtime.loading || runtime.supportReadOnly}>Create Invoice</button></div></footer>
+        <footer className={styles.actions}><span className={styles.hint}>If catalogue price or VAT changed while offline, sync stops for review instead of changing money silently.</span><div><button type="button" onClick={() => router.push("/accounts/sales/invoices")}>Cancel</button><button type="submit" disabled={Boolean(runtime.busy) || runtime.loading || runtime.supportReadOnly}>Create Invoice</button></div></footer>
       </form>
     </AccountsComposerFrame>
   );

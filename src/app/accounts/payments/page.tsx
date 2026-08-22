@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Banknote, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
+import {
+  cacheAccountsWorkspaceContext,
+  readAccountsWorkspaceContext,
+} from "@/lib/modules/accounts-working-cache";
 import styles from "../accounts-workspace.module.css";
 
 type PaymentRow = {
@@ -42,12 +46,19 @@ export default function AccountsPaymentsPage() {
 
   const load = useCallback(async (targetWorkspaceId: string, targetCursor: string | null, targetFilters: Filters, allowCache = false) => {
     setLoading(true); setError("");
+    let localLoaded = false;
     try {
       if (allowCache) {
         try {
           const local = JSON.parse(localStorage.getItem(cacheKey(targetWorkspaceId)) ?? "null") as PageResult | null;
-          if (local?.workspaceId === targetWorkspaceId) { setRows(local.rows ?? []); setNextCursor(local.nextCursor ?? null); setHasMore(Boolean(local.hasMore)); setCached(true); }
+          if (local?.workspaceId === targetWorkspaceId) {
+            setRows(local.rows ?? []); setNextCursor(local.nextCursor ?? null); setHasMore(Boolean(local.hasMore)); setCached(true); localLoaded = true;
+          }
         } catch { /* ignore stale local register */ }
+      }
+      if (!navigator.onLine) {
+        if (!localLoaded) setError("No cached Payments page is available on this device yet.");
+        return;
       }
       const params = new URLSearchParams({ workspaceId: targetWorkspaceId, pageSize: "50", status: targetFilters.status, method: targetFilters.method, allocation: targetFilters.allocation });
       if (targetFilters.q) params.set("q", targetFilters.q);
@@ -60,22 +71,34 @@ export default function AccountsPaymentsPage() {
       const page = result.result as PageResult;
       setRows(page.rows ?? []); setNextCursor(page.nextCursor ?? null); setHasMore(Boolean(page.hasMore)); setCached(false);
       if (!targetCursor && Object.entries(targetFilters).every(([key, value]) => value === DEFAULT_FILTERS[key as keyof Filters])) localStorage.setItem(cacheKey(targetWorkspaceId), JSON.stringify(page));
-    } catch (loadError) { setError(loadError instanceof Error ? loadError.message : "Payments could not be loaded."); }
-    finally { setLoading(false); }
+    } catch (loadError) {
+      if (!localLoaded) setError(loadError instanceof Error ? loadError.message : "Payments could not be loaded.");
+      else setError("Live Payments could not be refreshed. The cached first page remains visible.");
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     let active = true;
     async function initialise() {
       try {
+        if (!navigator.onLine) throw new Error("offline");
         const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
         const context = await contextResponse.json().catch(() => ({}));
         if (!contextResponse.ok || !context.currentWorkspaceId) throw new Error(context.error ?? "The current workspace could not be resolved.");
         if (!active) return;
+        cacheAccountsWorkspaceContext(context);
         const id = String(context.currentWorkspaceId); setWorkspaceId(id);
         await load(id, null, DEFAULT_FILTERS, true);
-      } catch (initialError) { if (active) setError(initialError instanceof Error ? initialError.message : "Payments could not be loaded."); }
-      finally { if (active) setLoading(false); }
+      } catch (initialError) {
+        const localContext = readAccountsWorkspaceContext();
+        if (!active) return;
+        if (localContext?.currentWorkspaceId) {
+          setWorkspaceId(localContext.currentWorkspaceId);
+          await load(localContext.currentWorkspaceId, null, DEFAULT_FILTERS, true);
+        } else {
+          setError(initialError instanceof Error && initialError.message !== "offline" ? initialError.message : "The current workspace has not been cached on this device yet.");
+        }
+      } finally { if (active) setLoading(false); }
     }
     void initialise();
     return () => { active = false; };
@@ -113,7 +136,7 @@ export default function AccountsPaymentsPage() {
       <label>Received from<input type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></label>
       <label>Received to<input type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} /></label>
     </div><div className={styles.filterActions}><button onClick={applyFilters}><Search size={14} /> Apply</button><button onClick={clearFilters}>Clear</button></div></section>
-    <section className={styles.tableCard}><div className={styles.tableScroll}><table className={styles.table}><thead><tr><th>Payment</th><th>Customer</th><th>Received</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Allocated</th><th className={styles.money}>Unallocated</th></tr></thead><tbody>{rows.map((payment) => <tr key={payment.id}><td><strong>{payment.reference}</strong>{payment.external_reference ? <span className={styles.subtle}>{payment.external_reference}</span> : null}</td><td><strong>{payment.customer_name_snapshot}</strong><span className={styles.subtle}>{payment.customer_code_snapshot}</span></td><td>{formatDate(payment.received_at)}</td><td>{payment.payment_method.replaceAll("_", " ")}</td><td><span className={styles.status} data-tone={payment.status === "posted" ? "good" : undefined}>{payment.status}</span></td><td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.allocated_amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</td></tr>)}</tbody></table></div>
+    <section className={styles.tableCard}><div className={styles.tableScroll}><table className={styles.table}><thead><tr><th>Payment</th><th>Customer</th><th>Received</th><th>Method</th><th>Status</th><th className={styles.money}>Amount</th><th className={styles.money}>Allocated</th><th className={styles.money}>Unallocated</th></tr></thead><tbody>{rows.map((payment) => <tr key={payment.id}><td><Link className={styles.quietLink} href={`/accounts/payments/${payment.id}`}><strong>{payment.reference}</strong></Link>{payment.external_reference ? <span className={styles.subtle}>{payment.external_reference}</span> : null}</td><td><strong>{payment.customer_name_snapshot}</strong><span className={styles.subtle}>{payment.customer_code_snapshot}</span></td><td>{formatDate(payment.received_at)}</td><td>{payment.payment_method.replaceAll("_", " ")}</td><td><span className={styles.status} data-tone={payment.status === "posted" ? "good" : undefined}>{payment.status}</span></td><td className={styles.money}>{formatMoney(Number(payment.amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.allocated_amount), payment.currency)}</td><td className={styles.money}>{formatMoney(Number(payment.unallocated_amount), payment.currency)}</td></tr>)}</tbody></table></div>
       {!rows.length ? <div className={styles.emptyState}>{loading ? "Loading Payments…" : "No Payments match these filters."}</div> : null}
       <div className={styles.pagination}><span className={styles.helper}>{loading ? "Refreshing…" : `${rows.length} rows on this page`}</span><div className={styles.inlineActions}><button disabled={!history.length || loading} onClick={previousPage}><ArrowLeft size={14} /> Back</button><button disabled={!hasMore || !nextCursor || loading} onClick={nextPage}>Next <ArrowRight size={14} /></button></div></div>
     </section>

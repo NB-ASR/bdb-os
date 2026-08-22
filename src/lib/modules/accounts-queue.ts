@@ -16,6 +16,8 @@ export type AccountsCommandAction =
   | "allocation-reverse"
   | "payment-reverse";
 
+export type AccountsQueueFailureKind = "confirmed_rejection" | "ambiguous";
+
 export type AccountsQueuedCommand = {
   id: string;
   workspaceId: string;
@@ -24,6 +26,15 @@ export type AccountsQueuedCommand = {
   createdAt: string;
   attempts: number;
   lastError?: string;
+  lastErrorCode?: string;
+  lastErrorStatus?: number;
+  failureKind?: AccountsQueueFailureKind;
+};
+
+type AccountsSubmissionError = Error & {
+  code?: string;
+  status?: number;
+  failureKind?: AccountsQueueFailureKind;
 };
 
 const QUEUE_PREFIX = "bdb-accounts-queue-v1";
@@ -65,6 +76,11 @@ function isCommand(value: unknown): value is AccountsQueuedCommand {
     && typeof command.payload === "object"
     && typeof command.createdAt === "string"
     && typeof command.attempts === "number";
+}
+
+function confirmedServerRejection(status: number) {
+  if (status < 400 || status >= 500) return false;
+  return !new Set([401, 403, 408, 425, 429]).has(status);
 }
 
 export function readAccountsQueue(workspaceId: string): AccountsQueuedCommand[] {
@@ -113,11 +129,27 @@ export function removeAccountsCommand(workspaceId: string, commandId: string) {
   );
 }
 
-export function failAccountsCommand(workspaceId: string, commandId: string, error: string) {
+export function canDiscardAccountsCommand(command: AccountsQueuedCommand) {
+  return Boolean(command.lastError) && command.failureKind === "confirmed_rejection";
+}
+
+export function failAccountsCommand(
+  workspaceId: string,
+  commandId: string,
+  error: string,
+  details: { code?: string; status?: number; failureKind?: AccountsQueueFailureKind } = {},
+) {
   writeAccountsQueue(
     workspaceId,
     readAccountsQueue(workspaceId).map((command) => command.id === commandId
-      ? { ...command, attempts: command.attempts + 1, lastError: error.slice(0, 240) }
+      ? {
+        ...command,
+        attempts: command.attempts + 1,
+        lastError: error.slice(0, 240),
+        lastErrorCode: details.code,
+        lastErrorStatus: details.status,
+        failureKind: details.failureKind ?? "ambiguous",
+      }
       : command),
   );
 }
@@ -126,22 +158,33 @@ export async function submitAccountsCommand(command: AccountsQueuedCommand) {
   const endpoint = FINAL_DOCUMENT_ACTIONS.has(command.action)
     ? "/api/accounts/final-documents"
     : "/api/accounts";
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": command.id,
-    },
-    body: JSON.stringify({
-      workspaceId: command.workspaceId,
-      action: command.action,
-      ...command.payload,
-    }),
-  });
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": command.id,
+      },
+      body: JSON.stringify({
+        workspaceId: command.workspaceId,
+        action: command.action,
+        ...command.payload,
+      }),
+    });
+  } catch (cause) {
+    const error = new Error(cause instanceof Error ? cause.message : "Accounts command transport failed.") as AccountsSubmissionError;
+    error.failureKind = "ambiguous";
+    throw error;
+  }
+
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.ok) {
-    const error = new Error(result.error ?? "Accounts command failed.");
-    Object.assign(error, { code: result.code });
+    const error = new Error(result.error ?? "Accounts command failed.") as AccountsSubmissionError;
+    error.code = result.code;
+    error.status = response.status;
+    error.failureKind = confirmedServerRejection(response.status) ? "confirmed_rejection" : "ambiguous";
     throw error;
   }
   return result.result as Record<string, unknown>;
@@ -162,10 +205,16 @@ export async function flushAccountsQueue(
       completed += 1;
       onProgress?.(readAccountsQueue(workspaceId).length);
     } catch (error) {
+      const failure = error as AccountsSubmissionError;
       failAccountsCommand(
         workspaceId,
         command.id,
         error instanceof Error ? error.message : "Accounts command failed.",
+        {
+          code: failure.code,
+          status: failure.status,
+          failureKind: failure.failureKind ?? "ambiguous",
+        },
       );
       break;
     }
