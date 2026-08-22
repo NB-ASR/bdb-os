@@ -217,7 +217,7 @@ export function InvoiceComposer() {
             ))}
             {!lines.length ? <span className={styles.lookupEmpty}>Add catalogue items above to build this Invoice.</span> : null}
           </div>
-          <div className={styles.summary}><div><span>Subtotal after discounts</span><strong>{formatMoney(totals.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(totals.vatAmount, currency)}</strong></div><div><span>Total</span><strong>{formatMoney(totals.totalAmount, currency)}</strong></div></div>
+          <div className={styles.summary}><div><span>Subtotal</span><strong>{formatMoney(totals.netAmount, currency)}</strong></div><div><span>VAT</span><strong>{formatMoney(totals.vatAmount, currency)}</strong></div><div><span>Total</span><strong>{formatMoney(totals.totalAmount, currency)}</strong></div></div>
         </section>
 
         {needsSalesOrder ? <section className={styles.formSection}><div className={styles.sectionHeading}><div><h2>Sales Order bridge</h2><p>A Product or mixed Invoice requires its Sales Order reference.</p></div></div><label className={`${styles.field} ${styles.wide}`}><span>Sales Order reference</span><input required maxLength={64} value={salesOrderReference} onChange={(event) => setSalesOrderReference(event.target.value)} placeholder="SO123" /></label></section> : null}

@@ -48,6 +48,34 @@ test("offline Invoice commands capture seen price and VAT and server revalidates
   assert.match(route, /Review the Invoice against the current catalogue before issuing/);
 });
 
+test("pre-hardening queued Invoices without captured catalogue values stop for review", async () => {
+  const route = await source("src/app/api/accounts/final-documents/route.ts");
+  assert.match(route, /raw\.catalogueUnitPrice === undefined/);
+  assert.match(route, /raw\.catalogueVatRate === undefined/);
+  assert.match(route, /does not contain a verified catalogue snapshot/);
+  assert.match(route, /ACCOUNTS_CATALOGUE_REVIEW_REQUIRED/);
+});
+
+test("ambiguous financial command outcomes cannot be discarded as confirmed rejections", async () => {
+  const [queue, overview] = await Promise.all([
+    source("src/lib/modules/accounts-queue.ts"),
+    source("src/app/accounts/page.tsx"),
+  ]);
+  assert.match(queue, /"confirmed_rejection" \| "ambiguous"/);
+  assert.match(queue, /failureKind = "ambiguous"/);
+  assert.match(queue, /confirmedServerRejection\(response\.status\)/);
+  assert.match(queue, /command\.failureKind === "confirmed_rejection"/);
+  assert.match(overview, /canDiscardAccountsCommand\(command\)/);
+  assert.match(overview, /Retry required/);
+  assert.match(overview, /idempotent retry/);
+});
+
+test("Invoice composer uses plain Subtotal wording without changing the calculation", async () => {
+  const invoice = await source("src/components/accounts/invoice-composer.tsx");
+  assert.match(invoice, /<span>Subtotal<\/span><strong>\{formatMoney\(totals\.netAmount, currency\)\}/);
+  assert.doesNotMatch(invoice, /Subtotal after discounts/);
+});
+
 test("Payment lifecycle has a detail workspace backed by existing command actions", async () => {
   const [register, detailRoute, detailPage] = await Promise.all([
     source("src/app/accounts/payments/page.tsx"),

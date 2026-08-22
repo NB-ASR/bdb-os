@@ -66,6 +66,13 @@ async function catalogueInvoiceLines(admin: ReturnType<typeof adminClient>, work
   const parsed = rawLines.map((raw, index) => {
     const lineType = String(raw.lineType ?? "").trim();
     if (lineType !== "product" && lineType !== "service") throw new CommandError("INVALID_INVOICE_LINES", `Invoice line ${index + 1} must reference a Product or Service.`);
+    if (raw.catalogueUnitPrice === undefined || raw.catalogueUnitPrice === null || raw.catalogueUnitPrice === "" || raw.catalogueVatRate === undefined || raw.catalogueVatRate === null || raw.catalogueVatRate === "") {
+      throw new CommandError(
+        "ACCOUNTS_CATALOGUE_REVIEW_REQUIRED",
+        `Invoice line ${index + 1} does not contain a verified catalogue snapshot. Review the Invoice against the current catalogue before issuing.`,
+        409,
+      );
+    }
     return {
       id: uuid(raw.id, `Invoice line ${index + 1} ID`),
       lineType,
