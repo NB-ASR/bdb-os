@@ -3,23 +3,24 @@
 -- This migration adds the read-path support needed to keep Supplier Payables bounded
 -- at scale. It does not rewrite financial history or change posting/allocation rules.
 
+-- Keep variable settlement/posting state out of the ordered key path. The registers
+-- filter workspace/document type and then page by time + id; INCLUDE keeps state
+-- available without breaking the index's ability to satisfy that ordering.
 create index if not exists supplier_documents_accounts_cursor_idx
   on public.supplier_documents (
     workspace_id,
     status,
-    accounts_posting_status,
     approved_at desc,
     id desc
-  );
+  ) include (accounts_posting_status);
 
 create index if not exists supplier_payables_register_cursor_idx
   on public.supplier_payables (
     workspace_id,
     document_type,
-    status,
     posted_at desc,
     id desc
-  );
+  ) include (status);
 
 create index if not exists supplier_payments_register_cursor_idx
   on public.supplier_payments (
