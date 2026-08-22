@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   enqueueAccountsCommand,
   failAccountsCommand,
+  flushAccountsQueue,
   readAccountsQueue,
   removeAccountsCommand,
   writeAccountsQueue,
@@ -19,6 +20,13 @@ function installStorage() {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: { localStorage: new MemoryStorage() },
+  });
+}
+
+function installOnline() {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: { onLine: true },
   });
 }
 
@@ -80,4 +88,59 @@ test("only confirmed Accounts rejections may be discarded without force", () => 
   assert.deepEqual(readAccountsQueue("workspace-a"), []);
 
   writeAccountsQueue("workspace-a", []);
+});
+
+test("offline replay stops at the first ambiguous command so later financial work cannot arrive out of order", async () => {
+  installStorage();
+  installOnline();
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-first" }, "ordered-command-1");
+  enqueueAccountsCommand("workspace-a", "payment-reverse", { paymentId: "payment-first" }, "ordered-command-2");
+
+  let calls = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async () => {
+      calls += 1;
+      throw new Error("response lost after submit");
+    },
+  });
+
+  const result = await flushAccountsQueue("workspace-a");
+  const queue = readAccountsQueue("workspace-a");
+  assert.deepEqual(result, { completed: 0, remaining: 2 });
+  assert.equal(calls, 1);
+  assert.equal(queue[0]?.id, "ordered-command-1");
+  assert.equal(queue[0]?.failureKind, "ambiguous");
+  assert.equal(queue[1]?.id, "ordered-command-2");
+  assert.equal(queue[1]?.attempts, 0);
+});
+
+test("a lost response retries the same stable idempotency key and removes the command only after confirmed success", async () => {
+  installStorage();
+  installOnline();
+  enqueueAccountsCommand("workspace-a", "payment-record", { id: "payment-retry" }, "stable-retry-command");
+
+  const keys: Array<string | null> = [];
+  let attempt = 0;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      attempt += 1;
+      keys.push(new Headers(init?.headers).get("Idempotency-Key"));
+      if (attempt === 1) throw new Error("connection reset after server commit");
+      return new Response(JSON.stringify({ ok: true, result: { id: "payment-retry" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  });
+
+  const first = await flushAccountsQueue("workspace-a");
+  assert.deepEqual(first, { completed: 0, remaining: 1 });
+  assert.deepEqual(readAccountsQueue("workspace-a").map((command) => command.id), ["stable-retry-command"]);
+
+  const second = await flushAccountsQueue("workspace-a");
+  assert.deepEqual(second, { completed: 1, remaining: 0 });
+  assert.deepEqual(readAccountsQueue("workspace-a"), []);
+  assert.deepEqual(keys, ["stable-retry-command", "stable-retry-command"]);
 });
