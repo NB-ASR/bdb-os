@@ -54,7 +54,7 @@ select lives_ok(
       'invoice','72000000-0000-4000-8000-000000000001'::uuid,null,current_date,'Pass 4 stress address','Hundred line delivery stress',
       (select jsonb_agg(jsonb_build_object(
         'id',md5('p4-hundred-delivery-line-'||line.line_number)::uuid,
-        'sourceInvoiceLineId',line.id,'quantity',1
+        'sourceLineId',line.id,'quantity',1
       ) order by line.line_number)
       from public.invoice_lines line
       where line.invoice_id='72000000-0000-4000-8000-000000000001'::uuid)
