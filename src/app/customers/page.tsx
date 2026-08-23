@@ -360,9 +360,7 @@ export default function CustomersPage() {
   useEffect(() => {
     if (mode === "demo" && loaded) {
       writeCustomerCache("demo", baseCustomers);
-      const demoSummary = summaryFromRows(baseCustomers);
-      setSummary(demoSummary);
-      writeCustomerSummary("demo", demoSummary);
+      writeCustomerSummary("demo", summaryFromRows(baseCustomers));
     }
   }, [baseCustomers, loaded, mode]);
 
@@ -496,7 +494,7 @@ export default function CustomersPage() {
     .filter((customer) => matchesCriteria(customer, query, filter))
     .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)), [customers, filter, query]);
 
-  const displayedSummary = summary ?? summaryFromRows(customers);
+  const displayedSummary = mode === "demo" ? summaryFromRows(customers) : (summary ?? summaryFromRows(customers));
 
   function openCreate() {
     setEditing(null);
