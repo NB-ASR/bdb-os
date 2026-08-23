@@ -1,0 +1,149 @@
+.founder-accounts {
+  display: grid;
+  gap: 20px;
+}
+
+.founder-account-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.founder-account-stats article {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 84px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.founder-account-stats svg { color: var(--gold); }
+.founder-account-stats span { display: grid; gap: 2px; }
+.founder-account-stats strong { font-size: 1.3rem; }
+.founder-account-stats small { color: var(--muted); }
+
+.founder-account-invite {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(540px, 1.6fr);
+  gap: 28px;
+  align-items: end;
+}
+
+.founder-account-invite h2 { margin: 3px 0 7px; }
+.founder-account-invite p { margin: 0; color: var(--muted); }
+.founder-account-invite form {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1.15fr 0.8fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.founder-account-invite .button { min-height: 42px; white-space: nowrap; }
+
+.founder-account-toolbar {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.founder-account-toolbar > select { min-width: 210px; }
+.founder-account-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(520px, 100%);
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.founder-account-search svg { flex: 0 0 auto; color: var(--muted); }
+.founder-account-search input { width: 100%; border: 0; padding-inline: 0; background: transparent; }
+.founder-account-search input:focus { outline: 0; }
+
+.founder-account-list { display: grid; gap: 12px; }
+.founder-account-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.founder-account-card > header {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.founder-account-card h3 { margin: 0 0 3px; font-size: 1rem; }
+.founder-account-card p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.founder-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--gold-faint);
+  color: var(--gold-light);
+  font-weight: 800;
+}
+
+.founder-account-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.founder-account-badges .badge { display: inline-flex; align-items: center; gap: 4px; }
+
+.founder-account-meta {
+  display: flex;
+  gap: 28px;
+  padding: 0 18px 14px 68px;
+}
+
+.founder-account-meta span { display: grid; gap: 2px; }
+.founder-account-meta small { color: var(--muted); }
+.founder-account-meta strong { font-size: 0.82rem; font-weight: 600; }
+
+.founder-account-memberships { border-top: 1px solid var(--border); }
+.founder-account-membership {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(330px, auto);
+  align-items: center;
+  gap: 16px;
+  min-height: 66px;
+  padding: 11px 18px;
+}
+
+.founder-account-membership + .founder-account-membership { border-top: 1px solid var(--border); }
+.founder-account-workspace { display: grid; gap: 2px; }
+.founder-account-workspace small { color: var(--muted); }
+.founder-account-controls { display: flex; align-items: end; justify-content: flex-end; gap: 9px; }
+.founder-account-controls label { display: grid; gap: 4px; }
+.founder-account-controls label > span { color: var(--muted); font-size: 0.72rem; font-weight: 700; }
+.founder-account-controls select { min-width: 122px; }
+.founder-account-pending { display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.founder-account-pending small { color: var(--muted); }
+.founder-account-empty { display: flex; align-items: center; gap: 8px; padding: 14px 18px; color: var(--muted); }
+
+@media (max-width: 1180px) {
+  .founder-account-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .founder-account-invite { grid-template-columns: 1fr; align-items: start; }
+  .founder-account-invite form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .founder-account-invite .button { align-self: end; }
+}
+
+@media (max-width: 760px) {
+  .founder-account-stats { grid-template-columns: 1fr; }
+  .founder-account-invite form { grid-template-columns: 1fr; }
+  .founder-account-toolbar { align-items: stretch; flex-direction: column; }
+  .founder-account-toolbar > select { width: 100%; }
+  .founder-account-card > header { grid-template-columns: auto 1fr; }
+  .founder-account-badges { grid-column: 1 / -1; justify-content: flex-start; }
+  .founder-account-meta { padding-left: 18px; flex-direction: column; gap: 8px; }
+  .founder-account-membership { grid-template-columns: 1fr; }
+  .founder-account-controls, .founder-account-pending { justify-content: flex-start; flex-wrap: wrap; }
+}

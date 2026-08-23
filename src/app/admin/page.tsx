@@ -23,8 +23,10 @@ import {
   SlidersHorizontal,
   Trash2,
   Unlink,
+  UsersRound,
 } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
+import { FounderAccountWorkspaces, type FounderAccount } from "@/components/founder-account-workspaces";
 import { FounderClientUsage } from "@/components/founder-client-usage";
 
 type Plan = { id: string; code: string; name: string; description: string; is_active: boolean };
@@ -63,6 +65,8 @@ type Membership = {
   email: string;
   invitation_expires_at: string | null;
   invitation_last_sent_at: string | null;
+  created_at: string;
+  joined_at: string | null;
   profiles?: { full_name?: string | null } | null;
 };
 type Group = { id: string; name: string; slug: string; created_at: string };
@@ -102,6 +106,8 @@ type Dashboard = {
   subscriptions: Subscription[];
   contracts: Contract[];
   memberships: Membership[];
+  accounts: FounderAccount[];
+  actorUserId: string;
   groups: Group[];
   groupLinks: GroupLink[];
   audit: Audit[];
@@ -115,7 +121,7 @@ type BrandingState = {
   logoUrl: string | null;
   updatedAt: string | null;
 };
-type Tab = "clients" | "groups" | "plans" | "audit";
+type Tab = "clients" | "accounts" | "groups" | "plans" | "audit";
 type ClientSection = "overview" | "access" | "usage" | "billing" | "branding" | "owner";
 
 const clientSections: Array<{ key: ClientSection; label: string }> = [
@@ -171,6 +177,9 @@ function describeFounderAction(item: Audit, data: Dashboard) {
   }
   if (item.action === "admin.unlink-workspace") return "removed this business from its Business Group";
   if (item.action === "admin.resend-owner-invite") return "resent the Business Owner invitation";
+  if (item.action === "admin.account-invited") return "invited an account to this workspace";
+  if (item.action === "admin.account-invitation-resent") return "resent an account invitation";
+  if (item.action === "admin.workspace-account-updated") return "updated an account's workspace access";
   if (item.action === "admin.support-access") return "recorded an administrative audit reason";
   if (item.action === "billing.checkout_created") {
     const amount = Number(item.metadata?.amount);
@@ -448,11 +457,13 @@ export default function AdminPage() {
 
   const pageTitle = tab === "clients"
     ? "Client businesses"
-    : tab === "plans"
-      ? "Plans & features"
-      : tab === "groups"
-        ? "Business groups"
-        : "Audit trail";
+    : tab === "accounts"
+      ? "Accounts & workspaces"
+      : tab === "plans"
+        ? "Plans & features"
+        : tab === "groups"
+          ? "Business groups"
+          : "Audit trail";
 
   return (
     <main className="admin-shell">
@@ -461,6 +472,7 @@ export default function AdminPage() {
         <p className="admin-label">Founder control plane</p>
         <nav>
           <button className={tab === "clients" ? "active" : ""} onClick={() => setTab("clients")}><Building2 size={18} /> Clients</button>
+          <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}><UsersRound size={18} /> Accounts & Workspaces</button>
           <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}><SlidersHorizontal size={18} /> Plans & Features</button>
           <button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")}><Layers3 size={18} /> Business Groups</button>
           <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}><Activity size={18} /> Audit Trail</button>
@@ -483,6 +495,12 @@ export default function AdminPage() {
                 <span><strong>{data.workspaces.filter((item) => item.status === "active").length}</strong> active</span>
                 <span><strong>{data.memberships.filter((item) => item.role === "owner" && item.status === "invited").length}</strong> owner invitations pending</span>
                 <span className="admin-shared-room"><i /> Shared control room · auto-updates</span>
+              </div>
+            ) : tab === "accounts" ? (
+              <div className="admin-top-quiet-stats">
+                <span><strong>{data.accounts.length}</strong> Auth accounts</span>
+                <span><strong>{data.memberships.length}</strong> workspace memberships</span>
+                <span className="admin-shared-room"><i /> Supabase-backed · MFA protected</span>
               </div>
             ) : null}
           </div>
@@ -715,6 +733,18 @@ export default function AdminPage() {
               </div>
             ) : null}
           </div>
+        )}
+
+        {tab === "accounts" && (
+          <FounderAccountWorkspaces
+            accounts={data.accounts}
+            workspaces={data.workspaces}
+            memberships={data.memberships}
+            actorUserId={data.actorUserId}
+            onChanged={() => load(true)}
+            onError={setError}
+            onNotice={setNotice}
+          />
         )}
 
         {tab === "groups" && (

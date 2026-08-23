@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [route, migration, tenantTest, discoveryPage] = await Promise.all([
+const [route, migration, tenantTest, discoveryPage, teamRoute] = await Promise.all([
   readFile("src/app/api/discovery/route.ts", "utf8"),
   readFile("supabase/migrations/20260823120000_service_enquiry_intake.sql", "utf8"),
   readFile("supabase/tests/accounts_tenant_isolation.sql", "utf8"),
   readFile("src/app/discovery/page.tsx", "utf8"),
+  readFile("src/app/api/workspace/team/route.ts", "utf8"),
 ]);
 
 assert.match(route, /createAdminClient/);
@@ -20,5 +21,8 @@ assert.match(tenantTest, /cannot fetch Tenant B Invoice by ID/i);
 assert.match(tenantTest, /cannot fetch Tenant A Credit Note by ID/i);
 assert.match(discoveryPage, /fetch\("\/api\/discovery"/);
 assert.doesNotMatch(discoveryPage, /keeps enquiries on your device/i);
+assert.match(teamRoute, /invitationExpiresAt\(now\)/);
+assert.match(teamRoute, /activationRedirectUrl\(request\.url\)/);
+assert.doesNotMatch(teamRoute, /7\s*\*\s*24\s*\*\s*60\s*\*\s*60/);
 
 console.log("Launch readiness security and enquiry contracts are internally consistent.");
