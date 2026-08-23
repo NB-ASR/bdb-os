@@ -442,11 +442,11 @@ export default function CustomersPage() {
     if (mode === "demo") {
       setBaseCustomers((current) => applyCommand(current, command).map((customer) => ({ ...customer, pending: false })));
       setNotice("Saved in this browser's local BDB OS preview.");
-      return { ok: true };
+      return { ok: true, pending: false };
     }
     if (!workspaceId) {
       setError("The current workspace is unavailable.");
-      return { ok: false };
+      return { ok: false, pending: false };
     }
 
     try {
@@ -454,13 +454,13 @@ export default function CustomersPage() {
       setQueuedCommands(readCustomerQueue(workspaceId));
     } catch (queueError) {
       setError(queueError instanceof Error ? queueError.message : "The Customer offline queue is unavailable.");
-      return { ok: false };
+      return { ok: false, pending: false };
     }
 
     if (!navigator.onLine) {
       setOffline(true);
       setNotice("Saved offline. BDB OS will replay this Customer change with the same retry key when the connection returns.");
-      return { ok: true };
+      return { ok: true, pending: true };
     }
 
     try {
@@ -469,7 +469,7 @@ export default function CustomersPage() {
       setQueuedCommands(readCustomerQueue(workspaceId));
       await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
       setNotice(action === "create" ? "Customer created." : action === "update" ? "Customer updated." : action === "archive" ? "Customer archived." : "Customer restored.");
-      return { ok: true };
+      return { ok: true, pending: false };
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Customer change could not be saved.";
       const code = commandError instanceof CustomerSubmitError ? commandError.code : "";
@@ -480,13 +480,13 @@ export default function CustomersPage() {
         await loadRegister(workspaceId, { search: query, filter, includeSummary: true }).catch(() => undefined);
         if (code === "CUSTOMER_DUPLICATE_REVIEW") setDuplicateReview(true);
         setError(message);
-        return { ok: false, code };
+        return { ok: false, pending: false, code };
       }
 
       failCustomerCommand(workspaceId, command.id, message, "ambiguous");
       setQueuedCommands(readCustomerQueue(workspaceId));
       setError(`${message} BDB OS did not receive a confirmed outcome, so the change remains queued with the same retry key.`);
-      return { ok: false, code };
+      return { ok: true, pending: true, code };
     }
   }, [filter, loadRegister, mode, query, workspaceId]);
 
@@ -535,7 +535,7 @@ export default function CustomersPage() {
     setForm(emptyForm);
     setDuplicateReview(false);
 
-    if (isNewCustomer && mode === "cloud" && navigator.onLine) {
+    if (isNewCustomer && mode === "cloud" && navigator.onLine && !result.pending) {
       router.push(`/customers/${id}`);
     }
   }
