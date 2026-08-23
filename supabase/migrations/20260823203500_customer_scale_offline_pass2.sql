@@ -3,9 +3,28 @@ begin;
 -- Customer Engine V1 — Pass 2: Scale & Offline Reliability.
 --
 -- Replace whole-workspace Customer directory reads with a bounded, RLS-scoped
--- keyset register. Search remains intentionally prefix-based so the normal
--- business-user fields can use B-tree indexes instead of falling back to a
--- workspace-wide substring scan.
+-- keyset register. A generated search document plus pg_trgm keeps normal
+-- substring search index-backed without loading the whole workspace into the
+-- browser.
+
+create extension if not exists pg_trgm with schema extensions;
+
+alter table public.customers
+  add column if not exists search_text text generated always as (
+    lower(
+      coalesce(name, '') || ' ' ||
+      coalesce(code, '') || ' ' ||
+      coalesce(company, '') || ' ' ||
+      coalesce(email, '') || ' ' ||
+      coalesce(phone, '') || ' ' ||
+      coalesce(address, '') || ' ' ||
+      coalesce(vat_number, '') || ' ' ||
+      coalesce(legacy_id, '')
+    )
+  ) stored;
+
+comment on column public.customers.search_text is
+  'Generated Customer register search document. Not canonical business data; used only for bounded indexed directory search.';
 
 create index if not exists customers_workspace_status_name_cursor_idx
   on public.customers (workspace_id, status, name, id);
@@ -14,18 +33,8 @@ create index if not exists customers_workspace_imported_name_cursor_idx
   on public.customers (workspace_id, name, id)
   where legacy_source is not null;
 
-create index if not exists customers_workspace_name_prefix_idx
-  on public.customers (workspace_id, lower(name) text_pattern_ops);
-create index if not exists customers_workspace_code_prefix_idx
-  on public.customers (workspace_id, lower(code) text_pattern_ops);
-create index if not exists customers_workspace_company_prefix_idx
-  on public.customers (workspace_id, lower(company) text_pattern_ops);
-create index if not exists customers_workspace_email_prefix_idx
-  on public.customers (workspace_id, lower(email) text_pattern_ops)
-  where email is not null;
-create index if not exists customers_workspace_phone_prefix_idx
-  on public.customers (workspace_id, lower(phone) text_pattern_ops)
-  where phone is not null;
+create index if not exists customers_search_text_trgm_idx
+  on public.customers using gin (search_text extensions.gin_trgm_ops);
 
 create or replace function public.list_customer_register_page(
   p_workspace_id uuid,
@@ -58,11 +67,7 @@ as $$
     )
     and (
       nullif(trim(coalesce(p_search, '')), '') is null
-      or lower(customer.name) like lower(trim(p_search)) || '%'
-      or lower(customer.code) like lower(trim(p_search)) || '%'
-      or lower(customer.company) like lower(trim(p_search)) || '%'
-      or (customer.email is not null and lower(customer.email) like lower(trim(p_search)) || '%')
-      or (customer.phone is not null and lower(customer.phone) like lower(trim(p_search)) || '%')
+      or customer.search_text like '%' || lower(trim(p_search)) || '%'
     )
   order by customer.name, customer.id
   limit least(greatest(coalesce(p_limit, 100), 1), 100) + 1;
