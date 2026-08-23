@@ -429,6 +429,21 @@ export async function PATCH(request: Request) {
     } else if (body.action === "workspace-status" && body.workspaceId && body.status) {
       const allowed = ["trial", "active", "suspended", "cancelled"];
       if (!allowed.includes(body.status)) return Response.json({ error: "Invalid status." }, { status: 400 });
+      if (body.status === "active") {
+        const { count, error: ownerError } = await admin
+          .from("workspace_memberships")
+          .select("user_id", { count: "exact", head: true })
+          .eq("workspace_id", body.workspaceId)
+          .eq("access_profile", "owner")
+          .eq("status", "active");
+        if (ownerError) throw ownerError;
+        if ((count ?? 0) < 1) {
+          return Response.json(
+            { error: "Activate this workspace after at least one Owner has accepted their invitation." },
+            { status: 409 },
+          );
+        }
+      }
       const { error } = await admin.from("workspaces").update({ status: body.status }).eq("id", body.workspaceId);
       if (error) throw error;
     } else if (body.action === "link-workspace" && body.workspaceId && body.groupId) {

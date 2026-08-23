@@ -13,6 +13,7 @@ assert(dashboardRoute, /email_confirmed_at:/, "Founder Admin account DTO must ex
 assert(dashboardRoute, /last_sign_in_at:/, "Founder Admin account DTO must expose last sign-in time.");
 assert(dashboardRoute, /is_platform_admin:/, "Founder Admin account DTO must identify platform admins.");
 assert(dashboardRoute, /actorUserId:/, "Founder Admin must identify the current actor so self-edit controls can be locked.");
+assert(dashboardRoute, /Activate this workspace after at least one Owner has accepted/, "Workspaces must not become active without an active Owner.");
 if (/identities\s*:/.test(dashboardRoute)) throw new Error("Founder Admin must not expose raw Auth identities.");
 
 for (const pattern of [
