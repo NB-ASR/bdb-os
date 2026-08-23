@@ -96,7 +96,8 @@ assert.match(importer, /record\.clients/);
 assert.match(importer, /data\.clients/);
 
 assert.match(page, /Email is optional/);
-assert.match(page, /Import Vanita JSON/);
+assert.match(page, /Import Customers/);
+assert.doesNotMatch(page, /Import Vanita JSON/, "Customer UI must use the generic import label for every workspace.");
 assert.match(page, /Saved offline/);
 assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(page, /archive/);
