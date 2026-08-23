@@ -78,7 +78,9 @@ const canonicalProductionHistory = [
   "20260823121617_accounts_customer_register_scale_pass4.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260823120000_service_enquiry_intake.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
