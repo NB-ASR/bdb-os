@@ -43,6 +43,7 @@ type CustomerRow = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  vat_number: string | null;
   notes: string | null;
   preferences: Record<string, unknown>;
   status: CustomerStatus;
@@ -62,7 +63,7 @@ type CustomerForm = {
   email: string;
   phone: string;
   address: string;
-  notes: string;
+  vatNumber: string;
   preferences: string;
 };
 
@@ -83,7 +84,7 @@ const emptyForm: CustomerForm = {
   email: "",
   phone: "",
   address: "",
-  notes: "",
+  vatNumber: "",
   preferences: "",
 };
 
@@ -136,7 +137,7 @@ function formValues(customer: CustomerRow): CustomerForm {
     email: customer.email ?? "",
     phone: customer.phone ?? "",
     address: customer.address ?? "",
-    notes: customer.notes ?? "",
+    vatNumber: customer.vat_number ?? "",
     preferences: preferenceSummary(customer.preferences),
   };
 }
@@ -150,7 +151,8 @@ function customerFromPayload(payload: Record<string, unknown>): CustomerRow {
     email: payload.email ? String(payload.email) : null,
     phone: payload.phone ? String(payload.phone) : null,
     address: payload.address ? String(payload.address) : null,
-    notes: payload.notes ? String(payload.notes) : null,
+    vat_number: payload.vatNumber ? String(payload.vatNumber) : null,
+    notes: null,
     preferences: (payload.preferences && typeof payload.preferences === "object" && !Array.isArray(payload.preferences))
       ? payload.preferences as Record<string, unknown>
       : {},
@@ -179,6 +181,7 @@ function applyCommand(customers: readonly CustomerRow[], command: CustomerQueued
         ...customer,
         ...customerFromPayload(payload),
         id: customer.id,
+        notes: customer.notes,
         status: customer.status,
         legacy_source: customer.legacy_source,
         legacy_id: customer.legacy_id,
@@ -377,6 +380,7 @@ export default function CustomersPage() {
           customer.email,
           customer.phone,
           customer.address,
+          customer.vat_number,
           customer.legacy_id,
         ].join(" ").toLowerCase().includes(term);
         const matchesFilter = filter === "all"
@@ -416,7 +420,7 @@ export default function CustomersPage() {
       email: form.email,
       phone: form.phone,
       address: form.address,
-      notes: form.notes,
+      vatNumber: form.vatNumber,
       preferences: form.preferences.trim() ? { summary: form.preferences.trim() } : {},
       allowDuplicate,
     });
@@ -665,18 +669,18 @@ export default function CustomersPage() {
         open={formOpen}
         onClose={() => { if (!saving) { setFormOpen(false); setDuplicateReview(false); } }}
         title={editing ? "Edit Customer" : "Add Customer"}
-        description="Email is optional. Exact email or phone matches require an explicit duplicate decision."
+        description="Email is optional. Exact email or phone matches require an explicit duplicate decision. Operational notes are added from Customer 360."
       >
         <form onSubmit={(event) => void saveCustomer(event)}>
           <div className="form-grid">
             <div className="field"><label htmlFor="customer-name">Customer name</label><input id="customer-name" required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
             <div className="field"><label htmlFor="customer-code">Customer code</label><input id="customer-code" maxLength={64} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="Generated when blank" /></div>
             <div className="field"><label htmlFor="customer-company">Company</label><input id="customer-company" maxLength={160} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></div>
+            <div className="field"><label htmlFor="customer-vat-number">VAT number</label><input id="customer-vat-number" maxLength={64} value={form.vatNumber} onChange={(event) => setForm({ ...form, vatNumber: event.target.value })} placeholder="Optional" /></div>
             <div className="field"><label htmlFor="customer-email">Email</label><input id="customer-email" type="email" maxLength={320} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Optional" /></div>
             <div className="field"><label htmlFor="customer-phone">Phone</label><input id="customer-phone" maxLength={50} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Optional" /></div>
             <div className="field field-full"><label htmlFor="customer-address">Address</label><textarea id="customer-address" maxLength={1000} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div>
             <div className="field field-full"><label htmlFor="customer-preferences">Preferences</label><textarea id="customer-preferences" maxLength={2000} value={form.preferences} onChange={(event) => setForm({ ...form, preferences: event.target.value })} placeholder="Service preferences or useful context" /></div>
-            <div className="field field-full"><label htmlFor="customer-notes">Internal notes</label><textarea id="customer-notes" maxLength={4000} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
           </div>
 
           {duplicateReview ? (
