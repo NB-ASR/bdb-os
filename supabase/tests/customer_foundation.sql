@@ -1,6 +1,6 @@
 begin;
 
-select plan(43);
+select plan(44);
 
 select has_table('public', 'customers', 'Canonical Customers table exists');
 select has_table('public', 'customer_command_receipts', 'Customer command receipts exist');
@@ -134,7 +134,7 @@ select ok(
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname='apply_appointment_command'
       and position('customer_record.status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
-      and position('appointment customer is unavailable' in lower(pg_get_functiondef(p.oid))) > 0
+      and position('archived customers cannot receive new appointments' in lower(pg_get_functiondef(p.oid))) > 0
   ),
   'Archived Customers cannot be used for new Appointment work'
 );
