@@ -58,7 +58,7 @@ test("Supplier Accounts browser cache remains a bounded working set", async () =
 });
 
 test("Pass 4 Supplier scale migration adds read indexes and a server-side summary", async () => {
-  const migration = await source("supabase/migrations/20260822190000_accounts_supplier_scale_pass4.sql");
+  const migration = await source("supabase/migrations/20260823121552_accounts_supplier_scale_pass4.sql");
 
   assert.match(migration, /supplier_documents_accounts_cursor_idx/);
   assert.match(migration, /supplier_payables_register_cursor_idx/);
