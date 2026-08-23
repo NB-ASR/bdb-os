@@ -12,6 +12,7 @@ const migrationText = (await Promise.all(migrationFiles)).join("\n");
 const pass1Migration = await readFile("supabase/migrations/20260823195500_customer_foundation_pass1.sql", "utf8");
 const archiveGuardMigration = await readFile("supabase/migrations/20260823202000_customer_archived_sale_guard_pass1.sql", "utf8");
 const pass2Migration = await readFile("supabase/migrations/20260823203500_customer_scale_offline_pass2.sql", "utf8");
+const pass4Migration = await readFile("supabase/migrations/20260823224000_customer_engine_closure_pass4.sql", "utf8");
 const api = await readFile("src/app/api/customers/route.ts", "utf8");
 const documentIdentityApi = await readFile("src/app/api/customers/document-identity/route.ts", "utf8");
 const importApi = await readFile("src/app/api/customers/import/route.ts", "utf8");
@@ -55,9 +56,11 @@ for (const statement of [
 assert.match(api, /const ACTIONS = new Set\(\["create", "update", "archive", "restore"\]\)/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);
 assert.match(api, /CUSTOMER_DUPLICATE_REVIEW/);
+assert.match(api, /CUSTOMER_IDEMPOTENCY_CONFLICT/);
 assert.match(api, /optionalEmail/);
 assert.match(api, /createAdminClient/);
-assert.match(api, /apply_customer_command/);
+assert.match(api, /execute_customer_command/);
+assert.doesNotMatch(api, /admin\.rpc\("apply_customer_command"/i, "Customer API must not bypass the Pass 4 runtime command boundary.");
 assert.match(api, /p_vat_number: values\.vatNumber/, "Customer API must explicitly pass Customer-owned VAT identity.");
 assert.match(api, /p_notes: null/, "Normal Customer lifecycle API must not mutate legacy Customer notes.");
 assert.doesNotMatch(api, /body\.notes/, "Normal Customer lifecycle API must not accept the legacy notes field.");
@@ -68,9 +71,12 @@ assert.match(api, /list_customer_register_page/, "Customer GET must use the boun
 assert.match(api, /customer_register_summary/, "Customer totals must be loaded separately from page rows.");
 assert.match(api, /afterName/);
 assert.match(api, /afterId/);
+assert.match(documentIdentityApi, /execute_customer_command/, "Business Document VAT updates must use the hardened Customer command boundary.");
+assert.doesNotMatch(documentIdentityApi, /admin\.rpc\("apply_customer_command"/i, "Business Document VAT updates must not use the retired Customer RPC.");
 assert.match(documentIdentityApi, /p_notes: null/, "Business Document VAT updates must preserve legacy Customer context rather than rewriting it.");
 
-assert.match(importApi, /import_vanita_customers/);
+assert.match(importApi, /execute_vanita_customer_import/);
+assert.doesNotMatch(importApi, /admin\.rpc\("import_vanita_customers"/i, "Vanita imports must not bypass the Pass 4 runtime command boundary.");
 assert.match(importApi, /CUSTOMER_IMPORT_TOO_LARGE/);
 assert.match(importApi, /IDEMPOTENCY_REQUIRED/);
 assert.match(importApi, /requireWorkspaceCommand/);
@@ -149,6 +155,19 @@ assert.match(pass2Migration, /customer\.search_text like '%' \|\| lower\(trim\(p
 assert.match(pass2Migration, /security invoker/i, "Paged Customer reads must retain the caller's RLS boundary.");
 assert.match(pass2Migration, /customer_register_summary/i);
 
+assert.match(pass4Migration, /create table public\.customer_command_claims/i, "Pass 4 must bind Customer retry keys to request identity.");
+assert.match(pass4Migration, /private\.claim_customer_command/i, "Pass 4 must centralize Customer request claiming.");
+assert.match(pass4Migration, /sha256/i, "Pass 4 Customer request claims must use a collision-resistant hash.");
+assert.match(pass4Migration, /customer idempotency key was reused with different input/i, "Pass 4 must reject retry-key payload drift.");
+assert.match(pass4Migration, /pg_advisory_xact_lock_shared/i, "Live Customer lifecycle commands must coordinate with imports.");
+assert.match(pass4Migration, /customer-email:/i, "Concurrent email duplicate review must be serialized.");
+assert.match(pass4Migration, /customer-phone:/i, "Concurrent phone duplicate review must be serialized.");
+assert.match(pass4Migration, /execute_customer_command/i, "Pass 4 must expose the hardened lifecycle runtime command.");
+assert.match(pass4Migration, /execute_vanita_customer_import/i, "Pass 4 must expose the hardened import runtime command.");
+assert.match(pass4Migration, /revoke all on function public\.apply_customer_command[\s\S]*service_role/i, "The older Customer lifecycle RPC must be retired from service traffic.");
+assert.match(pass4Migration, /revoke all on function public\.import_vanita_customers[\s\S]*service_role/i, "The older Customer import RPC must be retired from service traffic.");
+assert.doesNotMatch(pass4Migration, /(insert into|update|delete from) public\.(invoices|payments|credit_notes|delivery_notes|payment_allocations)/i, "Customer Pass 4 must not mutate frozen Accounts financial records.");
+
 assert.match(databaseTest, /Customer commands are idempotent/i);
 assert.match(databaseTest, /Customer imports preserve provenance/i);
 assert.match(databaseTest, /browser clients cannot insert Customers directly/i);
@@ -156,4 +175,4 @@ assert.match(databaseTest, /final 64 UUID bits/i);
 assert.match(databaseTest, /covering indexes/i);
 assert.match(databaseTest, /sales_active_customer_guard/i, "Database tests must pin the archived-Customer Sale guard.");
 
-console.log("Customer foundation, scale, bounded offline state, archive guards and replay contracts are internally consistent.");
+console.log("Customer foundation, scale, bounded offline state, archive guards, hardened replay and closure contracts are internally consistent.");
