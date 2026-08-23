@@ -77,6 +77,7 @@ const canonicalProductionHistory = [
   "20260823121552_accounts_supplier_scale_pass4.sql",
   "20260823121617_accounts_customer_register_scale_pass4.sql",
   "20260823204333_service_enquiry_intake.sql",
+  "20260823212453_repair_workspace_operator_policy_provisioning.sql",
 ];
 
 const pendingMigrations = [];
