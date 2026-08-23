@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       p_email: customer.email,
       p_phone: customer.phone,
       p_address: customer.address,
-      p_notes: customer.notes,
+      p_notes: null,
       p_preferences: customer.preferences ?? {},
       p_allow_duplicate: true,
       p_vat_number: vatNumber || null,
