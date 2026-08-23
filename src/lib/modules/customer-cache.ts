@@ -4,13 +4,25 @@ export type CachedCustomer = {
   [key: string]: unknown;
 };
 
+export type CachedCustomerSummary = {
+  activeCount: number;
+  archivedCount: number;
+  importedCount: number;
+  companyCount: number;
+};
+
 const CACHE_PREFIX = "bdb-customers-cache-v2";
+const SUMMARY_PREFIX = "bdb-customers-summary-v1";
 const LEGACY_CACHE_PREFIX = "bdb-customers-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-customers-last-workspace-v1";
 export const CUSTOMER_CACHE_LIMIT = 300;
 
 function storageKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
+}
+
+function summaryKey(workspaceId: string) {
+  return `${SUMMARY_PREFIX}:${workspaceId}`;
 }
 
 function legacyStorageKey(workspaceId: string) {
@@ -51,6 +63,30 @@ export function readCustomerCache<T extends CachedCustomer = CachedCustomer>(wor
     window.localStorage.removeItem(legacyStorageKey(workspaceId));
   }
   return legacy as T[];
+}
+
+export function readCustomerSummary(workspaceId: string): CachedCustomerSummary | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(summaryKey(workspaceId)) ?? "null") as Partial<CachedCustomerSummary> | null;
+    if (!parsed) return null;
+    const values = [parsed.activeCount, parsed.archivedCount, parsed.importedCount, parsed.companyCount];
+    if (values.some((value) => !Number.isFinite(value))) return null;
+    return {
+      activeCount: Number(parsed.activeCount),
+      archivedCount: Number(parsed.archivedCount),
+      importedCount: Number(parsed.importedCount),
+      companyCount: Number(parsed.companyCount),
+    };
+  } catch {
+    window.localStorage.removeItem(summaryKey(workspaceId));
+    return null;
+  }
+}
+
+export function writeCustomerSummary(workspaceId: string, summary: CachedCustomerSummary) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(summaryKey(workspaceId), JSON.stringify(summary));
 }
 
 function stripPending<T extends CachedCustomer>(row: T): T {
