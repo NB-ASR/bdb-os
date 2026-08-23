@@ -83,11 +83,10 @@ const canonicalProductionHistory = [
   "20260823212453_repair_workspace_operator_policy_provisioning.sql",
   "20260823215700_customer_360_cross_engine_pass3.sql",
   "20260823224000_customer_engine_closure_pass4.sql",
-];
-
-const pendingMigrations = [
   "20260823235000_customer_engine_closure_advisor_indexes.sql",
 ];
+
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
