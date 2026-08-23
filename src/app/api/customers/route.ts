@@ -22,7 +22,6 @@ type CustomerCommandBody = {
   email?: unknown;
   phone?: unknown;
   address?: unknown;
-  notes?: unknown;
   preferences?: unknown;
   allowDuplicate?: unknown;
   vatNumber?: unknown;
@@ -139,7 +138,6 @@ export async function POST(request: Request) {
         email: optionalEmail(body.email),
         phone: optionalText(body.phone, 50),
         address: optionalText(body.address, 1000),
-        notes: optionalText(body.notes, 4000),
         preferences: preferences(body.preferences),
         allowDuplicate: body.allowDuplicate === true,
         vatNumber: optionalText(body.vatNumber, 64),
@@ -151,7 +149,6 @@ export async function POST(request: Request) {
         email: null,
         phone: null,
         address: null,
-        notes: null,
         preferences: {},
         allowDuplicate: false,
         vatNumber: null,
@@ -174,7 +171,7 @@ export async function POST(request: Request) {
       p_email: values.email,
       p_phone: values.phone,
       p_address: values.address,
-      p_notes: values.notes,
+      p_notes: null,
       p_preferences: values.preferences,
       p_allow_duplicate: values.allowDuplicate,
       p_vat_number: values.vatNumber,
