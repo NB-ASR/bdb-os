@@ -1,6 +1,6 @@
 begin;
 
-select plan(33);
+select plan(43);
 
 select has_table('public', 'customers', 'Canonical Customers table exists');
 select has_table('public', 'customer_command_receipts', 'Customer command receipts exist');
@@ -43,6 +43,7 @@ select ok(exists(select 1 from information_schema.columns where table_schema='pu
 select ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='customers' and column_name='version' and data_type='integer'), 'Customer optimistic version exists');
 select ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='customers' and column_name='preferences' and data_type='jsonb'), 'Customer preferences remain structured');
 select ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='customers' and column_name='legacy_id'), 'Customer legacy identity exists');
+select ok(exists(select 1 from information_schema.columns where table_schema='public' and table_name='customers' and column_name='vat_number'), 'Customer canonical VAT identity exists');
 
 select ok(exists(select 1 from pg_indexes where schemaname='public' and tablename='customers' and indexname='customers_workspace_code_ci_idx'), 'Customer codes are case-insensitively unique per workspace');
 select ok(exists(select 1 from pg_indexes where schemaname='public' and tablename='customers' and indexname='customers_workspace_legacy_identity_idx'), 'Customer legacy identities are unique per workspace');
@@ -76,6 +77,86 @@ select ok(
   position('customer_import_receipts' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0
   and position('legacy_source' in lower(pg_get_functiondef('public.import_vanita_customers(uuid,uuid,text,uuid,uuid,text,jsonb)'::regprocedure))) > 0,
   'Customer imports preserve provenance'
+);
+
+select ok(
+  position('legacy/imported customer context' in lower(col_description('public.customers'::regclass, (
+    select ordinal_position from information_schema.columns where table_schema='public' and table_name='customers' and column_name='notes'
+  )))) > 0
+  and position('customer_notes' in lower(col_description('public.customers'::regclass, (
+    select ordinal_position from information_schema.columns where table_schema='public' and table_name='customers' and column_name='notes'
+  )))) > 0,
+  'Legacy Customer directory notes are explicitly non-canonical context'
+);
+select ok(
+  position('canonical customer vat/legal tax identity' in lower(col_description('public.customers'::regclass, (
+    select ordinal_position from information_schema.columns where table_schema='public' and table_name='customers' and column_name='vat_number'
+  )))) > 0,
+  'VAT/legal identity is owned by the canonical Customer master record'
+);
+select ok(
+  position('nullif(trim(p_notes)' in lower(pg_get_functiondef('public.apply_customer_command(uuid,uuid,text,text,uuid,uuid,integer,text,text,text,text,text,text,text,jsonb,boolean,text)'::regprocedure))) = 0,
+  'Normal Customer lifecycle commands cannot create or mutate legacy directory notes'
+);
+select ok(
+  position('canonical general document relationships are public.document_links' in lower(col_description('public.documents'::regclass, (
+    select ordinal_position from information_schema.columns where table_schema='public' and table_name='documents' and column_name='customer_id'
+  )))) > 0,
+  'Legacy direct Document Customer pointer is explicitly non-canonical'
+);
+select ok(
+  not exists (
+    select 1
+    from public.documents document
+    where document.customer_id is not null
+      and not exists (
+        select 1 from public.document_links link
+        where link.workspace_id = document.workspace_id
+          and link.document_id = document.id
+          and link.link_type = 'customer'
+          and link.target_id = document.customer_id
+          and link.revoked_at is null
+      )
+  ),
+  'Any legacy direct Document Customer pointer is preserved by a canonical active document link'
+);
+select ok(
+  not exists (
+    select 1
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='create_general_document'
+      and position('then p_target_id' in lower(pg_get_functiondef(p.oid))) > 0
+  ),
+  'New general Documents do not mirror Customer links into the legacy direct pointer'
+);
+select ok(
+  exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='apply_appointment_command'
+      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+  ),
+  'Archived Customers cannot be used for new Appointment work'
+);
+select ok(
+  exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='complete_sale'
+      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+  ),
+  'Archived Customers cannot be used for new completed Sales'
+);
+select ok(
+  exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='apply_invoice_command'
+      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+  ),
+  'Archived Customers cannot be used for new canonical Invoices'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)', 'EXECUTE')
+  and not has_function_privilege('service_role', 'public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)', 'EXECUTE'),
+  'Legacy invoice creation helper cannot bypass canonical archived-Customer rules'
 );
 
 select * from finish();
