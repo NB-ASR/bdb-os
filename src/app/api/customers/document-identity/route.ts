@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     if (!customer) throw new CommandError("CUSTOMER_NOT_FOUND", "Customer could not be found.", 404);
     const admin = createAdminClient();
     if (!admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
-    const result = await admin.rpc("apply_customer_command", {
+    const result = await admin.rpc("execute_customer_command", {
       p_workspace_id: workspaceId,
       p_customer_id: customerId,
       p_action: "update",
