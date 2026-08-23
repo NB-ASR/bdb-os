@@ -4,7 +4,7 @@ begin;
 -- This migration does not change Accounts posting, balances, allocations, numbering,
 -- Credit Note rules, Delivery Note rules or any other frozen financial invariant.
 -- It strengthens Customer-facing relationships and removes duplicate Communication
--- summary logic from Customer 360.
+-- and financial summary logic from Customer 360.
 
 do $$
 begin
@@ -101,8 +101,9 @@ begin
       from public.customers customer
       where customer.workspace_id = new.workspace_id
         and customer.id = new.target_id
+        and customer.status = 'active'
     ) then
-      raise exception 'Customer Document link target is unavailable in this workspace';
+      raise exception 'Customer Document link target is unavailable or archived in this workspace';
     end if;
   end if;
   return new;
@@ -118,7 +119,7 @@ before insert or update of workspace_id, link_type, target_id on public.document
 for each row execute function private.enforce_customer_document_link_target();
 
 comment on function private.enforce_customer_document_link_target() is
-  'Database-level integrity guard for canonical Customer Document links. Other typed link domains remain owned by their source engines.';
+  'Database-level integrity guard for canonical Customer Document links. New Customer links require an active Customer; historical links remain readable after archival.';
 
 create or replace view public.customer_360_communication_summary
 with (security_invoker = true)
@@ -178,6 +179,70 @@ grant select on public.customer_360_communication_summary to authenticated;
 
 comment on view public.customer_360_communication_summary is
   'Authoritative Customer Communication summary. Counts come from unified Communications and last activity includes Communication lifecycle events.';
+
+-- Customer 360 must not maintain its own monetary truth. The frozen Accounts
+-- customer_account_balances view owns outstanding, credit and net position after
+-- Credit Notes, allocations, reversals and over-allocation normalization. Customer
+-- 360 only adds display counts and the workspace base currency around that result.
+create or replace view public.customer_360_financial_summary
+with (security_invoker = true)
+as
+with invoice_counts as (
+  select invoice.workspace_id,
+         invoice.customer_id,
+         count(*) filter (where invoice.status::text not in ('draft', 'void'))::integer as issued_invoice_count,
+         count(*) filter (
+           where invoice.status::text not in ('draft', 'void')
+             and invoice.outstanding_amount > 0
+         )::integer as open_invoice_count
+  from public.invoice_account_balances invoice
+  group by invoice.workspace_id, invoice.customer_id
+), payment_counts as (
+  select payment.workspace_id,
+         payment.customer_id,
+         count(*) filter (where payment.status = 'posted')::integer as payment_count
+  from public.payment_account_balances payment
+  group by payment.workspace_id, payment.customer_id
+), financial_customers as (
+  select invoice.workspace_id, invoice.customer_id
+  from public.invoice_account_balances invoice
+  group by invoice.workspace_id, invoice.customer_id
+  union
+  select payment.workspace_id, payment.customer_id
+  from public.payment_account_balances payment
+  group by payment.workspace_id, payment.customer_id
+)
+select balance.workspace_id,
+       balance.customer_id,
+       upper(settings.currency) as currency,
+       coalesce(invoice.issued_invoice_count, 0) as issued_invoice_count,
+       coalesce(invoice.open_invoice_count, 0) as open_invoice_count,
+       coalesce(payment.payment_count, 0) as payment_count,
+       balance.issued_amount,
+       balance.allocated_amount,
+       balance.outstanding_amount,
+       balance.received_amount,
+       balance.unallocated_credit,
+       balance.net_balance,
+       balance.balance_status
+from public.customer_account_balances balance
+join public.workspace_settings settings
+  on settings.workspace_id = balance.workspace_id
+join financial_customers financial
+  on financial.workspace_id = balance.workspace_id
+ and financial.customer_id = balance.customer_id
+left join invoice_counts invoice
+  on invoice.workspace_id = balance.workspace_id
+ and invoice.customer_id = balance.customer_id
+left join payment_counts payment
+  on payment.workspace_id = balance.workspace_id
+ and payment.customer_id = balance.customer_id;
+
+revoke all on public.customer_360_financial_summary from public, anon, authenticated;
+grant select on public.customer_360_financial_summary to authenticated;
+
+comment on view public.customer_360_financial_summary is
+  'Customer 360 Accounts read model. Monetary position is sourced directly from frozen customer_account_balances; Customer 360 adds counts and base currency only.';
 
 create or replace view public.customer_360_operational_summary
 with (security_invoker = true)
