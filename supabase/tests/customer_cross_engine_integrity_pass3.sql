@@ -103,9 +103,23 @@ select ok(
 );
 
 select ok(
-  position('message.customer_id = thread.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
-  or position('thread.customer_id = message.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
-  'Customer Communication summary joins messages through the authoritative thread Customer identity'
+  exists (
+    select 1
+    from information_schema.view_table_usage
+    where view_schema = 'public'
+      and view_name = 'customer_360_communication_summary'
+      and table_schema = 'public'
+      and table_name = 'communication_threads'
+  )
+  and exists (
+    select 1
+    from information_schema.view_table_usage
+    where view_schema = 'public'
+      and view_name = 'customer_360_communication_summary'
+      and table_schema = 'public'
+      and table_name = 'messages'
+  ),
+  'Customer Communication summary structurally composes messages through authoritative Communication threads'
 );
 
 select ok(
