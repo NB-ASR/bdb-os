@@ -1,6 +1,6 @@
 begin;
 
-select plan(30);
+select plan(34);
 
 select has_function(
   'private',
@@ -81,6 +81,7 @@ select ok(
 
 select has_view('public', 'customer_360_communication_summary', 'Customer Communication summary exists');
 select has_view('public', 'customer_360_operational_summary', 'Customer operational summary exists');
+select has_view('public', 'customer_360_financial_summary', 'Customer financial summary exists');
 
 select ok(
   coalesce((select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.customer_360_communication_summary'::regclass), false),
@@ -93,33 +94,26 @@ select ok(
 );
 
 select ok(
+  coalesce((select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.customer_360_financial_summary'::regclass), false),
+  'Customer financial summary preserves invoker RLS'
+);
+
+select ok(
   position('customer_360_communication_summary' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) > 0,
   'Customer operational summary reuses the unified Communication summary'
 );
 
 select ok(
-  position('from public.messages' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) = 0,
+  position('from messages' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) = 0
+  and position('from public.messages' in lower(pg_get_viewdef('public.customer_360_operational_summary'::regclass, true))) = 0,
   'Customer operational summary does not recalculate Communication counts from raw messages'
 );
 
 select ok(
-  exists (
-    select 1
-    from information_schema.view_table_usage
-    where view_schema = 'public'
-      and view_name = 'customer_360_communication_summary'
-      and table_schema = 'public'
-      and table_name = 'communication_threads'
-  )
-  and exists (
-    select 1
-    from information_schema.view_table_usage
-    where view_schema = 'public'
-      and view_name = 'customer_360_communication_summary'
-      and table_schema = 'public'
-      and table_name = 'messages'
-  ),
-  'Customer Communication summary structurally composes messages through authoritative Communication threads'
+  position('message.workspace_id = thread.workspace_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
+  and position('message.thread_id = thread.id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
+  and position('message.customer_id = thread.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
+  'Customer Communication summary joins messages through authoritative workspace, thread and Customer identity'
 );
 
 select ok(
@@ -142,6 +136,11 @@ select ok(
   and position('customer.workspace_id = new.workspace_id' in lower(pg_get_functiondef('private.enforce_customer_document_link_target()'::regprocedure))) > 0
   and position('customer.id = new.target_id' in lower(pg_get_functiondef('private.enforce_customer_document_link_target()'::regprocedure))) > 0,
   'Customer Document typed links validate the exact Customer inside the same workspace'
+);
+
+select ok(
+  position("customer.status = 'active'" in lower(pg_get_functiondef('private.enforce_customer_document_link_target()'::regprocedure))) > 0,
+  'New Customer Document links reject archived Customers while historical links remain untouched'
 );
 
 select ok(
@@ -213,8 +212,16 @@ select ok(
 );
 
 select ok(
-  coalesce((select reloptions @> array['security_invoker=true'] from pg_class where oid = 'public.customer_360_financial_summary'::regclass), false),
-  'Customer financial summary remains an invoker-RLS read model over frozen Accounts balances'
+  position('customer_account_balances balance' in lower(pg_get_viewdef('public.customer_360_financial_summary'::regclass, true))) > 0,
+  'Customer 360 monetary position is sourced from the frozen Accounts Customer balance view'
+);
+
+select ok(
+  position('balance.outstanding_amount' in lower(pg_get_viewdef('public.customer_360_financial_summary'::regclass, true))) > 0
+  and position('balance.unallocated_credit' in lower(pg_get_viewdef('public.customer_360_financial_summary'::regclass, true))) > 0
+  and position('balance.net_balance' in lower(pg_get_viewdef('public.customer_360_financial_summary'::regclass, true))) > 0
+  and position('balance.balance_status' in lower(pg_get_viewdef('public.customer_360_financial_summary'::regclass, true))) > 0,
+  'Customer 360 exposes canonical Accounts outstanding, credit, net balance and status without recomputing them'
 );
 
 select ok(
