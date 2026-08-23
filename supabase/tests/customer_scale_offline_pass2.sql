@@ -53,8 +53,12 @@ select ok(
   'Imported Customer register has a bounded cursor index'
 );
 select ok(
-  position('security invoker' in lower(pg_get_functiondef('public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure))) > 0,
-  'Customer register RPC preserves caller RLS with SECURITY INVOKER'
+  not (
+    select p.prosecdef
+    from pg_proc p
+    where p.oid = 'public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure
+  ),
+  'Customer register RPC preserves caller RLS as SECURITY INVOKER'
 );
 select ok(
   position('(customer.name, customer.id) > (p_after_name, p_after_id)' in lower(pg_get_functiondef('public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure))) > 0,
