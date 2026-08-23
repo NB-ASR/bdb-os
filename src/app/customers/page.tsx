@@ -24,10 +24,20 @@ import {
   readCustomerQueue,
   removeCustomerCommand,
   submitCustomerCommand,
-  writeCustomerQueue,
+  CustomerSubmitError,
   type CustomerCommandAction,
   type CustomerQueuedCommand,
 } from "@/lib/modules/customer-queue";
+import {
+  mergeCustomerCache,
+  readCustomerCache,
+  readCustomerSummary,
+  readLastCustomerWorkspace,
+  rememberCustomerWorkspace,
+  writeCustomerCache,
+  writeCustomerSummary,
+  type CachedCustomerSummary,
+} from "@/lib/modules/customer-cache";
 import { extractVanitaClients } from "@/lib/modules/customer-import";
 import { Badge, Button, Card, Dialog, PageHeader, StatCard } from "@/components/ui";
 
@@ -43,6 +53,7 @@ type CustomerRow = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  vat_number: string | null;
   notes: string | null;
   preferences: Record<string, unknown>;
   status: CustomerStatus;
@@ -62,7 +73,7 @@ type CustomerForm = {
   email: string;
   phone: string;
   address: string;
-  notes: string;
+  vatNumber: string;
   preferences: string;
 };
 
@@ -76,6 +87,10 @@ type ImportResult = {
   exceptions: Array<{ index: number; message: string }>;
 };
 
+type CustomerCursor = { name: string; id: string };
+type CustomerSummary = CachedCustomerSummary;
+
+const PAGE_SIZE = 100;
 const emptyForm: CustomerForm = {
   code: "",
   name: "",
@@ -83,45 +98,9 @@ const emptyForm: CustomerForm = {
   email: "",
   phone: "",
   address: "",
-  notes: "",
+  vatNumber: "",
   preferences: "",
 };
-
-const CACHE_PREFIX = "bdb-customers-cache-v1";
-const LAST_WORKSPACE_KEY = "bdb-customers-last-workspace-v1";
-
-function cacheKey(workspaceId: string) {
-  return `${CACHE_PREFIX}:${workspaceId}`;
-}
-
-function readLastWorkspace() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(LAST_WORKSPACE_KEY);
-}
-
-function rememberWorkspace(workspaceId: string) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
-}
-
-function readCache(workspaceId: string): CustomerRow[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed as CustomerRow[] : [];
-  } catch {
-    window.localStorage.removeItem(cacheKey(workspaceId));
-    return [];
-  }
-}
-
-function writeCache(workspaceId: string, customers: readonly CustomerRow[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(
-    cacheKey(workspaceId),
-    JSON.stringify(customers.map(({ pending: _pending, ...customer }) => customer)),
-  );
-}
 
 function preferenceSummary(value: Record<string, unknown> | null | undefined) {
   const summary = value?.summary;
@@ -136,7 +115,7 @@ function formValues(customer: CustomerRow): CustomerForm {
     email: customer.email ?? "",
     phone: customer.phone ?? "",
     address: customer.address ?? "",
-    notes: customer.notes ?? "",
+    vatNumber: customer.vat_number ?? "",
     preferences: preferenceSummary(customer.preferences),
   };
 }
@@ -150,7 +129,8 @@ function customerFromPayload(payload: Record<string, unknown>): CustomerRow {
     email: payload.email ? String(payload.email) : null,
     phone: payload.phone ? String(payload.phone) : null,
     address: payload.address ? String(payload.address) : null,
-    notes: payload.notes ? String(payload.notes) : null,
+    vat_number: payload.vatNumber ? String(payload.vatNumber) : null,
+    notes: null,
     preferences: (payload.preferences && typeof payload.preferences === "object" && !Array.isArray(payload.preferences))
       ? payload.preferences as Record<string, unknown>
       : {},
@@ -179,6 +159,7 @@ function applyCommand(customers: readonly CustomerRow[], command: CustomerQueued
         ...customer,
         ...customerFromPayload(payload),
         id: customer.id,
+        notes: customer.notes,
         status: customer.status,
         legacy_source: customer.legacy_source,
         legacy_id: customer.legacy_id,
@@ -196,13 +177,51 @@ function applyCommand(customers: readonly CustomerRow[], command: CustomerQueued
   });
 }
 
+function dedupeCustomers(customers: readonly CustomerRow[]) {
+  const rows = new Map<string, CustomerRow>();
+  for (const customer of customers) rows.set(customer.id, customer);
+  return [...rows.values()];
+}
+
+function matchesCriteria(customer: CustomerRow, query: string, filter: CustomerFilter) {
+  const term = query.trim().toLowerCase();
+  const matchesQuery = !term || [
+    customer.name,
+    customer.code,
+    customer.company,
+    customer.email,
+    customer.phone,
+    customer.address,
+    customer.vat_number,
+    customer.legacy_id,
+  ].join(" ").toLowerCase().includes(term);
+  const matchesFilter = filter === "all"
+    || (filter === "active" && customer.status === "active")
+    || (filter === "archived" && customer.status === "archived")
+    || (filter === "imported" && Boolean(customer.legacy_source));
+  return matchesQuery && matchesFilter;
+}
+
+function summaryFromRows(customers: readonly CustomerRow[]): CustomerSummary {
+  return {
+    activeCount: customers.filter((customer) => customer.status === "active").length,
+    archivedCount: customers.filter((customer) => customer.status === "archived").length,
+    importedCount: customers.filter((customer) => Boolean(customer.legacy_source)).length,
+    companyCount: new Set(customers.map((customer) => customer.company).filter(Boolean)).size,
+  };
+}
+
 export default function CustomersPage() {
   const { mode } = useBdb();
   const router = useRouter();
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [customers, setCustomers] = useState<CustomerRow[]>([]);
+  const requestSequence = useRef(0);
+  const criteriaInitialised = useRef(false);
+  const [baseCustomers, setBaseCustomers] = useState<CustomerRow[]>([]);
+  const [queuedCommands, setQueuedCommands] = useState<CustomerQueuedCommand[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [offline, setOffline] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerRow | null>(null);
   const [form, setForm] = useState<CustomerForm>(emptyForm);
@@ -210,64 +229,123 @@ export default function CustomersPage() {
   const [filter, setFilter] = useState<CustomerFilter>("active");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<CustomerCursor | null>(null);
+  const [summary, setSummary] = useState<CustomerSummary | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [duplicateReview, setDuplicateReview] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const supportMode = false;
 
-  const loadCloud = useCallback(async () => {
-    const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
-    const context = await contextResponse.json().catch(() => ({}));
-    if (!contextResponse.ok || !context.currentWorkspaceId) {
-      throw new Error(context.error ?? "The current workspace could not be resolved.");
+  const customers = useMemo(() => {
+    if (mode === "demo") return baseCustomers;
+    return queuedCommands.reduce(applyCommand, baseCustomers);
+  }, [baseCustomers, mode, queuedCommands]);
+  const pendingCount = queuedCommands.length;
+  const ambiguousCount = queuedCommands.filter((command) => command.lastFailureKind === "ambiguous").length;
+
+  const loadRegister = useCallback(async (
+    currentWorkspaceId: string,
+    options: {
+      append?: boolean;
+      cursor?: CustomerCursor | null;
+      search?: string;
+      filter?: CustomerFilter;
+      includeSummary?: boolean;
+    } = {},
+  ) => {
+    const token = ++requestSequence.current;
+    const append = options.append === true;
+    const params = new URLSearchParams({
+      workspaceId: currentWorkspaceId,
+      limit: String(PAGE_SIZE),
+      filter: options.filter ?? "active",
+    });
+    if (options.search?.trim()) params.set("search", options.search.trim());
+    if (options.cursor) {
+      params.set("afterName", options.cursor.name);
+      params.set("afterId", options.cursor.id);
     }
+    if (options.includeSummary) params.set("summary", "1");
 
-    const currentWorkspaceId = String(context.currentWorkspaceId);
-    setWorkspaceId(currentWorkspaceId);
-    rememberWorkspace(currentWorkspaceId);
-    const response = await fetch(`/api/customers?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" });
+    setLoadingPage(true);
+    const response = await fetch(`/api/customers?${params.toString()}`, { cache: "no-store" });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error ?? "Customers could not be loaded.");
+    if (!response.ok || !result.ok) {
+      if (token === requestSequence.current) setLoadingPage(false);
+      throw new Error(result.error ?? "Customers could not be loaded.");
+    }
+    if (token !== requestSequence.current) return false;
 
-    const cloudCustomers = (result.result?.customers ?? []) as CustomerRow[];
-    writeCache(currentWorkspaceId, cloudCustomers);
-    const queue = readCustomerQueue(currentWorkspaceId);
-    setCustomers(queue.reduce(applyCommand, cloudCustomers));
-    setPendingCount(queue.length);
+    const pageCustomers = (result.result?.customers ?? []) as CustomerRow[];
+    setBaseCustomers((current) => append ? dedupeCustomers([...current, ...pageCustomers]) : pageCustomers);
+    mergeCustomerCache(currentWorkspaceId, pageCustomers);
+    setQueuedCommands(readCustomerQueue(currentWorkspaceId));
+    setHasMore(Boolean(result.result?.page?.hasMore));
+    const cursor = result.result?.page?.nextCursor as CustomerCursor | null | undefined;
+    setNextCursor(cursor?.name && cursor?.id ? cursor : null);
+
+    const cloudSummary = result.result?.summary as CustomerSummary | null | undefined;
+    if (cloudSummary) {
+      setSummary(cloudSummary);
+      writeCustomerSummary(currentWorkspaceId, cloudSummary);
+    }
+    setOffline(false);
+    setLoadingPage(false);
+    return true;
   }, []);
+
+  const reloadCurrent = useCallback(async (includeSummary = false) => {
+    if (!workspaceId || workspaceId === "demo") return false;
+    return loadRegister(workspaceId, { search: query, filter, includeSummary });
+  }, [filter, loadRegister, query, workspaceId]);
 
   useEffect(() => {
     let active = true;
     async function initialise() {
-      const fallbackWorkspace = mode === "demo" ? "demo" : readLastWorkspace();
-      const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : [];
-      const queued = fallbackWorkspace ? readCustomerQueue(fallbackWorkspace) : [];
+      const fallbackWorkspace = mode === "demo" ? "demo" : readLastCustomerWorkspace();
+      const cached = fallbackWorkspace ? readCustomerCache<CustomerRow>(fallbackWorkspace) : [];
+      const queued = fallbackWorkspace && fallbackWorkspace !== "demo" ? readCustomerQueue(fallbackWorkspace) : [];
+      const cachedSummary = fallbackWorkspace ? readCustomerSummary(fallbackWorkspace) : null;
 
       if (active && fallbackWorkspace) {
         setWorkspaceId(fallbackWorkspace);
-        setCustomers(queued.reduce(applyCommand, cached));
-        setPendingCount(queued.length);
+        setBaseCustomers(cached);
+        setQueuedCommands(queued);
+        setSummary(cachedSummary);
       }
 
       try {
         setError("");
         if (mode === "demo") return;
         if (!navigator.onLine) {
+          setOffline(true);
           if (cached.length || queued.length) {
-            setNotice("Showing the last cached Customer directory. Changes will remain queued until the connection returns.");
+            setNotice("Showing the bounded offline Customer working set. Pending changes keep their stable retry keys until BDB OS confirms the server outcome.");
           } else {
             setError("Customers need one successful online load before this workspace can open from a cold offline start.");
           }
           return;
         }
-        await loadCloud();
+
+        const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
+        const context = await contextResponse.json().catch(() => ({}));
+        if (!contextResponse.ok || !context.currentWorkspaceId) {
+          throw new Error(context.error ?? "The current workspace could not be resolved.");
+        }
+        const currentWorkspaceId = String(context.currentWorkspaceId);
+        if (!active) return;
+        setWorkspaceId(currentWorkspaceId);
+        rememberCustomerWorkspace(currentWorkspaceId);
+        await loadRegister(currentWorkspaceId, { search: "", filter: "active", includeSummary: true });
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Customers could not be loaded.";
+        setOffline(true);
         if (cached.length || queued.length) {
-          if (active) setNotice("Showing the last cached Customer directory while cloud access is unavailable.");
+          if (active) setNotice("Showing the bounded offline Customer working set while cloud access is unavailable.");
         } else if (active) {
           setError(message);
         }
@@ -277,32 +355,72 @@ export default function CustomersPage() {
     }
     void initialise();
     return () => { active = false; };
-  }, [loadCloud, mode]);
+  }, [loadRegister, mode]);
 
   useEffect(() => {
-    if (mode === "demo" && loaded) writeCache("demo", customers);
-  }, [customers, loaded, mode]);
+    if (mode === "demo" && loaded) {
+      writeCustomerCache("demo", baseCustomers);
+      writeCustomerSummary("demo", summaryFromRows(baseCustomers));
+    }
+  }, [baseCustomers, loaded, mode]);
+
+  useEffect(() => {
+    if (mode !== "cloud" || !loaded || !workspaceId || offline) return;
+    if (!criteriaInitialised.current) {
+      criteriaInitialised.current = true;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setError("");
+      void loadRegister(workspaceId, { search: query, filter }).catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : "Customers could not be loaded.");
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [filter, loadRegister, loaded, mode, offline, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
+    if (!navigator.onLine) {
+      setOffline(true);
+      setNotice("Customer changes remain queued offline. No command was discarded or given a new retry key.");
+      return;
+    }
+
     setSyncing(true);
     setError("");
-    const result = await flushCustomerQueue(workspaceId, setPendingCount);
-    setPendingCount(result.remaining);
-    if (result.completed) {
-      setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced.`);
-    }
-    await loadCloud().catch((syncError) => {
+    try {
+      const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
+      setQueuedCommands(readCustomerQueue(workspaceId));
+      if (result.completed) {
+        setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
+      }
+      if (result.rejected) {
+        setError(`${result.rejected.message} BDB OS confirmed that queued change was not applied; later queued changes were left untouched for review.`);
+      } else if (result.ambiguous) {
+        setError("BDB OS could not confirm the first queued Customer change. It remains queued with the same retry key so replay cannot duplicate an already-accepted command.");
+      }
+      await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
+    } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : "Customers could not be refreshed.");
-    });
-    setSyncing(false);
-  }, [loadCloud, syncing, workspaceId]);
+    } finally {
+      setSyncing(false);
+    }
+  }, [filter, loadRegister, query, syncing, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
-    const handleOnline = () => void syncPending();
+    const handleOnline = () => {
+      setOffline(false);
+      void syncPending();
+    };
+    const handleOffline = () => setOffline(true);
     window.addEventListener("online", handleOnline);
-    return () => window.removeEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
   }, [mode, syncPending]);
 
   const submitCommand = useCallback(async (
@@ -321,72 +439,62 @@ export default function CustomersPage() {
       attempts: 0,
     };
 
-    setCustomers((current) => applyCommand(current, command));
-
     if (mode === "demo") {
+      setBaseCustomers((current) => applyCommand(current, command).map((customer) => ({ ...customer, pending: false })));
       setNotice("Saved in this browser's local BDB OS preview.");
-      return { ok: true };
+      return { ok: true, pending: false };
     }
     if (!workspaceId) {
       setError("The current workspace is unavailable.");
-      return { ok: false };
+      return { ok: false, pending: false };
     }
 
-    enqueueCustomerCommand(workspaceId, action, payload, commandId);
-    setPendingCount(readCustomerQueue(workspaceId).length);
+    try {
+      enqueueCustomerCommand(workspaceId, action, payload, commandId);
+      setQueuedCommands(readCustomerQueue(workspaceId));
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "The Customer offline queue is unavailable.");
+      return { ok: false, pending: false };
+    }
+
     if (!navigator.onLine) {
-      setNotice("Saved offline. BDB OS will retry this Customer change when the connection returns.");
-      return { ok: true };
+      setOffline(true);
+      setNotice("Saved offline. BDB OS will replay this Customer change with the same retry key when the connection returns.");
+      return { ok: true, pending: true };
     }
 
     try {
       await submitCustomerCommand(command);
       removeCustomerCommand(workspaceId, command.id);
-      setPendingCount(readCustomerQueue(workspaceId).length);
-      await loadCloud();
+      setQueuedCommands(readCustomerQueue(workspaceId));
+      await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
       setNotice(action === "create" ? "Customer created." : action === "update" ? "Customer updated." : action === "archive" ? "Customer archived." : "Customer restored.");
-      return { ok: true };
+      return { ok: true, pending: false };
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Customer change could not be saved.";
-      const code = String((commandError as { code?: unknown })?.code ?? "");
+      const code = commandError instanceof CustomerSubmitError ? commandError.code : "";
 
-      if (code) {
+      if (commandError instanceof CustomerSubmitError && commandError.confirmedRejected) {
         removeCustomerCommand(workspaceId, command.id);
-        setPendingCount(readCustomerQueue(workspaceId).length);
-        await loadCloud().catch(() => undefined);
+        setQueuedCommands(readCustomerQueue(workspaceId));
+        await loadRegister(workspaceId, { search: query, filter, includeSummary: true }).catch(() => undefined);
         if (code === "CUSTOMER_DUPLICATE_REVIEW") setDuplicateReview(true);
         setError(message);
-        return { ok: false, code };
+        return { ok: false, pending: false, code };
       }
 
-      failCustomerCommand(workspaceId, command.id, message);
-      setPendingCount(readCustomerQueue(workspaceId).length);
-      setError(`${message} This Customer has not been confirmed by BDB OS yet; the change remains queued for retry.`);
-      return { ok: false, code };
+      failCustomerCommand(workspaceId, command.id, message, "ambiguous");
+      setQueuedCommands(readCustomerQueue(workspaceId));
+      setError(`${message} BDB OS did not receive a confirmed outcome, so the change remains queued with the same retry key.`);
+      return { ok: true, pending: true, code };
     }
-  }, [loadCloud, mode, workspaceId]);
+  }, [filter, loadRegister, mode, query, workspaceId]);
 
-  const visibleCustomers = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    return customers
-      .filter((customer) => {
-        const matchesQuery = !term || [
-          customer.name,
-          customer.code,
-          customer.company,
-          customer.email,
-          customer.phone,
-          customer.address,
-          customer.legacy_id,
-        ].join(" ").toLowerCase().includes(term);
-        const matchesFilter = filter === "all"
-          || (filter === "active" && customer.status === "active")
-          || (filter === "archived" && customer.status === "archived")
-          || (filter === "imported" && Boolean(customer.legacy_source));
-        return matchesQuery && matchesFilter;
-      })
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [customers, filter, query]);
+  const visibleCustomers = useMemo(() => customers
+    .filter((customer) => matchesCriteria(customer, query, filter))
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)), [customers, filter, query]);
+
+  const displayedSummary = mode === "demo" ? summaryFromRows(customers) : (summary ?? summaryFromRows(customers));
 
   function openCreate() {
     setEditing(null);
@@ -416,7 +524,7 @@ export default function CustomersPage() {
       email: form.email,
       phone: form.phone,
       address: form.address,
-      notes: form.notes,
+      vatNumber: form.vatNumber,
       preferences: form.preferences.trim() ? { summary: form.preferences.trim() } : {},
       allowDuplicate,
     });
@@ -427,7 +535,7 @@ export default function CustomersPage() {
     setForm(emptyForm);
     setDuplicateReview(false);
 
-    if (isNewCustomer && mode === "cloud" && navigator.onLine) {
+    if (isNewCustomer && mode === "cloud" && navigator.onLine && !result.pending) {
       router.push(`/customers/${id}`);
     }
   }
@@ -447,12 +555,17 @@ export default function CustomersPage() {
     setSaving(false);
   }
 
-  function discardQueue() {
-    if (!workspaceId || workspaceId === "demo") return;
-    writeCustomerQueue(workspaceId, []);
-    setPendingCount(0);
-    void loadCloud();
-    setNotice("Pending local Customer changes were discarded.");
+  async function loadMoreCustomers() {
+    if (!workspaceId || workspaceId === "demo" || !nextCursor || loadingPage || offline) return;
+    setError("");
+    await loadRegister(workspaceId, {
+      append: true,
+      cursor: nextCursor,
+      search: query,
+      filter,
+    }).catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : "More Customers could not be loaded.");
+    });
   }
 
   async function importSnapshot(event: ChangeEvent<HTMLInputElement>) {
@@ -498,7 +611,7 @@ export default function CustomersPage() {
       const importSummary = result.result as ImportResult;
       setImportResult(importSummary);
       setNotice(`${importSummary.createdCount} created · ${importSummary.linkedCount} linked · ${importSummary.skippedCount} already imported · ${importSummary.errorCount} errors.`);
-      await loadCloud();
+      await reloadCurrent(true);
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Vanita Customers could not be imported.");
     } finally {
@@ -509,10 +622,6 @@ export default function CustomersPage() {
   if (!loaded) {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Customers…</main>;
   }
-
-  const activeCustomers = customers.filter((customer) => customer.status === "active");
-  const archivedCustomers = customers.filter((customer) => customer.status === "archived");
-  const importedCustomers = customers.filter((customer) => Boolean(customer.legacy_source));
 
   return (
     <>
@@ -536,8 +645,8 @@ export default function CustomersPage() {
       <div className="review-callout">
         <UsersRound size={19} />
         <div>
-          <strong>Functional Customer foundation</strong>
-          <p>Customer records now use audited commands, archive-based lifecycle control, offline retry, duplicate review and repeatable Vanita import receipts.</p>
+          <strong>Bounded Customer register</strong>
+          <p>Cloud search and filters use 100-row keyset pages. Offline mode keeps a bounded working set while pending commands retain stable retry keys.</p>
         </div>
       </div>
 
@@ -561,10 +670,9 @@ export default function CustomersPage() {
       {pendingCount > 0 ? (
         <div className="settings-note" style={{ marginBottom: 18 }}>
           <strong>{pendingCount} Customer change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
-          <p>Commands retain stable retry keys. Synchronisation stops on the first conflict rather than overwriting another device.</p>
+          <p>{ambiguousCount ? `${ambiguousCount} change${ambiguousCount === 1 ? " has" : "s have"} an unconfirmed server outcome. ` : ""}BDB OS preserves the original retry key and never offers a blanket discard for an ambiguous command.</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
-            <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
+            <Button variant="secondary" disabled={syncing || offline} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry safely</Button>
           </div>
         </div>
       ) : null}
@@ -577,10 +685,10 @@ export default function CustomersPage() {
       ) : null}
 
       <div className="stat-grid">
-        <StatCard label="Active Customers" value={String(activeCustomers.length)} detail="Available for new work" icon={<UserRound size={19} />} />
-        <StatCard label="Companies" value={String(new Set(activeCustomers.map((item) => item.company).filter(Boolean)).size)} detail="Connected organisations" icon={<Building2 size={19} />} />
-        <StatCard label="Imported" value={String(importedCustomers.length)} detail="With Vanita provenance" icon={<FileUp size={19} />} />
-        <StatCard label="Archived" value={String(archivedCustomers.length)} detail="Retained for history" icon={<Archive size={19} />} />
+        <StatCard label="Active Customers" value={String(displayedSummary.activeCount)} detail={offline ? "Last synced total" : "Available for new work"} icon={<UserRound size={19} />} />
+        <StatCard label="Companies" value={String(displayedSummary.companyCount)} detail={offline ? "Last synced total" : "Connected organisations"} icon={<Building2 size={19} />} />
+        <StatCard label="Imported" value={String(displayedSummary.importedCount)} detail={offline ? "Last synced total" : "With Vanita provenance"} icon={<FileUp size={19} />} />
+        <StatCard label="Archived" value={String(displayedSummary.archivedCount)} detail={offline ? "Last synced total" : "Retained for history"} icon={<Archive size={19} />} />
       </div>
 
       <Card className="table-card">
@@ -591,6 +699,7 @@ export default function CustomersPage() {
               className="filter-input"
               style={{ width: "100%" }}
               value={query}
+              maxLength={120}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search name, code, company, email or phone…"
               aria-label="Search Customers"
@@ -603,7 +712,7 @@ export default function CustomersPage() {
               </button>
             ))}
           </div>
-          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleCustomers.length} Customers</Badge>
+          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleCustomers.length}{hasMore && !offline ? "+" : ""} loaded</Badge>
         </div>
 
         <div className="table-scroll">
@@ -656,8 +765,16 @@ export default function CustomersPage() {
           </table>
         </div>
 
-        {visibleCustomers.length === 0 ? (
+        {loadingPage ? <div className="card-pad"><p className="muted"><RefreshCw className="spin" size={15} style={{ display: "inline", marginRight: 6 }} />Loading Customer page…</p></div> : null}
+        {!loadingPage && visibleCustomers.length === 0 ? (
           <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a reviewed Vanita JSON snapshot.</p></div>
+        ) : null}
+        {hasMore && !offline && mode === "cloud" ? (
+          <div className="card-pad" style={{ display: "flex", justifyContent: "center" }}>
+            <Button type="button" variant="secondary" disabled={loadingPage} onClick={() => void loadMoreCustomers()}>
+              {loadingPage ? "Loading…" : `Load next ${PAGE_SIZE}`}
+            </Button>
+          </div>
         ) : null}
       </Card>
 
@@ -665,18 +782,18 @@ export default function CustomersPage() {
         open={formOpen}
         onClose={() => { if (!saving) { setFormOpen(false); setDuplicateReview(false); } }}
         title={editing ? "Edit Customer" : "Add Customer"}
-        description="Email is optional. Exact email or phone matches require an explicit duplicate decision."
+        description="Email is optional. Exact email or phone matches require an explicit duplicate decision. Operational notes are added from Customer 360."
       >
         <form onSubmit={(event) => void saveCustomer(event)}>
           <div className="form-grid">
             <div className="field"><label htmlFor="customer-name">Customer name</label><input id="customer-name" required maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
             <div className="field"><label htmlFor="customer-code">Customer code</label><input id="customer-code" maxLength={64} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="Generated when blank" /></div>
             <div className="field"><label htmlFor="customer-company">Company</label><input id="customer-company" maxLength={160} value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} /></div>
+            <div className="field"><label htmlFor="customer-vat-number">VAT number</label><input id="customer-vat-number" maxLength={64} value={form.vatNumber} onChange={(event) => setForm({ ...form, vatNumber: event.target.value })} placeholder="Optional" /></div>
             <div className="field"><label htmlFor="customer-email">Email</label><input id="customer-email" type="email" maxLength={320} value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Optional" /></div>
             <div className="field"><label htmlFor="customer-phone">Phone</label><input id="customer-phone" maxLength={50} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="Optional" /></div>
             <div className="field field-full"><label htmlFor="customer-address">Address</label><textarea id="customer-address" maxLength={1000} value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div>
             <div className="field field-full"><label htmlFor="customer-preferences">Preferences</label><textarea id="customer-preferences" maxLength={2000} value={form.preferences} onChange={(event) => setForm({ ...form, preferences: event.target.value })} placeholder="Service preferences or useful context" /></div>
-            <div className="field field-full"><label htmlFor="customer-notes">Internal notes</label><textarea id="customer-notes" maxLength={4000} value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
           </div>
 
           {duplicateReview ? (

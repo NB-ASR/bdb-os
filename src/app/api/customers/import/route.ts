@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
     if (!admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
-    const { data, error } = await admin.rpc("import_vanita_customers", {
+    const { data, error } = await admin.rpc("execute_vanita_customer_import", {
       p_workspace_id: workspaceId,
       p_batch_id: batchId,
       p_idempotency_key: context.idempotencyKey,
