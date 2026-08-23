@@ -10,6 +10,7 @@ const migrationFiles = [
 ].map((path) => readFile(path, "utf8"));
 const migrationText = (await Promise.all(migrationFiles)).join("\n");
 const pass1Migration = await readFile("supabase/migrations/20260823195500_customer_foundation_pass1.sql", "utf8");
+const archiveGuardMigration = await readFile("supabase/migrations/20260823202000_customer_archived_sale_guard_pass1.sql", "utf8");
 const api = await readFile("src/app/api/customers/route.ts", "utf8");
 const documentIdentityApi = await readFile("src/app/api/customers/document-identity/route.ts", "utf8");
 const importApi = await readFile("src/app/api/customers/import/route.ts", "utf8");
@@ -109,10 +110,16 @@ assert.match(generalDocumentInsert, /customer_id,[\s\S]*null,[\s\S]*case/i, "New
 assert.match(pass1Migration, /grant execute on function public\.apply_customer_command[\s\S]*to service_role/i);
 assert.match(pass1Migration, /grant execute on function public\.create_general_document[\s\S]*to service_role/i);
 
+assert.match(archiveGuardMigration, /function private\.enforce_active_sale_customer/i, "Archived Customer Sale enforcement must live at the Sale table boundary.");
+assert.match(archiveGuardMigration, /customer\.status = 'active'/i, "New Sales must require an active Customer when a Customer is supplied.");
+assert.match(archiveGuardMigration, /before insert on public\.sales/i, "Every new completed Sale path must inherit the active-Customer guard.");
+assert.match(archiveGuardMigration, /Archived or unavailable Customers cannot receive new Sales/i);
+
 assert.match(databaseTest, /Customer commands are idempotent/i);
 assert.match(databaseTest, /Customer imports preserve provenance/i);
 assert.match(databaseTest, /browser clients cannot insert Customers directly/i);
 assert.match(databaseTest, /final 64 UUID bits/i);
 assert.match(databaseTest, /covering indexes/i);
+assert.match(databaseTest, /sales_active_customer_guard/i, "Database tests must pin the archived-Customer Sale guard.");
 
-console.log("Customer foundation, canonical identity boundaries, offline queue and confirmed-create navigation contracts are internally consistent.");
+console.log("Customer foundation, canonical identity boundaries, archive guards, offline queue and confirmed-create navigation contracts are internally consistent.");
