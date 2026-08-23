@@ -90,8 +90,9 @@ export function writeCustomerSummary(workspaceId: string, summary: CachedCustome
 }
 
 function stripPending<T extends CachedCustomer>(row: T): T {
-  const { pending: _pending, ...clean } = row;
-  return clean as T;
+  const clean = { ...row } as T;
+  delete clean.pending;
+  return clean;
 }
 
 export function writeCustomerCache<T extends CachedCustomer>(workspaceId: string, rows: readonly T[]) {
