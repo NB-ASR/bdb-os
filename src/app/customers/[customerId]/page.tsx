@@ -46,6 +46,7 @@ type Customer = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  vat_number: string | null;
   notes: string | null;
   preferences: Record<string, unknown>;
   status: "active" | "archived";
@@ -727,8 +728,9 @@ export default function CustomerProfilePage() {
           <Card className={styles.sectionCard}>
             <h2>Preferences and context</h2>
             <dl className={styles.detailList}>
+              <div><dt>VAT number</dt><dd>{customer.vat_number || "No VAT number recorded"}</dd></div>
               <div><dt>Preferences</dt><dd>{preferenceSummary || "No preferences recorded"}</dd></div>
-              <div><dt>Directory note</dt><dd>{customer.notes || "No legacy directory note"}</dd></div>
+              <div><dt>Legacy/imported context</dt><dd>{customer.notes || "No legacy/imported context"}</dd></div>
               <div><dt>Created</dt><dd>{formatDateTime(customer.created_at)}</dd></div>
               <div><dt>Updated</dt><dd>{formatDateTime(customer.updated_at)}</dd></div>
             </dl>
