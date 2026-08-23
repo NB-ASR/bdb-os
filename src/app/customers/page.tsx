@@ -633,7 +633,7 @@ export default function CustomersPage() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importSnapshot(event)} />
             <Button variant="secondary" disabled={supportMode || importing || mode !== "cloud"} onClick={() => importInputRef.current?.click()}>
-              <FileUp size={17} /> {importing ? "Importing…" : "Import Vanita JSON"}
+              <FileUp size={17} /> {importing ? "Importing…" : "Import Customers"}
             </Button>
             <Button onClick={openCreate} disabled={supportMode}>
               <UserRoundPlus size={17} /> Add Customer
