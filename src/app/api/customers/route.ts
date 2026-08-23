@@ -114,6 +114,13 @@ function friendlyCustomerError(error: { message: string; code?: string | null })
       409,
     );
   }
+  if (message.includes("idempotency key was reused")) {
+    return new CommandError(
+      "CUSTOMER_IDEMPOTENCY_CONFLICT",
+      "This Customer retry key was already used for different input. Refresh before retrying.",
+      409,
+    );
+  }
   if (error.code === "23505" || message.includes("duplicate key")) {
     return new CommandError("CUSTOMER_DUPLICATE", "That Customer code is already used in this workspace.", 409);
   }
@@ -230,7 +237,7 @@ export async function POST(request: Request) {
     const admin = createAdminClient();
     if (!admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
-    const { data, error } = await admin.rpc("apply_customer_command", {
+    const { data, error } = await admin.rpc("execute_customer_command", {
       p_workspace_id: workspaceId,
       p_customer_id: customerId,
       p_action: action,
