@@ -138,7 +138,11 @@ function writeCache(
     cacheKey(workspaceId, productId),
     JSON.stringify({
       ...cache,
-      relationships: cache.relationships.map(({ pending: _pending, ...relationship }) => relationship),
+      relationships: cache.relationships.map((relationship) => {
+        const cachedRelationship = { ...relationship };
+        delete cachedRelationship.pending;
+        return cachedRelationship;
+      }),
     }),
   );
 }

@@ -192,7 +192,7 @@ function totals(lines: readonly BasketLine[], saleDiscount: number) {
 function pendingSale(command: SaleQueuedCommand, currency: string): SaleRow | null {
   if (command.action !== "complete") return null;
   const lines = (command.payload.lines ?? []) as Array<Record<string, unknown>>;
-  const basketLines = lines.map((line, index): BasketLine => ({
+  const basketLines = lines.map((line): BasketLine => ({
     id: String(line.id),
     lineType: line.lineType as LineType,
     itemId: String(line.itemId),

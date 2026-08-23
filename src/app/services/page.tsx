@@ -77,7 +77,11 @@ function readCache(workspaceId: string): ServiceRow[] {
 }
 function writeCache(workspaceId: string, services: readonly ServiceRow[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(services.map(({ pending: _pending, ...service }) => service)));
+  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(services.map((service) => {
+    const cachedService = { ...service };
+    delete cachedService.pending;
+    return cachedService;
+  })));
 }
 function formValues(service: ServiceRow): ServiceForm {
   return {

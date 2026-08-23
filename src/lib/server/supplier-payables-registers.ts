@@ -17,12 +17,6 @@ const REGISTER_VIEWS = new Set([
 
 type DateCursor = { at: string; id: string };
 
-type PageInfo = {
-  hasMore: boolean;
-  nextCursor: string | null;
-  pageSize: number;
-};
-
 function uuid(value: string | null, field: string) {
   const result = String(value ?? "").trim();
   if (!UUID_PATTERN.test(result)) {
@@ -75,11 +69,6 @@ function pageResult<T extends { id: string }>(rows: T[], limit: number, sortValu
     hasMore,
     nextCursor: hasMore && last ? encodeCursor(sortValue(last), last.id) : null,
   };
-}
-
-function pageInfo<T extends { id: string }>(rows: T[], limit: number, sortValue: (row: T) => string): PageInfo {
-  const result = pageResult(rows, limit, sortValue);
-  return { pageSize: result.pageSize, hasMore: result.hasMore, nextCursor: result.nextCursor };
 }
 
 async function supplierMapForDocuments(

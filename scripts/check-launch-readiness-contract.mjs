@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [route, migration, tenantTest, discoveryPage, teamRoute] = await Promise.all([
+const [route, migration, tenantTest, discoveryPage, teamRoute, layout, manifest, robots, sitemap, errorPage, globalErrorPage, notFoundPage] = await Promise.all([
   readFile("src/app/api/discovery/route.ts", "utf8"),
   readFile("supabase/migrations/20260823120000_service_enquiry_intake.sql", "utf8"),
   readFile("supabase/tests/accounts_tenant_isolation.sql", "utf8"),
   readFile("src/app/discovery/page.tsx", "utf8"),
   readFile("src/app/api/workspace/team/route.ts", "utf8"),
+  readFile("src/app/layout.tsx", "utf8"),
+  readFile("src/app/manifest.ts", "utf8"),
+  readFile("src/app/robots.ts", "utf8"),
+  readFile("src/app/sitemap.ts", "utf8"),
+  readFile("src/app/error.tsx", "utf8"),
+  readFile("src/app/global-error.tsx", "utf8"),
+  readFile("src/app/not-found.tsx", "utf8"),
 ]);
 
 assert.match(route, /createAdminClient/);
@@ -27,5 +34,14 @@ assert.doesNotMatch(discoveryPage, /keeps enquiries on your device/i);
 assert.match(teamRoute, /invitationExpiresAt\(now\)/);
 assert.match(teamRoute, /activationRedirectUrl\(request\.url\)/);
 assert.doesNotMatch(teamRoute, /7\s*\*\s*24\s*\*\s*60\s*\*\s*60/);
+assert.match(layout, /Websites, practical AI automation and custom business systems/);
+assert.match(layout, /metadataBase:\s*getSiteUrl\(\)/);
+assert.match(manifest, /Websites, practical AI automation and custom business systems/);
+assert.match(robots, /disallow:[\s\S]*"\/api"/);
+assert.match(robots, /"\/workspace"/);
+assert.match(sitemap, /"\/discovery"/);
+assert.match(errorPage, /reset/);
+assert.match(globalErrorPage, /<html lang="en">/);
+assert.match(notFoundPage, /404 · Page not found/);
 
 console.log("Launch readiness security and enquiry contracts are internally consistent.");

@@ -175,8 +175,16 @@ function writeCache(workspaceId: string, data: InventoryData) {
   window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
   window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify({
     ...data,
-    locations: data.locations.map(({ pending: _pending, ...location }) => location),
-    movements: data.movements.map(({ pending: _pending, ...movement }) => movement),
+    locations: data.locations.map((location) => {
+      const cachedLocation = { ...location };
+      delete cachedLocation.pending;
+      return cachedLocation;
+    }),
+    movements: data.movements.map((movement) => {
+      const cachedMovement = { ...movement };
+      delete cachedMovement.pending;
+      return cachedMovement;
+    }),
   }));
 }
 

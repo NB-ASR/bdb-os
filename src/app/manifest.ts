@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "BDB OS · Business. Done. Better.",
     short_name: "BDB OS",
-    description: "A calm, connected operating system for modern small businesses.",
+    description: "Websites, practical AI automation and custom business systems for growing businesses.",
     id: "/workspace",
     start_url: "/workspace",
     scope: "/",

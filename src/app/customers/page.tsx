@@ -119,7 +119,11 @@ function writeCache(workspaceId: string, customers: readonly CustomerRow[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     cacheKey(workspaceId),
-    JSON.stringify(customers.map(({ pending: _pending, ...customer }) => customer)),
+    JSON.stringify(customers.map((customer) => {
+      const cachedCustomer = { ...customer };
+      delete cachedCustomer.pending;
+      return cachedCustomer;
+    })),
   );
 }
 

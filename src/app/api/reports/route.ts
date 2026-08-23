@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   return runCommand(async () => {
     const url = new URL(request.url);
     const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
-    const context = await requireWorkspaceCommand(request, workspaceId);
+    await requireWorkspaceCommand(request, workspaceId);
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 

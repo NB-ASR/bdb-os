@@ -182,10 +182,6 @@ function writeBundle(workspaceId: string, bundle: ConsumptionBundle) {
   }
 }
 
-function relevantCommands(workspaceId: string) {
-  return readInventoryQueue(workspaceId).filter((command) => consumptionActions.has(command.action));
-}
-
 function formatQuantity(value: number) {
   return new Intl.NumberFormat("en-GB", { maximumFractionDigits: 3 }).format(value);
 }

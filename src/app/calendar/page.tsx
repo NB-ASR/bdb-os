@@ -187,7 +187,11 @@ function writeCache(workspaceId: string, bundle: AppointmentBundle) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify({
     ...bundle,
-    appointments: bundle.appointments.map(({ pending: _pending, ...appointment }) => appointment),
+    appointments: bundle.appointments.map((appointment) => {
+      const cachedAppointment = { ...appointment };
+      delete cachedAppointment.pending;
+      return cachedAppointment;
+    }),
   }));
 }
 

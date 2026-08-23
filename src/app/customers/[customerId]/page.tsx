@@ -8,7 +8,6 @@ import {
   Banknote,
   CalendarDays,
   CircleDollarSign,
-  Clock3,
   FileText,
   History,
   Mail,
