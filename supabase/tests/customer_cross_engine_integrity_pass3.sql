@@ -103,7 +103,8 @@ select ok(
 );
 
 select ok(
-  position('message.customer_id = thread.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
+  position('message.customer_id = thread.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
+  or position('thread.customer_id = message.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
   'Customer Communication summary joins messages through the authoritative thread Customer identity'
 );
 
