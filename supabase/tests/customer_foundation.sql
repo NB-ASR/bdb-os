@@ -133,15 +133,23 @@ select ok(
   exists (
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname='apply_appointment_command'
-      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+      and position('customer_record.status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+      and position('appointment customer is unavailable' in lower(pg_get_functiondef(p.oid))) > 0
   ),
   'Archived Customers cannot be used for new Appointment work'
 );
 select ok(
   exists (
-    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-    where n.nspname='public' and p.proname='complete_sale'
-      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+    select 1
+    from pg_trigger trigger_row
+    join pg_proc trigger_function on trigger_function.oid = trigger_row.tgfoid
+    join pg_namespace function_schema on function_schema.oid = trigger_function.pronamespace
+    where trigger_row.tgrelid = 'public.sales'::regclass
+      and trigger_row.tgname = 'sales_active_customer_guard'
+      and not trigger_row.tgisinternal
+      and function_schema.nspname = 'private'
+      and trigger_function.proname = 'enforce_active_sale_customer'
+      and position('customer.status = ''active''' in lower(pg_get_functiondef(trigger_function.oid))) > 0
   ),
   'Archived Customers cannot be used for new completed Sales'
 );
@@ -149,14 +157,24 @@ select ok(
   exists (
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname='apply_invoice_command'
-      and position('status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+      and position('customer.status = ''active''' in lower(pg_get_functiondef(p.oid))) > 0
+      and position('invoice customer is unavailable' in lower(pg_get_functiondef(p.oid))) > 0
   ),
   'Archived Customers cannot be used for new canonical Invoices'
 );
 select ok(
-  not has_function_privilege('authenticated', 'public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)', 'EXECUTE')
-  and not has_function_privilege('service_role', 'public.create_workspace_invoice(uuid,uuid,uuid,date,text,numeric,text)', 'EXECUTE'),
-  'Legacy invoice creation helper cannot bypass canonical archived-Customer rules'
+  not exists (
+    select 1
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname = 'create_workspace_invoice'
+      and (
+        has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        or has_function_privilege('service_role', p.oid, 'EXECUTE')
+      )
+  ),
+  'No executable legacy invoice helper can bypass canonical archived-Customer rules'
 );
 
 select * from finish();
