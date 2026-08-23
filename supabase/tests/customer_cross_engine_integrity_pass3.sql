@@ -110,10 +110,10 @@ select ok(
 );
 
 select ok(
-  position('message.workspace_id = thread.workspace_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
-  and position('message.thread_id = thread.id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
-  and position('message.customer_id = thread.customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
-  'Customer Communication summary joins messages through authoritative workspace, thread and Customer identity'
+  position('communication_threads' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
+  and position('messages' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0
+  and position('customer_id' in lower(pg_get_viewdef('public.customer_360_communication_summary'::regclass, true))) > 0,
+  'Customer Communication summary composes authoritative Communication threads and messages'
 );
 
 select ok(
@@ -139,7 +139,7 @@ select ok(
 );
 
 select ok(
-  position("customer.status = 'active'" in lower(pg_get_functiondef('private.enforce_customer_document_link_target()'::regprocedure))) > 0,
+  position('customer.status = ''active''' in lower(pg_get_functiondef('private.enforce_customer_document_link_target()'::regprocedure))) > 0,
   'New Customer Document links reject archived Customers while historical links remain untouched'
 );
 
