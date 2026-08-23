@@ -76,11 +76,10 @@ const canonicalProductionHistory = [
   "20260821132042_accounts_document_permanence.sql",
   "20260823121552_accounts_supplier_scale_pass4.sql",
   "20260823121617_accounts_customer_register_scale_pass4.sql",
+  "20260823204333_service_enquiry_intake.sql",
 ];
 
-const pendingMigrations = [
-  "20260823120000_service_enquiry_intake.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 

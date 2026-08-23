@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const [route, migration, tenantTest, discoveryPage, teamRoute, layout, manifest, robots, sitemap, errorPage, globalErrorPage, notFoundPage] = await Promise.all([
   readFile("src/app/api/discovery/route.ts", "utf8"),
-  readFile("supabase/migrations/20260823120000_service_enquiry_intake.sql", "utf8"),
+  readFile("supabase/migrations/20260823204333_service_enquiry_intake.sql", "utf8"),
   readFile("supabase/tests/accounts_tenant_isolation.sql", "utf8"),
   readFile("src/app/discovery/page.tsx", "utf8"),
   readFile("src/app/api/workspace/team/route.ts", "utf8"),
