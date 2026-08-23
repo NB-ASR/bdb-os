@@ -3,13 +3,14 @@ import { readFile } from "node:fs/promises";
 
 const read = (path) => readFile(path, "utf8");
 
-const [schema, commands, views, indexes, accessHardening, indexDeduplication, profileApi, notesApi, queue, page, searchDialog] = await Promise.all([
+const [schema, commands, views, indexes, accessHardening, indexDeduplication, pass3, profileApi, notesApi, queue, page, searchDialog] = await Promise.all([
   read("supabase/release-sources/vanita-integration-20260813/20260801090000_customer_360_notes_schema.sql"),
   read("supabase/release-sources/vanita-integration-20260813/20260801090500_customer_360_note_commands.sql"),
   read("supabase/release-sources/vanita-integration-20260813/20260801091000_customer_360_views_security.sql"),
   read("supabase/release-sources/vanita-integration-20260813/20260801091500_customer_360_reference_indexes.sql"),
   read("supabase/release-sources/vanita-integration-20260813/20260801092500_customer_360_access_invoker_hardening.sql"),
   read("supabase/release-sources/vanita-integration-20260813/20260801093000_customer_360_index_deduplication.sql"),
+  read("supabase/migrations/20260823215700_customer_360_cross_engine_pass3.sql"),
   read("src/app/api/customers/profile/route.ts"),
   read("src/app/api/customers/notes/route.ts"),
   read("src/lib/modules/customer-note-queue.ts"),
@@ -67,10 +68,30 @@ for (const index of [
   "messages_customer_activity_idx",
 ]) assert.match(indexes, new RegExp(index, "i"), `${index} must exist.`);
 
+assert.match(pass3, /messages_workspace_thread_customer_fkey/i, "Pass 3 must enforce Communication thread and Customer coherence at the database boundary.");
+assert.match(pass3, /messages_workspace_thread_reply_fkey/i, "Pass 3 must keep Communication replies inside the same workspace and thread.");
+assert.match(pass3, /document_links_customer_target_guard/i, "Pass 3 must enforce canonical Customer Document link targets at the table boundary.");
+assert.match(pass3, /customer_360_communication_summary[\s\S]*unified_communication_lifecycle/i, "Customer 360 Communication last activity must include Communication lifecycle events.");
+assert.match(pass3, /customer_360_operational_summary[\s\S]*customer_360_communication_summary/i, "Customer operational summary must reuse the unified Communication read model.");
+assert.match(pass3, /security_invoker = true/i, "Pass 3 Customer read models must preserve invoker RLS.");
+assert.doesNotMatch(pass3, /(insert into|update|delete from) public\.(invoices|payments|credit_notes|delivery_notes)/i, "Pass 3 must not mutate frozen Accounts financial records.");
+assert.doesNotMatch(pass3, /function public\.(apply_credit_note_command|apply_delivery_note_command|apply_invoice_command|apply_payment_command)/i, "Pass 3 must not replace frozen Accounts command functions.");
+
 assert.match(profileApi, /customer_360_operational_summary/, "Profile API must use the operational read model.");
 assert.match(profileApi, /customer_360_financial_summary/, "Profile API must use the currency-safe financial read model.");
 assert.match(profileApi, /customer_360_activity/, "Profile API must use the unified activity read model.");
+assert.match(profileApi, /customer_360_communication_summary/, "Profile API must use the unified Communication summary.");
+assert.match(profileApi, /customer_360_communication_activity/, "Profile API must use the unified Communication activity read model.");
+assert.match(profileApi, /document_links/, "Profile API must resolve Customer Documents through canonical typed links.");
+assert.match(profileApi, /access\.accounts[\s\S]*invoice_account_balances/i, "Accounts records must remain gated by Accounts access.");
+assert.match(profileApi, /access\.calendar[\s\S]*from\("bookings"\)/i, "Appointments must remain gated by Calendar access.");
+assert.match(profileApi, /access\.sales[\s\S]*from\("sales"\)/i, "Sales must remain gated by Sales access.");
+assert.match(profileApi, /access\.documents[\s\S]*document_links/i, "Documents must remain gated by Documents access.");
+assert.match(profileApi, /access\.communications[\s\S]*customer_360_communication_summary/i, "Communications must remain gated by Communications access.");
 assert.match(profileApi, /get_customer_360_access/, "Profile API must expose permission-aware sections.");
+assert.doesNotMatch(profileApi, /createClient\([^)]*service/i, "Customer 360 reads must never switch to a service-role client.");
+assert.doesNotMatch(profileApi, /(insert|update|delete|upsert)\(/i, "Customer 360 profile loading must stay read-only across source departments.");
+
 assert.match(notesApi, /create_customer_note/, "Notes API must use the trusted create command.");
 assert.match(notesApi, /void_customer_note/, "Notes API must use the trusted void command.");
 assert.match(notesApi, /Idempotency|required for Customer note changes/i, "Notes API must require idempotency.");
