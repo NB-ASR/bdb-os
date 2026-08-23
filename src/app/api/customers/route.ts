@@ -10,6 +10,9 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACTIONS = new Set(["create", "update", "archive", "restore"]);
+const CUSTOMER_FILTERS = new Set(["active", "archived", "imported", "all"]);
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 100;
 
 type CustomerCommandBody = {
   workspaceId?: unknown;
@@ -29,6 +32,13 @@ type CustomerCommandBody = {
 
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
+  if (!UUID_PATTERN.test(result)) throw new CommandError("INVALID_CUSTOMER_INPUT", `${field} is invalid.`);
+  return result;
+}
+
+function optionalUuid(value: unknown, field: string) {
+  const result = String(value ?? "").trim();
+  if (!result) return null;
   if (!UUID_PATTERN.test(result)) throw new CommandError("INVALID_CUSTOMER_INPUT", `${field} is invalid.`);
   return result;
 }
@@ -72,6 +82,29 @@ function preferences(value: unknown) {
   return value as Record<string, unknown>;
 }
 
+function pageSize(value: string | null) {
+  if (!value) return DEFAULT_PAGE_SIZE;
+  const result = Number(value);
+  if (!Number.isInteger(result) || result < 1) {
+    throw new CommandError("INVALID_CUSTOMER_PAGE", "Customer page size is invalid.");
+  }
+  return Math.min(result, MAX_PAGE_SIZE);
+}
+
+function customerFilter(value: string | null) {
+  const result = String(value ?? "active").trim();
+  if (!CUSTOMER_FILTERS.has(result)) {
+    throw new CommandError("INVALID_CUSTOMER_FILTER", "Customer filter is invalid.");
+  }
+  return result;
+}
+
+function searchText(value: string | null) {
+  const result = String(value ?? "").trim();
+  if (result.length > 120) throw new CommandError("INVALID_CUSTOMER_SEARCH", "Customer search is too long.");
+  return result || null;
+}
+
 function friendlyCustomerError(error: { message: string; code?: string | null }) {
   const message = error.message.toLowerCase();
   if (message.includes("potential duplicate customer")) {
@@ -98,22 +131,62 @@ function friendlyCustomerError(error: { message: string; code?: string | null })
 
 export async function GET(request: Request) {
   return runCommand(async () => {
-    const workspaceId = uuid(new URL(request.url).searchParams.get("workspaceId"), "Workspace");
+    const url = new URL(request.url);
+    const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
+    const limit = pageSize(url.searchParams.get("limit"));
+    const filter = customerFilter(url.searchParams.get("filter"));
+    const search = searchText(url.searchParams.get("search"));
+    const afterName = optionalText(url.searchParams.get("afterName"), 160);
+    const afterId = optionalUuid(url.searchParams.get("afterId"), "Customer cursor");
+    if (Boolean(afterName) !== Boolean(afterId)) {
+      throw new CommandError("INVALID_CUSTOMER_CURSOR", "Customer cursor is incomplete.");
+    }
+
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
 
-    const { data, error } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .order("status")
-      .order("name");
+    const { data, error } = await supabase.rpc("list_customer_register_page", {
+      p_workspace_id: workspaceId,
+      p_limit: limit,
+      p_after_name: afterName,
+      p_after_id: afterId,
+      p_search: search,
+      p_filter: filter,
+    });
     if (error) throw error;
 
-    return { workspaceId, customers: data ?? [] };
+    const rows = (data ?? []) as Array<Record<string, unknown>>;
+    const customers = rows.slice(0, limit);
+    const hasMore = rows.length > limit;
+    const tail = customers.at(-1);
+    const nextCursor = hasMore && tail
+      ? { name: String(tail.name ?? ""), id: String(tail.id ?? "") }
+      : null;
+
+    let summary: Record<string, number> | null = null;
+    if (url.searchParams.get("summary") === "1") {
+      const { data: summaryRows, error: summaryError } = await supabase.rpc("customer_register_summary", {
+        p_workspace_id: workspaceId,
+      });
+      if (summaryError) throw summaryError;
+      const value = Array.isArray(summaryRows) ? summaryRows[0] : summaryRows;
+      summary = value ? {
+        activeCount: Number(value.active_count ?? 0),
+        archivedCount: Number(value.archived_count ?? 0),
+        importedCount: Number(value.imported_count ?? 0),
+        companyCount: Number(value.company_count ?? 0),
+      } : { activeCount: 0, archivedCount: 0, importedCount: 0, companyCount: 0 };
+    }
+
+    return {
+      workspaceId,
+      customers,
+      page: { limit, hasMore, nextCursor },
+      summary,
+    };
   });
 }
 
