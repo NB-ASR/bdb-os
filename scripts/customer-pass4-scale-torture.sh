@@ -116,11 +116,22 @@ end
 SQL
 
 ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 101;")"
+ARCHIVED_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
 IMPORTED_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and legacy_source is not null order by name,id limit 101;")"
 SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 101;")"
 
+# With 90% active Customers, PostgreSQL may correctly prefer the simpler
+# workspace/name cursor index and filter status rather than the status-prefixed
+# cursor. Both are bounded index scans. The selective archived case must use the
+# status-aware index, proving that index remains useful when selectivity warrants it.
+if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ACTIVE_PLAN}"; then
+  echo "Customer Pass 4 active register did not use an indexed cursor plan:" >&2
+  echo "${ACTIVE_PLAN}" >&2
+  exit 1
+fi
+
 for pair in \
-  "customers_workspace_status_name_cursor_idx|${ACTIVE_PLAN}" \
+  "customers_workspace_status_name_cursor_idx|${ARCHIVED_PLAN}" \
   "customers_workspace_imported_name_cursor_idx|${IMPORTED_PLAN}" \
   "customers_search_text_trgm_idx|${SEARCH_PLAN}"; do
   expected="${pair%%|*}"
