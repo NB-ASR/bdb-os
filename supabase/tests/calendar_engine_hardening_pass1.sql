@@ -1,6 +1,6 @@
 begin;
 
-select plan(28);
+select plan(29);
 
 select has_table('public', 'calendar_command_claims', 'Calendar command claim ledger exists');
 select has_function(
