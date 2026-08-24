@@ -86,7 +86,9 @@ const canonicalProductionHistory = [
   "20260823235000_customer_engine_closure_advisor_indexes.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260824130700_calendar_canonical_integrity_pass1.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
