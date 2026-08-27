@@ -1,0 +1,66 @@
+name: Supabase Production Migration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bdb-production-migration
+  cancel-in-progress: false
+
+jobs:
+  apply-reviewed-migrations:
+    # PR #60 is the one reviewed Vanita release candidate. Future releases
+    # must use an explicit manual dispatch rather than mutating Production on
+    # an ordinary pull request.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Check out exact release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          show-progress: false
+
+      - name: Require Production database secret
+        shell: bash
+        run: |
+          if [[ -z "${SUPABASE_DB_URL}" ]]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is required."
+            exit 1
+          fi
+
+      - name: Verify reviewed migration bytes
+        shell: bash
+        run: |
+          sha256sum --check <<'CHECKSUMS'
+          e5bd295c2528c95287c2eb7f57284bfbb35c4cdb7c589aa0fc4f24f6aa33cc6e  supabase/migrations/20260824130700_calendar_canonical_integrity_pass1.sql
+          77b9ca6aadc33b83799d59bbb1d5826b8c139f48a24d230e595c902061f1ebbb  supabase/migrations/20260826193000_calendar_timezone_integrity_closure.sql
+          7733ed691533d8ffca7b22eb0f37e8111167a7e1ebf0c8034daf004e2f182755  supabase/migrations/20260826194000_launch_performance_duplicate_index.sql
+          CHECKSUMS
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.84.2
+          github-token: ${{ github.token }}
+
+      - name: Preview pending Production migrations
+        shell: bash
+        run: supabase db push --db-url "${SUPABASE_DB_URL}" --dry-run
+
+      - name: Apply pending Production migrations
+        shell: bash
+        run: supabase db push --db-url "${SUPABASE_DB_URL}"
+
+      - name: Verify local and Production migration parity
+        shell: bash
+        run: supabase migration list --db-url "${SUPABASE_DB_URL}"
