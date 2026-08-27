@@ -2,6 +2,7 @@ import { createClient as createSupabaseClient, type User } from "@supabase/supab
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { activationRedirectUrl, invitationExpiresAt } from "@/lib/auth/invitations";
 
 const profiles = new Set(["owner", "manager", "employee", "custom"]);
 const memberStatuses = new Set(["active", "suspended"]);
@@ -217,15 +218,14 @@ export async function POST(request: Request) {
       const users = await listUsersById(admin);
       const email = users.get(targetUserId)?.email;
       if (!email) throw new Error("NOT_FOUND");
-      const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
-      const redirectTo = `${origin}/auth/callback?next=/activate`;
+      const redirectTo = activationRedirectUrl(request.url);
       await sendExistingUserInvite(email, redirectTo);
       const now = new Date();
       const { error: updateError } = await admin
         .from("workspace_memberships")
         .update({
           invitation_last_sent_at: now.toISOString(),
-          invitation_expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          invitation_expires_at: invitationExpiresAt(now),
         })
         .eq("workspace_id", workspaceId)
         .eq("user_id", targetUserId);
@@ -249,8 +249,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Enter a valid work email." }, { status: 400 });
     }
 
-    const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
-    const redirectTo = `${origin}/auth/callback?next=/activate`;
+    const redirectTo = activationRedirectUrl(request.url);
     const existing = await findUserByEmail(admin, email);
     if (existing?.id === userId) throw new Error("SELF_PRIVILEGE_CHANGE");
 
@@ -292,7 +291,7 @@ export async function POST(request: Request) {
         invited_by: userId,
         joined_at: null,
         invitation_last_sent_at: now.toISOString(),
-        invitation_expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        invitation_expires_at: invitationExpiresAt(now),
       });
     if (membershipError) {
       if (!existing) await admin.auth.admin.deleteUser(invitedUser.id);

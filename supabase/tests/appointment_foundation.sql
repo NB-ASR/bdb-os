@@ -84,85 +84,85 @@ select ok(
 );
 select ok(
   position('changed on another device' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
-  'Appointment command rejects stale versions'
+  'Appointment business rules reject stale versions'
 );
 select ok(
   position('appointment_command_receipts' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
-  'Appointment command stores idempotency receipts'
+  'Appointment business rules store idempotency receipts'
 );
 select ok(
   position('activity_items' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
-  'Appointment command writes Activity history'
+  'Appointment business rules write Activity history'
 );
 select ok(
   position('Archived Customers cannot receive new Appointments' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
   'Appointment creation rejects archived Customers'
 );
 select ok(
   position('Archived Services cannot be booked' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
   'Appointment creation rejects archived Services'
 );
 select ok(
   position('not active in this workspace' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
   'Appointment creation requires active workspace staff'
 );
 select ok(
   position('Only pending Appointments can be confirmed' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
   'Appointment confirmation uses an explicit lifecycle transition'
 );
 select ok(
   position('Only confirmed Appointments can be completed' in pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   )) > 0,
   'Appointment completion uses an explicit lifecycle transition'
 );
 select ok(
   position('insert into public.sales' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) = 0,
   'Appointment completion does not post Sales, invoices, Payments or Inventory: no Sale is created'
 );
 select ok(
   position('insert into public.invoices' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) = 0,
   'Appointment completion does not post Sales, invoices, Payments or Inventory: no invoice is created'
 );
 select ok(
   position('insert into public.inventory_movements' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) = 0,
   'Appointment completion does not post Sales, invoices, Payments or Inventory: no Inventory movement is created'
 );
 select ok(
   position('insert into public.bank_transactions' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) = 0,
   'Appointment completion does not post Sales, invoices, Payments or Inventory: no cash record is created'
 );
 select ok(
   position('right(replace(p_booking_id::text' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) > 0,
   'Appointment references use the final 64 UUID bits'
 );
 select ok(
   position('workspace_settings' in lower(pg_get_functiondef(
-    'public.apply_appointment_command(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
+    'public.apply_appointment_command_legacy(uuid,uuid,text,text,uuid,uuid,integer,uuid,uuid,uuid,date,time without time zone,text,text,text,text,text)'::regprocedure
   ))) > 0,
   'Appointment commands snapshot the workspace timezone'
 );

@@ -132,9 +132,14 @@ select ok(
 select ok(
   exists (
     select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-    where n.nspname='public' and p.proname='apply_appointment_command'
+    where n.nspname='public' and p.proname='apply_appointment_command_legacy'
       and position('customer_record.status <> ''active''' in lower(pg_get_functiondef(p.oid))) > 0
       and position('archived customers cannot receive new appointments' in lower(pg_get_functiondef(p.oid))) > 0
+  )
+  and exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname='apply_appointment_command'
+      and position('apply_appointment_command_legacy' in lower(pg_get_functiondef(p.oid))) > 0
   ),
   'Archived Customers cannot be used for new Appointment work'
 );

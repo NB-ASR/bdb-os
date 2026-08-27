@@ -46,6 +46,19 @@ test("Supplier Payables registers are bounded and use keyset cursors for financi
   assert.match(registers, /get_supplier_accounts_summary/);
 });
 
+test("Supplier Accounts summary crosses the service-role boundary only after workspace authorisation", async () => {
+  const [route, registers] = await Promise.all([
+    source("src/app/api/supplier-payables/route.ts"),
+    source("src/lib/server/supplier-payables-registers.ts"),
+  ]);
+
+  const membershipCheck = route.indexOf("await requireWorkspaceCommand(request, workspaceId)");
+  const privilegedSummaryClient = route.indexOf("readSupplierPayablesView(supabase, workspaceId, url, adminClient())");
+  assert.ok(membershipCheck >= 0 && privilegedSummaryClient > membershipCheck);
+  assert.match(registers, /summaryClient\.rpc\("get_supplier_accounts_summary"/);
+  assert.match(registers, /supplierMapForDocuments\(supabase/);
+});
+
 test("Supplier Accounts browser cache remains a bounded working set", async () => {
   const page = await source("src/app/accounts/payables/page.tsx");
 

@@ -67,12 +67,15 @@ assert.match(queue, /localStorage/);
 assert.match(queue, /Idempotency-Key/);
 assert.match(queue, /flushAppointmentQueue/);
 assert.match(queue, /break;/);
+assert.match(queue, /actorUserId/);
+assert.match(queue, /confirmed_rejection/);
+assert.match(queue, /ambiguous/);
 
 assert.match(page, /readCache/);
 assert.match(page, /enqueueAppointmentCommand/);
 assert.match(page, /Saved offline/);
-assert.match(page, /Working hours, leave, rooms and staff-to-Service eligibility remain the next Calendar integration/);
-assert.match(page, /No Sale, invoice, Payment or Inventory movement is created/);
+assert.match(page, /working hours, breaks, leave, Service eligibility and effective buffers/i);
+assert.match(page, /Sales draft and configured Inventory-consumption actions/);
 assert.doesNotMatch(page, /buildPreviewAppointments/);
 assert.doesNotMatch(page, /representative design data only/i);
 

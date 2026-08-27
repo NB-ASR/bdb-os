@@ -57,6 +57,8 @@ assert.doesNotMatch(settlement, /insert into public\.bank_transactions/i, "Suppl
 assert.match(settlement, /grant execute[\s\S]*to service_role/i, "Supplier finance commands must remain service-role-only.");
 
 assert.match(api, /readSupplierPayablesView/i, "Supplier Payables API must delegate reads to the bounded register layer.");
+assert.match(api, /requireWorkspaceCommand[\s\S]*readSupplierPayablesView\(supabase, workspaceId, url, adminClient\(\)\)/i, "Supplier summary elevation must follow workspace authorisation.");
+assert.match(registers, /summaryClient\.rpc\("get_supplier_accounts_summary"/i, "The service-role-only Supplier summary must use its dedicated client.");
 assert.match(registers, /supplier_payable_balances/i, "Supplier Payables register layer must expose derived payable balances.");
 assert.match(registers, /supplier_account_balances/i, "Supplier Payables register layer must expose derived Supplier balances.");
 assert.match(registers, /limit\(limit \+ 1\)/i, "Supplier financial registers must remain bounded.");

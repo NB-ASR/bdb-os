@@ -67,15 +67,15 @@ select ok(position(
 ) > 0, 'Appointment writes report an explicit eligibility failure');
 select ok(position(
   'calendar_service_eligibility_command_receipts' in
-  pg_get_functiondef('public.apply_calendar_service_eligibility_command(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
-) > 0, 'eligibility command stores idempotency receipts');
+  pg_get_functiondef('public.apply_calendar_service_eligibility_command_legacy(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
+) > 0, 'eligibility business rules store idempotency receipts');
 select ok(position(
   'activity_items' in
-  pg_get_functiondef('public.apply_calendar_service_eligibility_command(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
-) > 0, 'eligibility command writes Activity history');
+  pg_get_functiondef('public.apply_calendar_service_eligibility_command_legacy(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
+) > 0, 'eligibility business rules write Activity history');
 select ok(position(
   'Reschedule or cancel existing Appointments' in
-  pg_get_functiondef('public.apply_calendar_service_eligibility_command(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
+  pg_get_functiondef('public.apply_calendar_service_eligibility_command_legacy(uuid,uuid,uuid,boolean,text,uuid,uuid,integer)'::regprocedure)
 ) > 0, 'eligibility removal protects dependent Appointments');
 select ok(exists(
   select 1 from pg_policies

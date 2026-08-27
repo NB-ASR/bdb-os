@@ -87,6 +87,7 @@ export async function GET() {
       currentWorkspaceId: current?.workspace_id ?? null,
       currentWorkspaceName: String(current?.workspace_name ?? ""),
       currentUser: {
+        id: userId,
         fullName: String(profile?.full_name ?? "").trim(),
       },
       features,

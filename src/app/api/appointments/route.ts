@@ -11,6 +11,14 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const ACTIONS = new Set(["create", "update", "confirm", "cancel", "complete"]);
 const CHANNELS = new Set(["staff", "phone", "walk_in", "online"]);
 const INITIAL_STATUSES = new Set(["pending", "confirmed"]);
+const CALENDAR_LIMITS = {
+  appointments: 2_500,
+  customers: 1_000,
+  services: 500,
+  staff: 250,
+  rooms: 250,
+  eligibility: 5_000,
+} as const;
 
 type AppointmentCommandBody = Record<string, unknown> & {
   workspaceId?: unknown;
@@ -69,6 +77,23 @@ function timeValue(value: unknown) {
     throw new CommandError("INVALID_APPOINTMENT_INPUT", "Appointment time is invalid.");
   }
   return result.slice(0, 5);
+}
+
+function calendarDateOffset(days: number) {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function enforceReadLimit(name: keyof typeof CALENDAR_LIMITS, rows: readonly unknown[]) {
+  if (rows.length > CALENDAR_LIMITS[name]) {
+    throw new CommandError(
+      "CALENDAR_RESULT_LIMIT",
+      `Calendar has more ${name} than this launch-safe view can load. Narrowing and pagination are required.`,
+      409,
+    );
+  }
 }
 
 function friendlyAppointmentError(error: { message: string; code?: string | null; details?: string | null }) {
@@ -160,37 +185,52 @@ export async function GET(request: Request) {
     const admin = createAdminClient();
     if (!admin) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
 
-    const [appointmentsResult, customersResult, servicesResult, membersResult, roomsResult, settingsResult] = await Promise.all([
+    const [appointmentsResult, customersResult, servicesResult, membersResult, roomsResult, eligibilityResult, settingsResult] = await Promise.all([
       admin
         .from("bookings")
         .select("*")
         .eq("workspace_id", workspaceId)
+        .gte("booking_date", calendarDateOffset(-180))
+        .lte("booking_date", calendarDateOffset(550))
         .order("booking_date")
-        .order("booking_time"),
+        .order("booking_time")
+        .limit(CALENDAR_LIMITS.appointments + 1),
       admin
         .from("customers")
         .select("id,code,name,status")
         .eq("workspace_id", workspaceId)
         .eq("status", "active")
-        .order("name"),
+        .order("name")
+        .limit(CALENDAR_LIMITS.customers + 1),
       admin
         .from("services")
         .select("id,code,name,duration_minutes,preparation_buffer_minutes,recovery_buffer_minutes,price,vat_rate,booking_mode,status")
         .eq("workspace_id", workspaceId)
         .eq("status", "active")
-        .order("name"),
+        .order("name")
+        .limit(CALENDAR_LIMITS.services + 1),
       admin
         .from("workspace_memberships")
         .select("user_id,role,access_profile,status,profiles(full_name,is_active)")
         .eq("workspace_id", workspaceId)
         .eq("status", "active")
-        .order("created_at"),
+        .order("created_at")
+        .limit(CALENDAR_LIMITS.staff + 1),
       admin
         .from("calendar_rooms")
         .select("id,code,name,status")
         .eq("workspace_id", workspaceId)
         .eq("status", "active")
-        .order("name"),
+        .order("name")
+        .limit(CALENDAR_LIMITS.rooms + 1),
+      admin
+        .from("calendar_staff_service_eligibility")
+        .select("service_id,staff_user_id,status")
+        .eq("workspace_id", workspaceId)
+        .eq("status", "active")
+        .order("service_id")
+        .order("staff_user_id")
+        .limit(CALENDAR_LIMITS.eligibility + 1),
       admin
         .from("workspace_settings")
         .select("timezone")
@@ -198,9 +238,15 @@ export async function GET(request: Request) {
         .maybeSingle(),
     ]);
 
-    const failed = [appointmentsResult, customersResult, servicesResult, membersResult, roomsResult, settingsResult]
+    const failed = [appointmentsResult, customersResult, servicesResult, membersResult, roomsResult, eligibilityResult, settingsResult]
       .find((result) => result.error);
     if (failed?.error) throw failed.error;
+    enforceReadLimit("appointments", appointmentsResult.data ?? []);
+    enforceReadLimit("customers", customersResult.data ?? []);
+    enforceReadLimit("services", servicesResult.data ?? []);
+    enforceReadLimit("staff", membersResult.data ?? []);
+    enforceReadLimit("rooms", roomsResult.data ?? []);
+    enforceReadLimit("eligibility", eligibilityResult.data ?? []);
 
     const staff = (membersResult.data ?? [])
       .filter((member) => {
@@ -225,6 +271,7 @@ export async function GET(request: Request) {
       services: servicesResult.data ?? [],
       staff,
       rooms: roomsResult.data ?? [],
+      eligibility: eligibilityResult.data ?? [],
     };
   });
 }
