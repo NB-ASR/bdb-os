@@ -1,0 +1,70 @@
+name: Supabase Production Backup
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/supabase-backup.yml
+      - scripts/backup-supabase.sh
+      - scripts/check-backup-contract.mjs
+      - ops/backup/bdb-os-backup-public-certificate.crt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bdb-production-backup
+  cancel-in-progress: false
+
+jobs:
+  encrypted-database-backup:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_PROJECT_REF: hgqdyqtdzxzoqqncwhix
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          show-progress: false
+
+      - name: Require Production database secret
+        shell: bash
+        run: |
+          if [[ -z "${SUPABASE_DB_URL}" ]]; then
+            echo "::error::Repository secret SUPABASE_DB_URL is required."
+            exit 1
+          fi
+
+      - name: Create encrypted PostgreSQL 17 backup
+        shell: bash
+        run: |
+          docker run --rm --entrypoint bash \
+            -e SUPABASE_DB_URL \
+            -e SUPABASE_PROJECT_REF \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            postgres:17-bookworm \
+            -lc 'command -v openssl >/dev/null || { apt-get update && apt-get install -y --no-install-recommends openssl; }; bash scripts/backup-supabase.sh backup-output'
+
+          # The official PostgreSQL container runs this command as root. Return
+          # ownership to the runner while preserving private file permissions
+          # so upload-artifact can read the encrypted output.
+          sudo chown -R "$(id -u):$(id -g)" backup-output
+          find backup-output -type d -exec chmod 700 {} +
+          find backup-output -type f -exec chmod 600 {} +
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdb-os-production-backup-${{ github.run_id }}
+          path: backup-output/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

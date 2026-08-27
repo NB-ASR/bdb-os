@@ -110,6 +110,8 @@ assert.match(renderRoute, /Issued documents never fall back to live branding/);
 assert.match(renderRoute, /if \(model\.draft\)/);
 assert.match(renderRoute, /discountPercent/);
 assert.match(renderRoute, /salesOrderReference/);
+assert.match(renderRoute, /runCommand\(async \(\) => \{[\s\S]*const workspaceId = uuid\(/);
+assert.doesNotMatch(renderRoute.split("const result = await runCommand")[0], /const workspaceId = uuid\(/);
 assert.match(renderer, /Discount/);
 assert.match(renderer, /Credit subtotal/);
 assert.match(renderer, /"Subtotal"/);

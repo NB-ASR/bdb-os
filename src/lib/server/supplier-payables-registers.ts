@@ -17,12 +17,6 @@ const REGISTER_VIEWS = new Set([
 
 type DateCursor = { at: string; id: string };
 
-type PageInfo = {
-  hasMore: boolean;
-  nextCursor: string | null;
-  pageSize: number;
-};
-
 function uuid(value: string | null, field: string) {
   const result = String(value ?? "").trim();
   if (!UUID_PATTERN.test(result)) {
@@ -77,11 +71,6 @@ function pageResult<T extends { id: string }>(rows: T[], limit: number, sortValu
   };
 }
 
-function pageInfo<T extends { id: string }>(rows: T[], limit: number, sortValue: (row: T) => string): PageInfo {
-  const result = pageResult(rows, limit, sortValue);
-  return { pageSize: result.pageSize, hasMore: result.hasMore, nextCursor: result.nextCursor };
-}
-
 async function supplierMapForDocuments(
   supabase: SupabaseClient,
   workspaceId: string,
@@ -98,7 +87,11 @@ async function supplierMapForDocuments(
   return new Map((result.data ?? []).map((supplier) => [supplier.id, supplier]));
 }
 
-async function bootstrap(supabase: SupabaseClient, workspaceId: string) {
+async function bootstrap(
+  supabase: SupabaseClient,
+  summaryClient: SupabaseClient,
+  workspaceId: string,
+) {
   const limit = 50;
   const [
     documentsResult,
@@ -177,7 +170,7 @@ async function bootstrap(supabase: SupabaseClient, workspaceId: string) {
       .select("currency,timezone")
       .eq("workspace_id", workspaceId)
       .maybeSingle(),
-    supabase.rpc("get_supplier_accounts_summary", { p_workspace_id: workspaceId }),
+    summaryClient.rpc("get_supplier_accounts_summary", { p_workspace_id: workspaceId }),
   ]);
 
   const failed = [
@@ -423,12 +416,13 @@ export async function readSupplierPayablesView(
   supabase: SupabaseClient,
   workspaceId: string,
   url: URL,
+  summaryClient: SupabaseClient = supabase,
 ) {
   const view = String(url.searchParams.get("view") ?? "bootstrap").trim();
   if (!REGISTER_VIEWS.has(view)) {
     throw new CommandError("INVALID_SUPPLIER_PAYABLES_INPUT", "Supplier Accounts view is invalid.");
   }
-  if (view === "bootstrap") return bootstrap(supabase, workspaceId);
+  if (view === "bootstrap") return bootstrap(supabase, summaryClient, workspaceId);
   if (view === "documents") return documentsPage(supabase, workspaceId, url);
   if (view === "payables") return payablesPage(supabase, workspaceId, url);
   if (view === "payments") return paymentsPage(supabase, workspaceId, url);

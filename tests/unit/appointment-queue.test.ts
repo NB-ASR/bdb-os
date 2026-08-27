@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canDiscardAppointmentCommand,
   enqueueAppointmentCommand,
   failAppointmentCommand,
   readAppointmentQueue,
   removeAppointmentCommand,
-  writeAppointmentQueue,
 } from "../../src/lib/modules/appointment-queue.ts";
 
 class MemoryStorage {
@@ -22,48 +22,58 @@ function installStorage() {
   });
 }
 
-test("Appointment queues remain isolated by workspace", () => {
+test("Appointment queues remain isolated by actor and workspace", () => {
   installStorage();
-  enqueueAppointmentCommand("workspace-a", "create", { id: "appointment-a" }, "command-a");
-  enqueueAppointmentCommand("workspace-b", "create", { id: "appointment-b" }, "command-b");
-  assert.equal(readAppointmentQueue("workspace-a").length, 1);
-  assert.equal(readAppointmentQueue("workspace-b").length, 1);
-  assert.equal(readAppointmentQueue("workspace-a")[0]?.id, "command-a");
+  enqueueAppointmentCommand("actor-a", "workspace-a", "create", { id: "appointment-a" }, "command-a");
+  enqueueAppointmentCommand("actor-a", "workspace-b", "create", { id: "appointment-b" }, "command-b");
+  enqueueAppointmentCommand("actor-b", "workspace-a", "create", { id: "appointment-c" }, "command-c");
+  assert.equal(readAppointmentQueue("actor-a", "workspace-a").length, 1);
+  assert.equal(readAppointmentQueue("actor-a", "workspace-b").length, 1);
+  assert.equal(readAppointmentQueue("actor-b", "workspace-a").length, 1);
+  assert.equal(readAppointmentQueue("actor-a", "workspace-a")[0]?.id, "command-a");
 });
 
 test("Appointment command IDs are not queued twice", () => {
   installStorage();
-  enqueueAppointmentCommand("workspace-a", "update", { id: "appointment-a" }, "stable-command");
-  enqueueAppointmentCommand("workspace-a", "update", { id: "appointment-a" }, "stable-command");
-  assert.equal(readAppointmentQueue("workspace-a").length, 1);
+  enqueueAppointmentCommand("actor-a", "workspace-a", "update", { id: "appointment-a" }, "stable-command");
+  enqueueAppointmentCommand("actor-a", "workspace-a", "update", { id: "appointment-a" }, "stable-command");
+  assert.equal(readAppointmentQueue("actor-a", "workspace-a").length, 1);
 });
 
-test("failed Appointment commands retain retry diagnostics", () => {
+test("ambiguous Appointment outcomes retain retry diagnostics and cannot be discarded", () => {
   installStorage();
-  enqueueAppointmentCommand("workspace-a", "cancel", { id: "appointment-a" }, "failed-command");
-  failAppointmentCommand("workspace-a", "failed-command", "staff conflict");
-  const command = readAppointmentQueue("workspace-a")[0];
+  enqueueAppointmentCommand("actor-a", "workspace-a", "cancel", { id: "appointment-a" }, "failed-command");
+  failAppointmentCommand("actor-a", "workspace-a", "failed-command", "network ended", {
+    status: 503,
+    failureKind: "ambiguous",
+  });
+  const command = readAppointmentQueue("actor-a", "workspace-a")[0];
   assert.equal(command?.attempts, 1);
-  assert.equal(command?.lastError, "staff conflict");
+  assert.equal(command?.lastError, "network ended");
+  assert.equal(command?.failureKind, "ambiguous");
+  assert.equal(canDiscardAppointmentCommand(command!), false);
+  assert.equal(removeAppointmentCommand("actor-a", "workspace-a", "failed-command"), false);
 });
 
 test("Appointment commands preserve their order", () => {
   installStorage();
-  enqueueAppointmentCommand("workspace-a", "create", { id: "appointment-a" }, "command-create");
-  enqueueAppointmentCommand("workspace-a", "confirm", { id: "appointment-a" }, "command-confirm");
+  enqueueAppointmentCommand("actor-a", "workspace-a", "create", { id: "appointment-a" }, "command-create");
+  enqueueAppointmentCommand("actor-a", "workspace-a", "confirm", { id: "appointment-a" }, "command-confirm");
   assert.deepEqual(
-    readAppointmentQueue("workspace-a").map((command) => command.action),
+    readAppointmentQueue("actor-a", "workspace-a").map((command) => command.action),
     ["create", "confirm"],
   );
 });
 
-test("Appointment commands can be removed or discarded", () => {
+test("only confirmed server rejections can be discarded without force", () => {
   installStorage();
-  enqueueAppointmentCommand("workspace-a", "complete", { id: "appointment-a" }, "remove-command");
-  removeAppointmentCommand("workspace-a", "remove-command");
-  assert.deepEqual(readAppointmentQueue("workspace-a"), []);
-
-  enqueueAppointmentCommand("workspace-a", "create", { id: "appointment-a" }, "discard-command");
-  writeAppointmentQueue("workspace-a", []);
-  assert.deepEqual(readAppointmentQueue("workspace-a"), []);
+  enqueueAppointmentCommand("actor-a", "workspace-a", "create", { id: "appointment-a" }, "discard-command");
+  failAppointmentCommand("actor-a", "workspace-a", "discard-command", "staff conflict", {
+    status: 409,
+    failureKind: "confirmed_rejection",
+  });
+  const command = readAppointmentQueue("actor-a", "workspace-a")[0];
+  assert.equal(canDiscardAppointmentCommand(command!), true);
+  assert.equal(removeAppointmentCommand("actor-a", "workspace-a", "discard-command"), true);
+  assert.deepEqual(readAppointmentQueue("actor-a", "workspace-a"), []);
 });

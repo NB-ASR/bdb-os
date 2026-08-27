@@ -118,7 +118,11 @@ export async function GET(request: Request) {
     await requireWorkspaceCommand(request, workspaceId);
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
-    return readSupplierPayablesView(supabase, workspaceId, url);
+    // Normal register reads stay on the caller's RLS client. Only the bounded
+    // aggregate RPC uses service-role access, after membership/permission
+    // verification above; the function is deliberately not executable by
+    // authenticated browser clients.
+    return readSupplierPayablesView(supabase, workspaceId, url, adminClient());
   });
 }
 

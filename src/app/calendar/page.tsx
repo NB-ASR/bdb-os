@@ -28,13 +28,13 @@ import {
 import { useBdb } from "@/lib/store";
 import { formatDate } from "@/lib/format";
 import {
+  canDiscardAppointmentCommand,
   enqueueAppointmentCommand,
   failAppointmentCommand,
   flushAppointmentQueue,
   readAppointmentQueue,
   removeAppointmentCommand,
   submitAppointmentCommand,
-  writeAppointmentQueue,
   type AppointmentCommandAction,
   type AppointmentQueuedCommand,
 } from "@/lib/modules/appointment-queue";
@@ -89,11 +89,16 @@ type ServiceOption = {
   status: "active";
 };
 type StaffOption = { user_id: string; name: string; role: string; access_profile: string };
+type RoomOption = { id: string; code: string; name: string; status: "active" };
+type EligibilityOption = { service_id: string; staff_user_id: string; status: "active" };
 type AppointmentBundle = {
+  timezone: string;
   appointments: AppointmentRow[];
   customers: CustomerOption[];
   services: ServiceOption[];
   staff: StaffOption[];
+  rooms: RoomOption[];
+  eligibility: EligibilityOption[];
 };
 type AppointmentForm = {
   customerId: string;
@@ -107,9 +112,16 @@ type AppointmentForm = {
   initialStatus: "pending" | "confirmed";
 };
 
-const CACHE_PREFIX = "bdb-appointments-cache-v1";
-const LAST_WORKSPACE_KEY = "bdb-appointments-last-workspace-v1";
-const emptyBundle: AppointmentBundle = { appointments: [], customers: [], services: [], staff: [] };
+const CACHE_PREFIX = "bdb-appointments-cache-v2";
+const emptyBundle: AppointmentBundle = {
+  timezone: "Europe/London",
+  appointments: [],
+  customers: [],
+  services: [],
+  staff: [],
+  rooms: [],
+  eligibility: [],
+};
 
 const statusTone: Record<AppointmentStatus, "green" | "gold" | "blue" | "red"> = {
   pending: "gold",
@@ -132,14 +144,19 @@ const channelLabel: Record<AppointmentChannel, string> = {
   online: "Online",
 };
 
-function dateKey(date: Date) {
-  return date.toLocaleDateString("en-CA");
+function dateKey(date: Date, timezone = "Europe/London") {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 function shiftDate(value: string, days: number) {
-  const next = new Date(`${value}T12:00:00`);
-  next.setDate(next.getDate() + days);
-  return dateKey(next);
+  const next = new Date(`${value}T12:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
 }
 
 function normaliseTime(value: string) {
@@ -153,41 +170,48 @@ function addMinutes(value: string, minutes: number) {
   return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
 }
 
-function cacheKey(workspaceId: string) {
-  return `${CACHE_PREFIX}:${workspaceId}`;
+function cacheKey(actorUserId: string, workspaceId: string) {
+  return `${CACHE_PREFIX}:${actorUserId}:${workspaceId}`;
 }
 
-function readLastWorkspace() {
-  return typeof window === "undefined" ? null : window.localStorage.getItem(LAST_WORKSPACE_KEY);
-}
-
-function rememberWorkspace(workspaceId: string) {
-  if (typeof window !== "undefined") window.localStorage.setItem(LAST_WORKSPACE_KEY, workspaceId);
-}
-
-function readCache(workspaceId: string): AppointmentBundle {
+function readCache(actorUserId: string, workspaceId: string): AppointmentBundle {
   if (typeof window === "undefined") return emptyBundle;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "null") as unknown;
+    const key = cacheKey(actorUserId, workspaceId);
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? "null") as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return emptyBundle;
     const bundle = parsed as Partial<AppointmentBundle>;
     return {
-      appointments: Array.isArray(bundle.appointments) ? bundle.appointments : [],
-      customers: Array.isArray(bundle.customers) ? bundle.customers : [],
-      services: Array.isArray(bundle.services) ? bundle.services : [],
-      staff: Array.isArray(bundle.staff) ? bundle.staff : [],
+      timezone: typeof bundle.timezone === "string" ? bundle.timezone : "Europe/London",
+      appointments: Array.isArray(bundle.appointments) ? bundle.appointments.slice(0, 2_500) : [],
+      customers: Array.isArray(bundle.customers) ? bundle.customers.slice(0, 1_000) : [],
+      services: Array.isArray(bundle.services) ? bundle.services.slice(0, 500) : [],
+      staff: Array.isArray(bundle.staff) ? bundle.staff.slice(0, 250) : [],
+      rooms: Array.isArray(bundle.rooms) ? bundle.rooms.slice(0, 250) : [],
+      eligibility: Array.isArray(bundle.eligibility) ? bundle.eligibility.slice(0, 5_000) : [],
     };
   } catch {
-    window.localStorage.removeItem(cacheKey(workspaceId));
+    window.localStorage.removeItem(cacheKey(actorUserId, workspaceId));
     return emptyBundle;
   }
 }
 
-function writeCache(workspaceId: string, bundle: AppointmentBundle) {
+function writeCache(actorUserId: string, workspaceId: string, bundle: AppointmentBundle) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify({
+  window.localStorage.setItem(cacheKey(actorUserId, workspaceId), JSON.stringify({
     ...bundle,
-    appointments: bundle.appointments.map(({ pending: _pending, ...appointment }) => appointment),
+    appointments: bundle.appointments
+      .slice(0, 2_500)
+      .map((appointment) => {
+        const cached = { ...appointment };
+        delete cached.pending;
+        return cached;
+      }),
+    customers: bundle.customers.slice(0, 1_000),
+    services: bundle.services.slice(0, 500),
+    staff: bundle.staff.slice(0, 250),
+    rooms: bundle.rooms.slice(0, 250),
+    eligibility: bundle.eligibility.slice(0, 5_000),
   }));
 }
 
@@ -247,7 +271,7 @@ function provisionalAppointment(
     room_name: payload.roomName ? String(payload.roomName) : null,
     price_snapshot: service?.price ?? null,
     vat_rate_snapshot: service?.vat_rate ?? 0,
-    timezone: "Europe/Malta",
+    timezone: bundle.timezone,
     notes: payload.notes ? String(payload.notes) : null,
     cancellation_reason: null,
     version: 1,
@@ -301,8 +325,9 @@ function applyCommand(
 export default function CalendarPage() {
   const { state, mode } = useBdb();
   const [currentMoment] = useState(() => new Date());
-  const today = dateKey(currentMoment);
   const [bundle, setBundle] = useState<AppointmentBundle>(emptyBundle);
+  const today = dateKey(currentMoment, bundle.timezone);
+  const [actorUserId, setActorUserId] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [online, setOnline] = useState(true);
@@ -316,6 +341,7 @@ export default function CalendarPage() {
   const [cancelTarget, setCancelTarget] = useState<AppointmentRow | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
+  const [, setQueueVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
@@ -344,24 +370,36 @@ export default function CalendarPage() {
     }
 
     const currentWorkspaceId = String(context.currentWorkspaceId);
+    const currentActorUserId = String(context.currentUser?.id ?? "");
+    if (!currentActorUserId) throw new Error("The signed-in Calendar identity could not be resolved.");
+    setActorUserId(currentActorUserId);
     setWorkspaceId(currentWorkspaceId);
-    rememberWorkspace(currentWorkspaceId);
     setSupportReadOnly(Boolean(context.supportAccess && context.supportAccessMode !== "test_write"));
+
+    const cached = readCache(currentActorUserId, currentWorkspaceId);
+    const queued = readAppointmentQueue(currentActorUserId, currentWorkspaceId);
+    setBundle(applyQueued(cached, queued));
+    setPendingCount(queued.length);
+    setQueueVersion((version) => version + 1);
 
     const response = await fetch(`/api/appointments?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error ?? "Appointments could not be loaded.");
 
     const cloudBundle: AppointmentBundle = {
+      timezone: String(result.result?.timezone ?? "Europe/London"),
       appointments: (result.result?.appointments ?? []) as AppointmentRow[],
       customers: (result.result?.customers ?? []) as CustomerOption[],
       services: (result.result?.services ?? []) as ServiceOption[],
       staff: (result.result?.staff ?? []) as StaffOption[],
+      rooms: (result.result?.rooms ?? []) as RoomOption[],
+      eligibility: (result.result?.eligibility ?? []) as EligibilityOption[],
     };
-    writeCache(currentWorkspaceId, cloudBundle);
-    const queue = readAppointmentQueue(currentWorkspaceId);
+    writeCache(currentActorUserId, currentWorkspaceId, cloudBundle);
+    const queue = readAppointmentQueue(currentActorUserId, currentWorkspaceId);
     setBundle(applyQueued(cloudBundle, queue));
     setPendingCount(queue.length);
+    setQueueVersion((version) => version + 1);
   }, [applyQueued]);
 
   useEffect(() => {
@@ -378,34 +416,25 @@ export default function CalendarPage() {
   useEffect(() => {
     let active = true;
     async function initialise() {
-      const fallbackWorkspace = mode === "demo" ? "demo" : readLastWorkspace();
-      const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : emptyBundle;
-      const queued = fallbackWorkspace ? readAppointmentQueue(fallbackWorkspace) : [];
-      if (active && fallbackWorkspace) {
-        setWorkspaceId(fallbackWorkspace);
-        setBundle(applyQueued(cached, queued));
-        setPendingCount(queued.length);
+      if (mode === "demo") {
+        const cached = readCache("demo", "demo");
+        setActorUserId("demo");
+        setWorkspaceId("demo");
+        setBundle(cached);
+        setLoaded(true);
+        return;
       }
 
       try {
         setError("");
-        if (mode === "demo") return;
         if (!navigator.onLine) {
-          if (cached.appointments.length || cached.customers.length || queued.length) {
-            setNotice("Showing the last cached Calendar. Appointment changes remain queued until the connection returns.");
-          } else {
-            setError("Calendar needs one successful online load before this workspace can open from a cold offline start.");
-          }
+          setError("Reconnect once to verify the signed-in account before opening cached Calendar data.");
           return;
         }
         await loadCloud();
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Appointments could not be loaded.";
-        if (cached.appointments.length || cached.customers.length || queued.length) {
-          setNotice("Showing the last cached Calendar while cloud access is unavailable.");
-        } else if (active) {
-          setError(message);
-        }
+        if (active) setError(message);
       } finally {
         if (active) setLoaded(true);
       }
@@ -415,23 +444,24 @@ export default function CalendarPage() {
   }, [applyQueued, loadCloud, mode]);
 
   useEffect(() => {
-    if (mode === "demo" && loaded) writeCache("demo", bundle);
+    if (mode === "demo" && loaded) writeCache("demo", "demo", bundle);
   }, [bundle, loaded, mode]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncInFlight.current) return;
+    if (!actorUserId || !workspaceId || workspaceId === "demo" || syncInFlight.current) return;
     syncInFlight.current = true;
     setSyncing(true);
     setError("");
     try {
-      const result = await flushAppointmentQueue(workspaceId, setPendingCount);
+      const result = await flushAppointmentQueue(actorUserId, workspaceId, setPendingCount);
       setPendingCount(result.remaining);
+      setQueueVersion((version) => version + 1);
       if (result.completed) {
         setNotice(`${result.completed} queued Appointment change${result.completed === 1 ? "" : "s"} synced.`);
       }
       await loadCloud();
       if (result.remaining > 0) {
-        const first = readAppointmentQueue(workspaceId)[0];
+        const first = readAppointmentQueue(actorUserId, workspaceId)[0];
         setError(first?.lastError
           ? `${first.lastError} Synchronisation stopped so the remaining Appointment changes can be reviewed.`
           : "Appointment synchronisation stopped before all changes were completed.");
@@ -440,7 +470,7 @@ export default function CalendarPage() {
       syncInFlight.current = false;
       setSyncing(false);
     }
-  }, [loadCloud, workspaceId]);
+  }, [actorUserId, loadCloud, workspaceId]);
 
   useEffect(() => {
     if (mode === "cloud" && online && pendingCount > 0 && !syncInFlight.current) {
@@ -456,6 +486,7 @@ export default function CalendarPage() {
     setNotice("");
     const command: AppointmentQueuedCommand = {
       id: crypto.randomUUID(),
+      actorUserId: actorUserId ?? "demo",
       workspaceId: workspaceId ?? "demo",
       action,
       payload,
@@ -463,31 +494,48 @@ export default function CalendarPage() {
       attempts: 0,
     };
 
-    setBundle((current) => ({
-      ...current,
-      appointments: applyCommand(current.appointments, command, current),
-    }));
-
     if (mode === "demo") {
+      setBundle((current) => ({
+        ...current,
+        appointments: applyCommand(current.appointments, command, current),
+      }));
       setNotice("Saved in this browser's local BDB OS preview.");
       return true;
     }
-    if (!workspaceId) {
+    if (!actorUserId || !workspaceId) {
       setError("The current workspace is unavailable.");
       return false;
     }
 
-    enqueueAppointmentCommand(workspaceId, action, payload, command.id);
-    setPendingCount(readAppointmentQueue(workspaceId).length);
+    const previousCount = readAppointmentQueue(actorUserId, workspaceId).length;
+    try {
+      enqueueAppointmentCommand(actorUserId, workspaceId, action, payload, command.id);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "The Appointment change could not be queued safely.");
+      return false;
+    }
+    const queue = readAppointmentQueue(actorUserId, workspaceId);
+    setPendingCount(queue.length);
+    setQueueVersion((version) => version + 1);
+    setBundle((current) => ({
+      ...current,
+      appointments: applyCommand(current.appointments, command, current),
+    }));
     if (!navigator.onLine) {
       setNotice("Saved offline. BDB OS will retry this Appointment change when the connection returns.");
       return true;
     }
+    if (previousCount > 0) {
+      setNotice("Appointment change queued behind an earlier unresolved command.");
+      return true;
+    }
 
+    syncInFlight.current = true;
     try {
       await submitAppointmentCommand(command);
-      removeAppointmentCommand(workspaceId, command.id);
-      setPendingCount(readAppointmentQueue(workspaceId).length);
+      removeAppointmentCommand(actorUserId, workspaceId, command.id, true);
+      setPendingCount(readAppointmentQueue(actorUserId, workspaceId).length);
+      setQueueVersion((version) => version + 1);
       await loadCloud();
       setNotice(
         action === "create" ? "Appointment created."
@@ -499,12 +547,26 @@ export default function CalendarPage() {
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Appointment change could not be saved.";
-      failAppointmentCommand(workspaceId, command.id, message);
-      setPendingCount(readAppointmentQueue(workspaceId).length);
-      setError(`${message} The command remains in the local review queue; later commands will not overtake it.`);
+      const failure = commandError as Error & {
+        code?: string;
+        status?: number;
+        failureKind?: "confirmed_rejection" | "ambiguous";
+      };
+      failAppointmentCommand(actorUserId, workspaceId, command.id, message, {
+        code: failure.code,
+        status: failure.status,
+        failureKind: failure.failureKind,
+      });
+      setPendingCount(readAppointmentQueue(actorUserId, workspaceId).length);
+      setQueueVersion((version) => version + 1);
+      setError(failure.failureKind === "confirmed_rejection"
+        ? `${message} The server rejected this change before it committed; review or discard it.`
+        : `${message} The outcome is uncertain. Retry with the same command identity; it cannot be discarded safely.`);
       return false;
+    } finally {
+      syncInFlight.current = false;
     }
-  }, [loadCloud, mode, workspaceId]);
+  }, [actorUserId, loadCloud, mode, workspaceId]);
 
   const visibleAppointments = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -534,14 +596,35 @@ export default function CalendarPage() {
     .reduce((total, appointment) => total + appointment.duration_minutes, 0);
   const bookedHours = `${Math.floor(bookedMinutes / 60)}h ${String(bookedMinutes % 60).padStart(2, "0")}m`;
   const selectedService = bundle.services.find((service) => service.id === form.serviceId) ?? null;
+  const eligibleStaff = useMemo(() => {
+    const staffIds = new Set(
+      bundle.eligibility
+        .filter((item) => item.service_id === form.serviceId)
+        .map((item) => item.staff_user_id),
+    );
+    return bundle.staff.filter((member) => staffIds.has(member.user_id));
+  }, [bundle.eligibility, bundle.staff, form.serviceId]);
+  const queuedCommands = actorUserId && workspaceId
+    ? readAppointmentQueue(actorUserId, workspaceId)
+    : [];
+  const firstQueuedCommand = queuedCommands[0] ?? null;
 
   function openCreate() {
+    const service = bundle.services.find((candidate) =>
+      bundle.eligibility.some((item) => item.service_id === candidate.id),
+    );
+    const staff = service
+      ? bundle.staff.find((member) =>
+        bundle.eligibility.some((item) =>
+          item.service_id === service.id && item.staff_user_id === member.user_id,
+        ))
+      : null;
     setEditing(null);
     setForm({
       ...defaultForm(selectedDate),
       customerId: bundle.customers[0]?.id ?? "",
-      serviceId: bundle.services[0]?.id ?? "",
-      staffUserId: bundle.staff[0]?.user_id ?? "",
+      serviceId: service?.id ?? "",
+      staffUserId: staff?.user_id ?? "",
     });
     setFormOpen(true);
   }
@@ -605,19 +688,23 @@ export default function CalendarPage() {
     setSelectedAppointment(null);
   }
 
-  function discardQueue() {
-    if (!workspaceId || workspaceId === "demo") return;
-    writeAppointmentQueue(workspaceId, []);
-    setPendingCount(0);
+  function discardRejectedCommand() {
+    if (!actorUserId || !workspaceId || workspaceId === "demo" || !firstQueuedCommand) return;
+    if (!removeAppointmentCommand(actorUserId, workspaceId, firstQueuedCommand.id)) return;
+    setPendingCount(readAppointmentQueue(actorUserId, workspaceId).length);
+    setQueueVersion((version) => version + 1);
     void loadCloud();
-    setNotice("Pending local Appointment changes were discarded.");
+    setNotice("The confirmed rejected Appointment change was discarded.");
   }
 
   if (!loaded) {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Calendar…</main>;
   }
 
-  const canCreate = bundle.customers.length > 0 && bundle.services.length > 0 && bundle.staff.length > 0;
+  const canCreate = bundle.customers.length > 0
+    && bundle.services.length > 0
+    && bundle.staff.length > 0
+    && bundle.eligibility.length > 0;
 
   return (
     <>
@@ -640,8 +727,8 @@ export default function CalendarPage() {
       <div className="review-callout">
         <CalendarCheck2 size={19} />
         <div>
-          <strong>Authoritative Appointment foundation</strong>
-          <p>Customer, Service, staff, timing, buffers and lifecycle are connected. This slice blocks overlapping staff time. Working hours, leave, rooms and staff-to-Service eligibility remain the next Calendar integration.</p>
+          <strong>Availability and conflict controls are active</strong>
+          <p>Customer, Service, eligible staff, configured rooms, working hours, breaks, leave, buffers and lifecycle are checked by the authoritative Appointment command.</p>
         </div>
       </div>
 
@@ -662,10 +749,16 @@ export default function CalendarPage() {
       {pendingCount > 0 ? (
         <Card className="settings-note">
           <strong>{pendingCount} local Appointment change{pendingCount === 1 ? "" : "s"} awaiting completion</strong>
-          <p>Commands remain ordered. Synchronisation stops at the first validation or conflict error.</p>
+          <p>{firstQueuedCommand?.failureKind === "ambiguous"
+            ? "The first outcome is uncertain and cannot be discarded. Retry preserves its original command identity."
+            : firstQueuedCommand?.failureKind === "confirmed_rejection"
+              ? "The first change was rejected before commit. Discard it after reviewing the validation or conflict."
+              : "Commands remain ordered and later changes cannot overtake the first pending change."}</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             <Button variant="secondary" onClick={() => void syncPending()} disabled={!online || syncing}>Retry sync</Button>
-            <Button variant="quiet" onClick={discardQueue} disabled={syncing}>Discard local queue</Button>
+            {firstQueuedCommand && canDiscardAppointmentCommand(firstQueuedCommand) ? (
+              <Button variant="quiet" onClick={discardRejectedCommand} disabled={syncing}>Discard rejected change</Button>
+            ) : null}
           </div>
         </Card>
       ) : null}
@@ -673,7 +766,7 @@ export default function CalendarPage() {
       {!canCreate ? (
         <Card className="settings-note">
           <strong>Connected records required</strong>
-          <p>Create at least one active Customer and Service, and keep one active workspace staff member, before creating an Appointment.</p>
+          <p>Create at least one active Customer and Service, keep one active staff member, and assign that staff member as eligible for the Service before creating an Appointment.</p>
         </Card>
       ) : null}
 
@@ -774,15 +867,15 @@ export default function CalendarPage() {
           </Card>
           <Card className={styles.guidanceCard}>
             <div className={styles.guidanceIcon}><TriangleAlert size={20} /></div>
-            <p className="eyebrow">Current conflict guard</p>
-            <h2>Staff overlap is blocked</h2>
-            <p className="muted small">Preparation, Service duration and recovery buffers are checked atomically. Working hours, leave, rooms and eligibility are not yet availability promises.</p>
+            <p className="eyebrow">Conflict boundary</p>
+            <h2>Availability is checked atomically</h2>
+            <p className="muted small">Staff and room overlap, working hours, breaks, leave, Service eligibility and effective buffers are enforced when the Appointment commits.</p>
           </Card>
           <Card className={styles.guidanceCard}>
             <div className={styles.guidanceIcon}><CheckCircle2 size={20} /></div>
-            <p className="eyebrow">Department boundary</p>
-            <h2>Completion records the Appointment only</h2>
-            <p className="muted small">No Sale, invoice, Payment or Inventory movement is created until its owning department is deliberately connected.</p>
+            <p className="eyebrow">Cross-engine handoff</p>
+            <h2>Commercial effects remain deliberate</h2>
+            <p className="muted small">Appointment completion is separate from the explicit Sales draft and configured Inventory-consumption actions, keeping financial and stock ownership clear.</p>
           </Card>
         </div>
       </div>
@@ -877,20 +970,36 @@ export default function CalendarPage() {
                 </select>
               </label>
               <label className={styles.wide}>Service
-                <select required value={form.serviceId} onChange={(event) => setForm((current) => ({ ...current, serviceId: event.target.value }))} disabled={saving || supportReadOnly}>
+                <select required value={form.serviceId} onChange={(event) => {
+                  const serviceId = event.target.value;
+                  const firstEligible = bundle.staff.find((member) =>
+                    bundle.eligibility.some((item) =>
+                      item.service_id === serviceId && item.staff_user_id === member.user_id,
+                    ));
+                  setForm((current) => ({
+                    ...current,
+                    serviceId,
+                    staffUserId: firstEligible?.user_id ?? "",
+                  }));
+                }} disabled={saving || supportReadOnly}>
                   <option value="">Choose Service</option>
                   {bundle.services.map((service) => <option key={service.id} value={service.id}>{service.name} · {service.code}</option>)}
                 </select>
               </label>
               <label>Staff member
                 <select required value={form.staffUserId} onChange={(event) => setForm((current) => ({ ...current, staffUserId: event.target.value }))} disabled={saving || supportReadOnly}>
-                  <option value="">Choose staff</option>
-                  {bundle.staff.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
+                  <option value="">{form.serviceId && !eligibleStaff.length ? "No eligible staff assigned" : "Choose eligible staff"}</option>
+                  {eligibleStaff.map((member) => <option key={member.user_id} value={member.user_id}>{member.name}</option>)}
                 </select>
               </label>
               <label>Date<input required type="date" value={form.bookingDate} onChange={(event) => setForm((current) => ({ ...current, bookingDate: event.target.value }))} disabled={saving || supportReadOnly} /></label>
               <label>Start time<input required type="time" value={form.bookingTime} onChange={(event) => setForm((current) => ({ ...current, bookingTime: event.target.value }))} disabled={saving || supportReadOnly} /></label>
-              <label>Room label<input value={form.roomName} maxLength={120} placeholder="Optional until Resources is integrated" onChange={(event) => setForm((current) => ({ ...current, roomName: event.target.value }))} disabled={saving || supportReadOnly} /></label>
+              <label>Room
+                <select value={form.roomName} onChange={(event) => setForm((current) => ({ ...current, roomName: event.target.value }))} disabled={saving || supportReadOnly}>
+                  <option value="">No room assigned</option>
+                  {bundle.rooms.map((room) => <option key={room.id} value={room.name}>{room.name} · {room.code}</option>)}
+                </select>
+              </label>
               {!editing ? (
                 <label>Initial status
                   <select value={form.initialStatus} onChange={(event) => setForm((current) => ({ ...current, initialStatus: event.target.value as "pending" | "confirmed" }))} disabled={saving || supportReadOnly}>
@@ -916,14 +1025,14 @@ export default function CalendarPage() {
                 <h3>Conflict boundary</h3>
                 <div className={styles.conflictPanel}>
                   <AlertTriangle size={18} />
-                  <div><strong>Staff overlap will be checked</strong><span>Working hours, leave, room availability and Service eligibility remain unverified until their dedicated integration.</span></div>
+                  <div><strong>Availability will be checked at commit</strong><span>Staff and room overlap, working hours, breaks, leave, buffers and Service eligibility are enforced together.</span></div>
                 </div>
               </div>
             </div>
           </div>
           <div className="dialog-actions">
             <Button type="button" variant="quiet" onClick={() => setFormOpen(false)} disabled={saving}>Close</Button>
-            <Button type="submit" disabled={saving || supportReadOnly || !form.customerId || !form.serviceId || !form.staffUserId}>
+            <Button type="submit" disabled={saving || supportReadOnly || !form.customerId || !form.serviceId || !eligibleStaff.some((member) => member.user_id === form.staffUserId)}>
               {saving ? "Saving…" : editing ? "Save reschedule" : online ? "Create appointment" : "Save offline"}
             </Button>
           </div>

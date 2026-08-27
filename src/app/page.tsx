@@ -1,26 +1,29 @@
 import Link from "next/link";
-import { ArrowRight, Blocks, Check, ChevronRight, ShieldCheck, Sparkles, Workflow } from "lucide-react";
+import { ArrowRight, BrainCircuit, Check, ChevronRight, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
 
-const plans = [
+const offers = [
   {
-    name: "Starter",
-    eyebrow: "A calm first step",
-    description: "Bring the essentials into one clear workspace and replace the daily patchwork of disconnected tools.",
-    examples: ["A focused core workspace", "Your highest-priority workflows", "Guided setup and ongoing support"],
+    name: "Website & Digital Launch",
+    slug: "starter",
+    eyebrow: "Build a stronger front door",
+    description: "Launch or improve a website that explains your value clearly and turns more visitors into real conversations.",
+    examples: ["Website strategy and design", "Conversion-focused pages", "Analytics and ongoing improvements"],
   },
   {
-    name: "Growth",
-    eyebrow: "For connected operations",
-    description: "Connect more of the business, reduce repeated admin and give a growing team one reliable source of truth.",
-    examples: ["Broader connected operations", "Team roles and approvals", "Reporting and helpful automation"],
+    name: "AI Growth & Automation",
+    slug: "growth",
+    eyebrow: "Do more without more admin",
+    description: "Use practical AI and connected workflows to improve follow-up, marketing, delivery and the way your team works.",
+    examples: ["AI opportunity review", "Workflow and admin automation", "Growth experiments with clear measures"],
     featured: true,
   },
   {
-    name: "Pro",
-    eyebrow: "The complete foundation",
-    description: "Build a deeply tailored operating system around a more complex business, team and client journey.",
-    examples: ["The broadest module mix", "Advanced workflows and controls", "Deeper tailoring as you evolve"],
+    name: "BDB OS & Custom Systems",
+    slug: "pro",
+    eyebrow: "Connect the whole operation",
+    description: "Replace disconnected tools with a secure operating system shaped around your customers, money and daily work.",
+    examples: ["BDB OS workspace", "Custom business tools", "Ongoing support and iteration"],
   },
 ];
 
@@ -30,23 +33,23 @@ export default function MarketingPage() {
       <nav className="marketing-nav">
         <BdbMonogram />
         <div className="marketing-links">
-          <a href="#how-it-works">How it works</a>
-          <a href="#plans">Plans</a>
+          <a href="#services">Services</a>
+          <a href="#how-it-works">How we work</a>
           <Link href="/login">Login</Link>
-          <Link href="/discovery" className="marketing-nav-cta">Start discovery <ArrowRight size={15} /></Link>
+          <Link href="/discovery" className="marketing-nav-cta">Book a business review <ArrowRight size={15} /></Link>
         </div>
       </nav>
 
       <section className="marketing-hero">
         <div className="marketing-hero-copy">
           <p className="marketing-kicker"><Sparkles size={14} /> Business. Done. Better.</p>
-          <h1>Your business, finally working as one.</h1>
-          <p>BDB OS is a calm, connected operating system shaped around the way your business actually works—so your team spends less time chasing admin and more time moving forward.</p>
+          <h1>Websites, AI and systems built to grow your business.</h1>
+          <p>We help ambitious companies win more work and operate better—from a stronger website to useful AI, automation and a secure business operating system.</p>
           <div className="marketing-actions">
-            <Link href="/discovery" className="marketing-primary">Get a custom quote <ArrowRight size={17} /></Link>
+            <Link href="/discovery" className="marketing-primary">Book a free business review <ArrowRight size={17} /></Link>
             <Link href="/login" className="marketing-secondary">Login to BDB OS</Link>
           </div>
-          <div className="marketing-trust"><span><Check size={14} /> Tailored module mix</span><span><Check size={14} /> Monthly billing</span><span><Check size={14} /> 3 or 6 month commitment</span></div>
+          <div className="marketing-trust"><span><Check size={14} /> Tailored to your goals</span><span><Check size={14} /> Practical AI, not hype</span><span><Check size={14} /> Build, learn and improve</span></div>
         </div>
         <div className="marketing-product-card">
           <div className="product-card-top"><span>Live workspace</span><span className="live-dot">Connected and secure</span></div>
@@ -58,35 +61,35 @@ export default function MarketingPage() {
       </section>
 
       <section className="marketing-section" id="how-it-works">
-        <div className="marketing-section-heading"><p className="marketing-kicker">Built around you</p><h2>Software should fit the business—not the other way around.</h2><p>We start with discovery, shape the right workspace, then improve it with you over time.</p></div>
+        <div className="marketing-section-heading"><p className="marketing-kicker">A hands-on partner</p><h2>Start with the business problem, then build what will move it.</h2><p>We diagnose the opportunity, deliver the right mix of service and software, and improve it with real-world feedback.</p></div>
         <div className="marketing-value-grid">
-          <article><span><Blocks size={20} /></span><h3>Choose the right starting shape</h3><p>Begin with Starter, Growth or Pro, then add or remove modules around your real needs.</p></article>
-          <article><span><Workflow size={20} /></span><h3>Connect the daily work</h3><p>Customers, money, bookings, messages and documents stay connected behind the scenes.</p></article>
-          <article><span><ShieldCheck size={20} /></span><h3>Stay supported</h3><p>Your monthly agreement includes an ongoing partnership, not a hand-off and a goodbye.</p></article>
+          <article><span><BrainCircuit size={20} /></span><h3>Find the highest-value move</h3><p>We look at growth, customer experience and repeated admin before recommending a solution.</p></article>
+          <article><span><Workflow size={20} /></span><h3>Build and connect it</h3><p>We deliver the website, automation or operating system and fit it into the way your team works.</p></article>
+          <article><span><ShieldCheck size={20} /></span><h3>Learn and improve</h3><p>We measure what happens, support your team and keep improving the parts that create value.</p></article>
         </div>
       </section>
 
-      <section className="marketing-section" id="plans">
-        <div className="marketing-section-heading"><p className="marketing-kicker">Flexible plans</p><h2>Three clear places to begin.</h2><p>Every business receives a tailored quote and final scope. These plans help you choose the level of transformation that feels right.</p></div>
+      <section className="marketing-section" id="services">
+        <div className="marketing-section-heading"><p className="marketing-kicker">Ways we can help</p><h2>One partner from first impression to daily operation.</h2><p>Start with the outcome you need now. Every engagement is scoped after a focused business review.</p></div>
         <div className="plan-grid">
-          {plans.map((plan) => (
-            <article className={`plan-card ${plan.featured ? "featured" : ""}`} key={plan.name}>
-              {plan.featured && <span className="plan-popular">Most popular starting point</span>}
-              <p className="plan-eyebrow">{plan.eyebrow}</p><h3>{plan.name}</h3>
-              <div className="custom-price">Custom quote</div>
-              <p>{plan.description}</p>
+          {offers.map((offer) => (
+            <article className={`plan-card ${offer.featured ? "featured" : ""}`} key={offer.name}>
+              {offer.featured && <span className="plan-popular">A strong place to start</span>}
+              <p className="plan-eyebrow">{offer.eyebrow}</p><h3>{offer.name}</h3>
+              <div className="custom-price">Tailored proposal</div>
+              <p>{offer.description}</p>
               <div className="plan-divider" />
-              <small>Your plan could include:</small>
-              <ul>{plan.examples.map((item) => <li key={item}><Check size={15} /> {item}</li>)}</ul>
-              <Link href={`/discovery?plan=${plan.name.toLowerCase()}`}>Discuss {plan.name} <ArrowRight size={15} /></Link>
+              <small>Your engagement could include:</small>
+              <ul>{offer.examples.map((item) => <li key={item}><Check size={15} /> {item}</li>)}</ul>
+              <Link href={`/discovery?plan=${offer.slug}`}>Discuss this service <ArrowRight size={15} /></Link>
             </article>
           ))}
         </div>
-        <p className="plan-note">Plans are starting points, not fixed feature lists. Final modules, monthly fee and contract scope are agreed after discovery. Minimum commitment: 3 or 6 months.</p>
+        <p className="plan-note">Services can stand alone or work together. Scope, measures, delivery stages and ongoing support are agreed after discovery.</p>
       </section>
 
-      <section className="marketing-cta"><div><p className="marketing-kicker">Let’s make work feel lighter</p><h2>Tell us what is slowing your business down.</h2><p>We’ll map the right starting plan and prepare a quote around the outcome you need.</p></div><Link href="/discovery" className="marketing-primary">Start discovery <ArrowRight size={17} /></Link></section>
-      <footer className="marketing-footer"><span>© 2026 BDB OS</span><span>Calm, connected business operations.</span></footer>
+      <section className="marketing-cta"><div><p className="marketing-kicker">Let’s find the next best move</p><h2>Tell us what you want the business to do better.</h2><p>We’ll review the opportunity and recommend a focused place to start.</p></div><Link href="/discovery" className="marketing-primary">Book a business review <ArrowRight size={17} /></Link></section>
+      <footer className="marketing-footer"><span>© 2026 BDB</span><span>Business. Done. Better.</span></footer>
     </main>
   );
 }

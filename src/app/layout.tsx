@@ -4,6 +4,7 @@ import "./globals.css";
 import "./bdb-design-system.css";
 import "./bdb-refinement-v2.css";
 import { Providers } from "./providers";
+import { getSiteUrl } from "@/lib/site-url";
 
 const bodyFont = DM_Sans({
   variable: "--font-body",
@@ -18,13 +19,27 @@ const displayFont = Manrope({
 });
 
 export const metadata: Metadata = {
+  metadataBase: getSiteUrl(),
   title: {
     default: "BDB OS · Business. Done. Better.",
     template: "%s · BDB OS",
   },
-  description: "A calm, connected operating system for modern small businesses.",
+  description: "Websites, practical AI automation and custom business systems for growing businesses.",
   applicationName: "BDB OS",
   manifest: "/manifest.webmanifest",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    title: "BDB OS · Business. Done. Better.",
+    description: "Websites, practical AI automation and custom business systems for growing businesses.",
+    siteName: "BDB OS",
+  },
+  twitter: {
+    card: "summary",
+    title: "BDB OS · Business. Done. Better.",
+    description: "Websites, practical AI automation and custom business systems for growing businesses.",
+  },
   appleWebApp: {
     capable: true,
     title: "BDB OS",

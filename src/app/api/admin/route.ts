@@ -147,7 +147,11 @@ async function dashboard(admin: AdminClient) {
       .filter((profile) => profile.id && profile.full_name)
       .map((profile) => [String(profile.id), String(profile.full_name).trim()]),
   );
-  const platformAdminIds = new Set((platformAdmins.data ?? []).map((record) => String(record.user_id)));
+  const platformAdminIds = new Set(
+    (platformAdmins.data ?? [])
+      .filter((record) => record.active)
+      .map((record) => String(record.user_id)),
+  );
   const enrichedRecentAudit = ((recentAudit.data ?? []) as AuditRow[]).map((row) =>
     enrichAudit(row, profilesById, usersById, platformAdminIds),
   );
@@ -195,6 +199,16 @@ async function dashboard(admin: AdminClient) {
       ...membership,
       email: usersById.get(membership.user_id)?.email ?? "",
     })),
+    accounts: users.map((user) => ({
+      id: user.id,
+      email: user.email ?? "",
+      full_name: profilesById.get(user.id) ?? "",
+      created_at: user.created_at,
+      last_sign_in_at: user.last_sign_in_at ?? null,
+      email_confirmed_at: user.email_confirmed_at ?? null,
+      banned_until: user.banned_until ?? null,
+      is_platform_admin: platformAdminIds.has(user.id),
+    })),
     groups: groups.data ?? [],
     groupLinks: groupLinks.data ?? [],
     audit: enrichedRecentAudit,
@@ -218,10 +232,13 @@ function validEmail(value: string) {
 
 export async function GET() {
   try {
-    await requirePlatformAdmin();
+    const identity = await requirePlatformAdmin();
     const admin = createAdminClient();
     if (!admin) throw new Error("NOT_CONFIGURED");
-    return Response.json(await dashboard(admin), { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { ...(await dashboard(admin)), actorUserId: identity.userId },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     return adminErrorResponse(error);
   }
@@ -412,6 +429,21 @@ export async function PATCH(request: Request) {
     } else if (body.action === "workspace-status" && body.workspaceId && body.status) {
       const allowed = ["trial", "active", "suspended", "cancelled"];
       if (!allowed.includes(body.status)) return Response.json({ error: "Invalid status." }, { status: 400 });
+      if (body.status === "active") {
+        const { count, error: ownerError } = await admin
+          .from("workspace_memberships")
+          .select("user_id", { count: "exact", head: true })
+          .eq("workspace_id", body.workspaceId)
+          .eq("access_profile", "owner")
+          .eq("status", "active");
+        if (ownerError) throw ownerError;
+        if ((count ?? 0) < 1) {
+          return Response.json(
+            { error: "Activate this workspace after at least one Owner has accepted their invitation." },
+            { status: 409 },
+          );
+        }
+      }
       const { error } = await admin.from("workspaces").update({ status: body.status }).eq("id", body.workspaceId);
       if (error) throw error;
     } else if (body.action === "link-workspace" && body.workspaceId && body.groupId) {

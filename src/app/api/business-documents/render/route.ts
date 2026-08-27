@@ -35,13 +35,19 @@ function discountPercent(line: Record<string, unknown>) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
-  const id = uuid(url.searchParams.get("id"), "Document");
-  const type = String(url.searchParams.get("type") ?? "") as BusinessDocumentKind;
-  const format = String(url.searchParams.get("format") ?? "html");
-  if (!TYPES.has(type)) return Response.json({ error: "Business document type is invalid." }, { status: 400 });
+  let format = "html";
 
   const result = await runCommand(async () => {
+    // Keep all user-controlled parsing inside the command boundary so malformed
+    // direct URLs and stale browser links return a structured 4xx response
+    // instead of escaping into the global error handler.
+    const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
+    const id = uuid(url.searchParams.get("id"), "Document");
+    const type = String(url.searchParams.get("type") ?? "") as BusinessDocumentKind;
+    format = String(url.searchParams.get("format") ?? "html");
+    if (!TYPES.has(type)) {
+      throw new CommandError("INVALID_BUSINESS_DOCUMENT_INPUT", "Business document type is invalid.");
+    }
     await requireWorkspaceCommand(request, workspaceId);
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
