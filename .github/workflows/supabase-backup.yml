@@ -53,6 +53,13 @@ jobs:
             postgres:17-bookworm \
             -lc 'command -v openssl >/dev/null || { apt-get update && apt-get install -y --no-install-recommends openssl; }; bash scripts/backup-supabase.sh backup-output'
 
+          # The official PostgreSQL container runs this command as root. Return
+          # ownership to the runner while preserving private file permissions
+          # so upload-artifact can read the encrypted output.
+          sudo chown -R "$(id -u):$(id -g)" backup-output
+          find backup-output -type d -exec chmod 700 {} +
+          find backup-output -type f -exec chmod 600 {} +
+
       - name: Upload encrypted backup
         uses: actions/upload-artifact@v4
         with:

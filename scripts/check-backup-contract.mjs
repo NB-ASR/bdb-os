@@ -21,6 +21,8 @@ assert.match(workflow, /workflow_dispatch:/);
 assert.match(workflow, /secrets\.SUPABASE_DB_URL/);
 assert.match(workflow, /actions\/upload-artifact@v4/);
 assert.match(workflow, /retention-days:\s*7/);
+assert.match(workflow, /chown -R/);
+assert.match(workflow, /chmod 600/);
 assert.match(publicCertificate, /-----BEGIN CERTIFICATE-----/);
 assert.match(publicCertificate, /-----END CERTIFICATE-----/);
 assert.doesNotMatch(publicCertificate, /PRIVATE KEY/);
