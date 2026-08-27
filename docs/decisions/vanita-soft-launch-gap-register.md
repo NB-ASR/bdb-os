@@ -1,22 +1,20 @@
 # Vanita soft-launch gap register
 
 Baseline: `main` at `6b49fe6a826ba7a3aa874ce7f207d6ad1fa10162`,
-audited 26 August 2026.
+audited through 27 August 2026.
 
 ## BLOCKER
 
-- A successful encrypted Production database backup and restore-list
-  verification must be recorded before real client data is entered. A daily,
-  seven-day-retention, public-key-encrypted workflow is now present; its first
-  run requires the `SUPABASE_DB_URL` repository secret.
+- No reproduced software, tenant-isolation, data-integrity or recovery blocker
+  remains in the accepted release candidate.
 
 ## HIGH
 
-- Calendar PR #59 stopped at Pass 1. The final candidate adds actor/workspace
+- Resolved: Calendar PR #59 stopped at Pass 1. The final candidate adds actor/workspace
   cache isolation, safe ambiguous retry, bounded reads, configured rooms,
   Service eligibility and UK DST-gap rejection.
-- Supplier Payables used the caller client for a service-role-only summary RPC.
-- Malformed business-document render URLs escaped the structured command
+- Resolved: Supplier Payables used the caller client for a service-role-only summary RPC.
+- Resolved: malformed business-document render URLs escaped the structured command
   boundary.
 - The real Vanita owner identity is not yet available; acceptance uses
   rollback-only QA identities until it is supplied. Invitation and real-owner

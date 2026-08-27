@@ -84,13 +84,12 @@ const canonicalProductionHistory = [
   "20260823215700_customer_360_cross_engine_pass3.sql",
   "20260823224000_customer_engine_closure_pass4.sql",
   "20260823235000_customer_engine_closure_advisor_indexes.sql",
-];
-
-const pendingMigrations = [
   "20260824130700_calendar_canonical_integrity_pass1.sql",
   "20260826193000_calendar_timezone_integrity_closure.sql",
   "20260826194000_launch_performance_duplicate_index.sql",
 ];
+
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 

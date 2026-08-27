@@ -29,6 +29,16 @@ SHA-256 and workflow run in the release record. A workflow definition is not a
 backup: the release gate stays open until one run and restore-list verification
 have succeeded.
 
+The pre-launch recovery gate passed on 27 August 2026. Workflow run
+`33115343723` produced artifact `bdb-os-production-backup-33115343723`; its
+artifact SHA-256 is
+`7c930e097502a74ff992ebeed24f7b2c1a0c1fab0a0e307836a16fb7b5f739a6` and
+its encrypted dump SHA-256 is
+`ea0cfb776d992b43fed843d8229be984153b8c77632ee7291621791f7cef6da3`.
+The downloaded artifact was independently decrypted with the separate key and
+verified to contain a PostgreSQL custom-format dump before the plaintext was
+securely removed.
+
 For a manual run, export `SUPABASE_DB_URL`, then run
 `bash scripts/backup-supabase.sh <private-output-directory>`.
 

@@ -1,6 +1,6 @@
 # Calendar Engine V1 Closure
 
-Status: Closure candidate complete; awaiting exact-SHA release gates
+Status: Closure complete; Production migrations applied and verified
 Branch: `codex/vanita-final-stabilisation-2026-08-31`
 Base: `6b49fe6a826ba7a3aa874ce7f207d6ad1fa10162`
 
