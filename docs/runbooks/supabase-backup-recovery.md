@@ -4,41 +4,48 @@
 
 The BDB OS Production project is on Supabase Free. Supabase does not provide
 managed daily backups on this plan; its guidance is to run regular logical
-exports and retain them off site. The repository therefore includes a manual
-script that creates an encrypted custom-format `pg_dump` and validates the
-archive before encryption.
+exports and retain them off site. The repository therefore includes a daily
+GitHub Actions workflow and a manual script. Both create a custom-format
+`pg_dump`, validate its restore list, and encrypt it before publication.
 
-Before the first real client record is stored, provide these values through a
-trusted secret manager on the backup runner:
+The scheduled workflow runs at 03:30 UTC and keeps each encrypted GitHub
+Actions artifact for seven days. Configure this repository secret before the
+first real client record is stored:
 
 - `SUPABASE_DB_URL`: the Production session-pooler or direct PostgreSQL URL,
   with a database password and SSL required.
-- `BACKUP_ENCRYPTION_PASSPHRASE`: an independent high-entropy secret kept
-  outside Supabase and Vercel.
 
-Run `bash scripts/backup-supabase.sh <private-output-directory>` and retain the
-artifact SHA-256 in the release record. Plaintext dumps exist only in the
-temporary directory and are removed after encryption.
+The workflow uses PostgreSQL 17 client tools and the public certificate at
+`ops/backup/bdb-os-backup-public-certificate.crt`. The matching recovery key is
+`BDB-OS-Backup-Recovery-Key-2026-08-27.pem`; it is retained separately from the
+repository and GitHub. Losing that key makes every backup unrecoverable. The
+certificate expires on 24 August 2036 and must be rotated before then.
 
-Do not upload Production data to GitHub Actions artifacts or another general
-build system by default. Select and explicitly approve an encrypted backup
-destination with access control and retention appropriate for client data,
-then automate the same script against that destination. Until that destination
-and the required secrets are approved, the backup release gate remains open.
+The dump is encrypted as CMS AuthEnvelopedData using AES-256-GCM and the
+certificate's RSA-4096 public key. GitHub never receives the recovery key or a
+decryption passphrase. Plaintext dumps exist only in a private temporary
+directory and are removed after encryption. Record the artifact name, manifest
+SHA-256 and workflow run in the release record. A workflow definition is not a
+backup: the release gate stays open until one run and restore-list verification
+have succeeded.
+
+For a manual run, export `SUPABASE_DB_URL`, then run
+`bash scripts/backup-supabase.sh <private-output-directory>`.
 
 ## Restore
 
 1. Download the encrypted artifact and compare its SHA-256 with the manifest.
 2. Work in a private temporary directory on a trusted host with PostgreSQL 17
    client tools.
-3. Decrypt without exposing the passphrase in shell history:
+3. Place the separately retained recovery key in the private directory, then
+   decrypt the authenticated CMS envelope:
 
    ```bash
-   export BACKUP_ENCRYPTION_PASSPHRASE='loaded-from-a-secret-manager'
-   openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 \
-     -in bdb-os-YYYYMMDDTHHMMSSZ.dump.enc \
-     -out bdb-os.restore.dump \
-     -pass env:BACKUP_ENCRYPTION_PASSPHRASE
+   openssl cms -decrypt -binary -inform DER \
+     -in bdb-os-YYYYMMDDTHHMMSSZ.dump.cms \
+     -recip ops/backup/bdb-os-backup-public-certificate.crt \
+     -inkey BDB-OS-Backup-Recovery-Key-2026-08-27.pem \
+     -out bdb-os.restore.dump
    pg_restore --list bdb-os.restore.dump
    ```
 
