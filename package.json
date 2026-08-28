@@ -14,7 +14,8 @@
     "test:migrations": "node scripts/check-migration-history.mjs",
     "test:vanita": "npm --prefix projects/vanita-stock run check",
     "test:e2e": "playwright test",
-    "smoke": "node scripts/smoke-production.mjs"
+    "smoke": "node scripts/smoke-production.mjs",
+    "repair:founder-identities": "node scripts/repair-founder-identity-names.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.1",

@@ -45,6 +45,7 @@ jobs:
           e5bd295c2528c95287c2eb7f57284bfbb35c4cdb7c589aa0fc4f24f6aa33cc6e  supabase/migrations/20260824130700_calendar_canonical_integrity_pass1.sql
           77b9ca6aadc33b83799d59bbb1d5826b8c139f48a24d230e595c902061f1ebbb  supabase/migrations/20260826193000_calendar_timezone_integrity_closure.sql
           7733ed691533d8ffca7b22eb0f37e8111167a7e1ebf0c8034daf004e2f182755  supabase/migrations/20260826194000_launch_performance_duplicate_index.sql
+          d07be6a74b43f6e568f923adefbebabbd2fa495666df0ec5fb5f0b88d85b4668  supabase/migrations/20260828150126_founder_admin_v1_repair.sql
           CHECKSUMS
 
       - name: Install pinned Supabase CLI

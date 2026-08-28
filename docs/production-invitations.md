@@ -69,7 +69,9 @@ The application callback supports implicit hash sessions, PKCE codes and token-h
 
 ## Production email delivery
 
-Before onboarding real customers, configure custom SMTP using a BDB-owned sending domain. Recommended sender:
+Production currently falls back to Supabase's built-in Auth email sender. Supabase documents that this service is for trial use, only sends to project-team addresses, and defaults to two messages per hour. The observed Production `over_email_send_rate_limit` responses are therefore an infrastructure finding, not an application retry problem.
+
+Custom SMTP is a launch requirement before onboarding real customers. Configure it in the Production Supabase project under **Project Settings → Authentication → SMTP Settings** using a BDB-owned sending domain. Recommended sender:
 
 ```text
 BDB OS Access <access@auth.bdb-os.com>
@@ -77,12 +79,16 @@ BDB OS Access <access@auth.bdb-os.com>
 
 Required external setup:
 
-1. Create the transactional email provider account.
+1. Create the transactional email provider account (for example Resend, Postmark, SendGrid or AWS SES).
 2. Verify `auth.bdb-os.com` through DNS.
 3. Add SPF, DKIM and DMARC records.
-4. Enter the SMTP host, port, username and password in Supabase.
-5. Disable link tracking for authentication emails.
-6. Test Gmail, Outlook and a Microsoft 365 business inbox.
+4. Enter the provider SMTP host, port, username, password, sender email and sender name in the Production Supabase project.
+5. Store credentials only in the provider and Supabase project configuration. Do not commit them or mirror them into client-side environment variables.
+6. Disable link tracking for authentication emails.
+7. After custom SMTP is active, set an appropriate Auth email rate limit in **Authentication → Rate Limits** based on provider capacity and expected onboarding volume.
+8. Test Gmail, Outlook and a Microsoft 365 business inbox.
+
+Acceptance evidence must include a sent Owner invitation, a sent additional-user invitation, a resend after the application cooldown, and clear Founder Admin state for sent, pending, expired and failed delivery. BDB OS must continue treating SMTP/provider failures as recoverable invitation failures even after custom SMTP is enabled.
 
 Never forward customer authentication links through a founder mailbox. The secure token must be delivered directly to the invited recipient.
 
