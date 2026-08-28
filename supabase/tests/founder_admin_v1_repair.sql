@@ -37,7 +37,8 @@ insert into auth.users(id,email) values
 insert into public.profiles(id,full_name) values
   ('f0000000-0000-4000-8000-000000000001','Founder Admin V1'),
   ('f0000000-0000-4000-8000-000000000002','Invited User V1'),
-  ('f0000000-0000-4000-8000-000000000003','Unused User V1');
+  ('f0000000-0000-4000-8000-000000000003','Unused User V1')
+on conflict (id) do update set full_name = excluded.full_name;
 insert into public.platform_admins(user_id,role,active)
 values ('f0000000-0000-4000-8000-000000000001','founder',true);
 
