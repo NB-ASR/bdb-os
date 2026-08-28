@@ -7,7 +7,7 @@ const founderHelpers = fs.readFileSync("src/lib/founder-admin.ts", "utf8");
 const invitations = fs.readFileSync("src/lib/server/founder-admin-invitations.ts", "utf8");
 const adminPage = fs.readFileSync("src/app/admin/page.tsx", "utf8");
 const accountPanel = fs.readFileSync("src/components/founder-account-workspaces.tsx", "utf8");
-const migration = fs.readFileSync("supabase/migrations/20260828140637_founder_admin_v1_repair.sql", "utf8");
+const migration = fs.readFileSync("supabase/migrations/20260828150126_founder_admin_v1_repair.sql", "utf8");
 const identityRepair = fs.readFileSync("scripts/repair-founder-identity-names.mjs", "utf8");
 
 function assert(source, pattern, message) {

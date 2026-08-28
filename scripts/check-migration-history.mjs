@@ -87,11 +87,10 @@ const canonicalProductionHistory = [
   "20260824130700_calendar_canonical_integrity_pass1.sql",
   "20260826193000_calendar_timezone_integrity_closure.sql",
   "20260826194000_launch_performance_duplicate_index.sql",
+  "20260828150126_founder_admin_v1_repair.sql",
 ];
 
-const pendingMigrations = [
-  "20260828140637_founder_admin_v1_repair.sql",
-];
+const pendingMigrations = [];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 
