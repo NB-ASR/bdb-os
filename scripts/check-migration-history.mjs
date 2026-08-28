@@ -89,7 +89,9 @@ const canonicalProductionHistory = [
   "20260826194000_launch_performance_duplicate_index.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260828140637_founder_admin_v1_repair.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 

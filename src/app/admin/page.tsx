@@ -15,7 +15,6 @@ import {
   Layers3,
   Link2,
   Loader2,
-  MailCheck,
   Plus,
   RefreshCw,
   Settings2,
@@ -26,7 +25,11 @@ import {
   UsersRound,
 } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
-import { FounderAccountWorkspaces, type FounderAccount } from "@/components/founder-account-workspaces";
+import {
+  FounderAccountDirectory,
+  FounderAccountWorkspaces,
+  type FounderAccount,
+} from "@/components/founder-account-workspaces";
 import { FounderClientUsage } from "@/components/founder-client-usage";
 
 type Plan = { id: string; code: string; name: string; description: string; is_active: boolean };
@@ -65,6 +68,9 @@ type Membership = {
   email: string;
   invitation_expires_at: string | null;
   invitation_last_sent_at: string | null;
+  invitation_delivery_status: string | null;
+  invitation_delivery_attempted_at: string | null;
+  invitation_delivery_error_code: string | null;
   created_at: string;
   joined_at: string | null;
   profiles?: { full_name?: string | null } | null;
@@ -122,15 +128,23 @@ type BrandingState = {
   updatedAt: string | null;
 };
 type Tab = "clients" | "accounts" | "groups" | "plans" | "audit";
-type ClientSection = "overview" | "access" | "usage" | "billing" | "branding" | "owner";
+type ClientSection = "profile" | "users" | "modules" | "usage" | "billing" | "branding" | "danger";
+
+type WorkspaceDeletionPreview = {
+  can_delete: boolean;
+  total_records: number;
+  protected_financial_records: number;
+  record_counts: Record<string, number>;
+};
 
 const clientSections: Array<{ key: ClientSection; label: string }> = [
-  { key: "overview", label: "Overview" },
-  { key: "access", label: "Access & Modules" },
+  { key: "profile", label: "Business Profile" },
+  { key: "users", label: "Users & Access" },
+  { key: "modules", label: "Plan & Modules" },
   { key: "usage", label: "Usage" },
   { key: "billing", label: "Billing" },
   { key: "branding", label: "Branding" },
-  { key: "owner", label: "Owner & Access" },
+  { key: "danger", label: "Danger Zone" },
 ];
 
 function formatMoment(value: string | null | undefined, compact = false) {
@@ -206,7 +220,7 @@ export default function AdminPage() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [tab, setTab] = useState<Tab>("clients");
   const [selected, setSelected] = useState<string | null>(null);
-  const [clientSection, setClientSection] = useState<ClientSection>("overview");
+  const [clientSection, setClientSection] = useState<ClientSection>("profile");
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -215,7 +229,8 @@ export default function AdminPage() {
   const [billingAmount, setBillingAmount] = useState("");
   const [billingTerm, setBillingTerm] = useState("6");
   const [billingTrial, setBillingTrial] = useState("0");
-  const [supportReason, setSupportReason] = useState("");
+  const [deletionPreview, setDeletionPreview] = useState<WorkspaceDeletionPreview | null>(null);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setError("");
@@ -273,7 +288,6 @@ export default function AdminPage() {
   const activeTemplate = data?.templates.find((template) => template.id === activeWorkspace?.workspace_template_id);
   const subscription = data?.subscriptions.find((item) => item.workspace_id === activeWorkspace?.id);
   const contract = data?.contracts.find((item) => item.workspace_id === activeWorkspace?.id);
-  const owner = data?.memberships.find((membership) => membership.workspace_id === activeWorkspace?.id && membership.role === "owner");
   const activeGroupLink = data?.groupLinks.find((link) => link.workspace_id === activeWorkspace?.id);
   const activeGroup = data?.groups.find((group) => group.id === activeGroupLink?.group_id);
   const brandingFeature = data?.features.find((feature) => feature.key === "custom_branding") ?? null;
@@ -413,14 +427,61 @@ export default function AdminPage() {
     await load(true);
   }
 
-  async function recordAdministrativeReason() {
-    if (!activeWorkspace || !supportReason.trim()) return;
-    const saved = await mutate(
-      { action: "support-access", workspaceId: activeWorkspace.id, reason: supportReason.trim() },
-      "support",
-      "Administrative reason recorded in the audit trail.",
-    );
-    if (saved) setSupportReason("");
+  async function updateBusinessProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeWorkspace) return;
+    const values = new FormData(event.currentTarget);
+    const currentSlug = activeWorkspace.slug;
+    const nextSlug = String(values.get("slug") ?? "");
+    if (nextSlug !== currentSlug && !window.confirm("Changing the workspace address can affect saved links. Continue?")) return;
+    await mutate({
+      action: "workspace-profile",
+      workspaceId: activeWorkspace.id,
+      name: values.get("name"),
+      legalName: values.get("legalName"),
+      slug: nextSlug,
+    }, "workspace-profile", "Business profile updated.");
+  }
+
+  async function reviewPermanentDeletion() {
+    if (!activeWorkspace) return;
+    setBusy("deletion-preview");
+    setError("");
+    setNotice("");
+    const response = await fetch("/api/admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "workspace-deletion-preview", workspaceId: activeWorkspace.id }),
+    });
+    const result = await response.json().catch(() => ({})) as { error?: string; preview?: WorkspaceDeletionPreview };
+    setBusy("");
+    if (!response.ok || !result.preview) {
+      setError(result.error ?? "The deletion safety review could not be completed.");
+      return;
+    }
+    setDeletionPreview(result.preview);
+  }
+
+  async function permanentlyDeleteBusiness() {
+    if (!activeWorkspace || deletionConfirmation !== activeWorkspace.name) return;
+    if (!window.confirm(`Permanently delete the empty business ${activeWorkspace.name}? This cannot be undone.`)) return;
+    setBusy("delete-workspace");
+    setError("");
+    const response = await fetch("/api/admin", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workspaceId: activeWorkspace.id, expectedName: deletionConfirmation }),
+    });
+    const result = await response.json().catch(() => ({})) as { error?: string; deleted_name?: string };
+    setBusy("");
+    if (!response.ok) {
+      setError(result.error ?? "The business could not be permanently deleted.");
+      return;
+    }
+    setNotice(`${result.deleted_name ?? activeWorkspace.name} was permanently deleted.`);
+    setDeletionPreview(null);
+    setDeletionConfirmation("");
+    await load(true);
   }
 
   function openClientSection(section: ClientSection) {
@@ -430,19 +491,24 @@ export default function AdminPage() {
       setBillingTrial("0");
     }
     if (section === "branding") setBranding(null);
+    if (section !== "danger") {
+      setDeletionPreview(null);
+      setDeletionConfirmation("");
+    }
     setClientSection(section);
   }
 
   function selectClient(workspaceId: string) {
     setSelected(workspaceId);
-    setClientSection("overview");
+    setClientSection("profile");
     setBillingAmount("");
     setBillingTerm("6");
     setBillingTrial("0");
-    setSupportReason("");
     setBranding(null);
     setError("");
     setNotice("");
+    setDeletionPreview(null);
+    setDeletionConfirmation("");
   }
 
   if (!data && !error) return <main className="admin-loading"><Loader2 className="spin" /> Loading secure control plane…</main>;
@@ -458,7 +524,7 @@ export default function AdminPage() {
   const pageTitle = tab === "clients"
     ? "Client businesses"
     : tab === "accounts"
-      ? "Accounts & workspaces"
+      ? "Account directory"
       : tab === "plans"
         ? "Plans & features"
         : tab === "groups"
@@ -472,12 +538,12 @@ export default function AdminPage() {
         <p className="admin-label">Founder control plane</p>
         <nav>
           <button className={tab === "clients" ? "active" : ""} onClick={() => setTab("clients")}><Building2 size={18} /> Clients</button>
-          <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}><UsersRound size={18} /> Accounts & Workspaces</button>
           <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}><SlidersHorizontal size={18} /> Plans & Features</button>
           <button className={tab === "groups" ? "active" : ""} onClick={() => setTab("groups")}><Layers3 size={18} /> Business Groups</button>
           <button className={tab === "audit" ? "active" : ""} onClick={() => setTab("audit")}><Activity size={18} /> Audit Trail</button>
           <div className="admin-nav-divider" />
           <p className="admin-nav-group-label">Advanced</p>
+          <button className={tab === "accounts" ? "active" : ""} onClick={() => setTab("accounts")}><UsersRound size={18} /> Account Directory</button>
           <Link href="/admin/templates"><Layers3 size={18} /> Workspace Templates</Link>
           <Link href="/admin/manual-provisioning"><KeyRound size={18} /> Manual Provisioning</Link>
         </nav>
@@ -498,9 +564,9 @@ export default function AdminPage() {
               </div>
             ) : tab === "accounts" ? (
               <div className="admin-top-quiet-stats">
-                <span><strong>{data.accounts.length}</strong> Auth accounts</span>
-                <span><strong>{data.memberships.length}</strong> workspace memberships</span>
-                <span className="admin-shared-room"><i /> Supabase-backed · MFA protected</span>
+                <span><strong>{data.accounts.length}</strong> sign-in accounts</span>
+                <span><strong>{data.accounts.filter((account) => !data.memberships.some((membership) => membership.user_id === account.id)).length}</strong> without business access</span>
+                <span className="admin-shared-room"><i /> Advanced diagnostics · MFA protected</span>
               </div>
             ) : null}
           </div>
@@ -520,12 +586,15 @@ export default function AdminPage() {
               {!data.workspaces.length && <p className="muted">No clients have been provisioned.</p>}
               {data.workspaces.map((workspace) => {
                 const summary = data.workspaceActivity?.[workspace.id];
+                const workspaceMembers = data.memberships.filter((membership) => membership.workspace_id === workspace.id);
+                const workspaceOwner = workspaceMembers.find((membership) => membership.access_profile === "owner");
                 return (
                   <button key={workspace.id} className={workspace.id === activeWorkspace?.id ? "active" : ""} onClick={() => selectClient(workspace.id)}>
                     <span className="client-initial">{workspace.name.slice(0, 2).toUpperCase()}</span>
                     <span className="admin-client-list-copy">
                       <strong>{workspace.name}</strong>
-                      <small>{data.plans.find((plan) => plan.id === workspace.plan_id)?.name ?? "Custom"} · {workspace.status}</small>
+                      <small>{workspace.status} · {workspaceMembers.length} {workspaceMembers.length === 1 ? "user" : "users"}</small>
+                      <small>Owner: {workspaceOwner?.profiles?.full_name || workspaceOwner?.email || "Not assigned"}</small>
                       <small className="admin-client-audit-line">{summary?.created_by_name ? `Created by ${actorLabel(summary.created_by_name, summary.created_by_email)}` : "Creator not recorded"} · {formatMoment(summary?.created_at ?? workspace.created_at, true)}</small>
                       <small className="admin-client-audit-line">{summary?.last_modified_by_name || summary?.last_modified_by_email ? `Last modified by ${actorLabel(summary.last_modified_by_name, summary.last_modified_by_email)} · ${formatMoment(summary.last_modified_at, true)}` : "No Founder modification recorded"}</small>
                     </span>
@@ -563,9 +632,17 @@ export default function AdminPage() {
                   ))}
                 </div>
 
-                {clientSection === "overview" && (
+                {clientSection === "profile" && (
                   <section>
-                    <div className="admin-section-heading"><h3>Client overview</h3><p>Core commercial and workspace configuration for this business.</p></div>
+                    <div className="admin-section-heading"><h3>Business Profile</h3><p>Edit the client identity and review its core commercial configuration.</p></div>
+                    <form className="admin-panel" onSubmit={updateBusinessProfile} style={{ marginBottom: 18 }}>
+                      <div className="admin-form-grid">
+                        <div className="field"><label>Business name</label><input name="name" defaultValue={activeWorkspace.name} minLength={2} required key={`${activeWorkspace.id}-name`} /></div>
+                        <div className="field"><label>Legal name</label><input name="legalName" defaultValue={activeWorkspace.legal_name ?? ""} key={`${activeWorkspace.id}-legal`} /></div>
+                        <div className="field"><label>Workspace address</label><input name="slug" defaultValue={activeWorkspace.slug} pattern="[a-z0-9-]+" minLength={3} required key={`${activeWorkspace.id}-slug`} /><small>Changing this can affect saved links. Conflicts are blocked.</small></div>
+                      </div>
+                      <div className="admin-form-actions"><button className="button button-primary" disabled={busy === "workspace-profile"}>{busy === "workspace-profile" ? <Loader2 className="spin" size={15} /> : <Check size={15} />} Save business profile</button></div>
+                    </form>
                     <div className="admin-overview-grid">
                       <article className="admin-panel">
                         <h4>Workspace</h4>
@@ -624,9 +701,24 @@ export default function AdminPage() {
                   </section>
                 )}
 
-                {clientSection === "access" && (
+                {clientSection === "users" && (
                   <section>
-                    <div className="admin-section-heading"><h3>Access & Modules</h3><p>Client-specific module overrides. The original workspace template is not changed.</p></div>
+                    <div className="admin-section-heading"><h3>Users & Access</h3><p>People belonging to this business only. Removing access does not delete their sign-in account or other business access.</p></div>
+                    <FounderAccountWorkspaces
+                      accounts={data.accounts}
+                      workspace={activeWorkspace}
+                      memberships={data.memberships}
+                      actorUserId={data.actorUserId}
+                      onChanged={() => load(true)}
+                      onError={setError}
+                      onNotice={setNotice}
+                    />
+                  </section>
+                )}
+
+                {clientSection === "modules" && (
+                  <section>
+                    <div className="admin-section-heading"><h3>Plan & Modules</h3><p>Client-specific module overrides. The original workspace template is not changed.</p></div>
                     <div className="admin-module-grid">
                       {data.features.filter((feature) => feature.key !== "custom_branding").map((feature) => {
                         const override = data.overrides.find((item) => item.workspace_id === activeWorkspace.id && item.feature_key === feature.key);
@@ -707,25 +799,39 @@ export default function AdminPage() {
                   </section>
                 )}
 
-                {clientSection === "owner" && (
+                {clientSection === "danger" && (
                   <section>
-                    <div className="admin-section-heading"><h3>Owner & Access</h3><p>Client ownership and audited Founder administrative activity.</p></div>
+                    <div className="admin-section-heading"><h3>Danger Zone</h3><p>Archive is the normal offboarding action. Permanent deletion is restricted to empty businesses and is irreversible.</p></div>
                     <div className="admin-owner-layout">
                       <article className="admin-panel">
-                        <h4>Business Owner</h4>
-                        <div className="admin-owner-card">
-                          <span><strong>{owner ? owner.profiles?.full_name || owner.email : "No owner membership found"}</strong><small>{owner ? `${owner.email} · ${owner.status}` : "Create or provision an owner before client handover."}</small>{owner?.invitation_expires_at && owner.status === "invited" ? <small>Invitation expires {new Date(owner.invitation_expires_at).toLocaleString()}</small> : null}</span>
-                          {owner?.status === "invited" ? <button className="button button-secondary" onClick={() => void mutate({ action: "resend-owner-invite", workspaceId: activeWorkspace.id }, "resend-owner", "Owner invitation resent for seven days.")} disabled={busy === "resend-owner"}><MailCheck size={15} /> {busy === "resend-owner" ? "Sending…" : "Resend invitation"}</button> : null}
-                        </div>
+                        <h4>Archive business</h4>
+                        <p>Stops normal operation while preserving client, financial and audit history. This is the recommended offboarding action.</p>
+                        <div className="admin-form-actions"><button className="button button-secondary" disabled={activeWorkspace.status === "cancelled" || busy === "archive-workspace"} onClick={() => {
+                          if (!window.confirm(`Archive ${activeWorkspace.name}? Its records will be preserved.`)) return;
+                          void mutate({ action: "archive-workspace", workspaceId: activeWorkspace.id }, "archive-workspace", `${activeWorkspace.name} archived. All records were preserved.`);
+                        }}>{busy === "archive-workspace" ? <Loader2 className="spin" size={15} /> : <ShieldCheck size={15} />} {activeWorkspace.status === "cancelled" ? "Business archived" : "Archive business"}</button></div>
                       </article>
 
                       <article className="admin-panel">
-                        <h4>Administrative audit reason</h4>
-                        <p>Record why Founder-level administrative attention is required. This creates an audit entry; it does not grant a separate support session.</p>
-                        <div className="admin-audit-note" style={{ marginTop: 13 }}>
-                          <textarea value={supportReason} onChange={(event) => setSupportReason(event.target.value)} placeholder="Reason for administrative intervention…" />
-                          <button className="button button-secondary" onClick={() => void recordAdministrativeReason()} disabled={!supportReason.trim() || busy === "support"}><ShieldCheck size={15} /> {busy === "support" ? "Recording…" : "Record reason"}</button>
-                        </div>
+                        <h4>Permanently delete empty business</h4>
+                        <p>This safety review counts operational records. Businesses with operational or protected financial history cannot be deleted here.</p>
+                        {!deletionPreview ? (
+                          <button className="button button-danger" onClick={() => void reviewPermanentDeletion()} disabled={busy === "deletion-preview"}>{busy === "deletion-preview" ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} Review permanent deletion</button>
+                        ) : (
+                          <div className="admin-audit-note" style={{ marginTop: 13 }}>
+                            <div className="settings-note">
+                              <strong>{deletionPreview.can_delete ? "Empty business — eligible for deletion" : "Permanent deletion blocked"}</strong>
+                              <p>{deletionPreview.total_records} operational records found; {deletionPreview.protected_financial_records} are protected financial records.</p>
+                              {Object.keys(deletionPreview.record_counts).length > 0 && <small>{Object.entries(deletionPreview.record_counts).map(([table, count]) => `${table}: ${count}`).join(" · ")}</small>}
+                            </div>
+                            {deletionPreview.can_delete ? (
+                              <>
+                                <div className="field"><label>Type <strong>{activeWorkspace.name}</strong> to confirm</label><input value={deletionConfirmation} onChange={(event) => setDeletionConfirmation(event.target.value)} autoComplete="off" /></div>
+                                <button className="button button-danger" onClick={() => void permanentlyDeleteBusiness()} disabled={deletionConfirmation !== activeWorkspace.name || busy === "delete-workspace"}>{busy === "delete-workspace" ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />} Permanently delete business</button>
+                              </>
+                            ) : <p>Archive this business instead. A compliant purge/export workflow is intentionally outside V1.</p>}
+                          </div>
+                        )}
                       </article>
                     </div>
                   </section>
@@ -736,7 +842,7 @@ export default function AdminPage() {
         )}
 
         {tab === "accounts" && (
-          <FounderAccountWorkspaces
+          <FounderAccountDirectory
             accounts={data.accounts}
             workspaces={data.workspaces}
             memberships={data.memberships}
@@ -803,7 +909,7 @@ export default function AdminPage() {
         )}
       </section>
 
-      {creating && <CreateWorkspace templates={data.templates.filter((template) => template.is_active)} plans={data.plans} onClose={() => setCreating(false)} onCreated={async () => { setCreating(false); setNotice("Client business created from its workspace template and owner invitation sent."); await load(true); }} onError={setError} />}
+      {creating && <CreateWorkspace templates={data.templates.filter((template) => template.is_active)} plans={data.plans} onClose={() => setCreating(false)} onCreated={async (message) => { setCreating(false); setNotice(message); await load(true); }} onError={setError} />}
     </main>
   );
 }
@@ -818,12 +924,14 @@ function CreateWorkspace({
   templates: WorkspaceTemplate[];
   plans: Plan[];
   onClose: () => void;
-  onCreated: () => Promise<void>;
+  onCreated: (message: string) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const defaultTemplate = templates.find((template) => template.is_default) ?? templates[0];
   const [loading, setLoading] = useState(false);
   const [templateId, setTemplateId] = useState(defaultTemplate?.id ?? "");
+  const [businessName, setBusinessName] = useState("");
+  const [advancedSlug, setAdvancedSlug] = useState("");
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? defaultTemplate;
   const selectedPlan = plans.find((plan) => plan.id === selectedTemplate?.plan_id);
 
@@ -845,25 +953,32 @@ function CreateWorkspace({
         templateId,
       }),
     });
-    const result = await response.json().catch(() => ({}));
+    const result = await response.json().catch(() => ({})) as { error?: string; message?: string; suggestedSlug?: string };
     setLoading(false);
-    if (!response.ok) { onError(result.error ?? "The client could not be created."); return; }
-    await onCreated();
+    if (!response.ok) {
+      onError(`${result.error ?? "The client could not be created."}${result.suggestedSlug ? ` Suggested address: ${result.suggestedSlug}.` : ""}`);
+      return;
+    }
+    await onCreated(result.message ?? "Client business created. Check the Owner invitation status under Users & Access.");
   }
 
   return (
     <div className="dialog-backdrop">
       <div className="dialog" style={{ maxWidth: 760 }}>
-        <div className="dialog-header"><div><p className="eyebrow">Founder provisioning</p><h2>Create client business</h2><p className="muted">Creates an isolated workspace, copies one approved template and sends a seven-day activation invitation to its first Business Owner.</p></div><button className="icon-button" onClick={onClose} aria-label="Close">×</button></div>
+        <div className="dialog-header"><div><p className="eyebrow">Founder provisioning</p><h2>Create client business</h2><p className="muted">Creates an isolated business first, then records whether its one-hour Owner activation email was sent or failed.</p></div><button className="icon-button" onClick={onClose} aria-label="Close">×</button></div>
         <form onSubmit={submit}>
           <div className="form-grid">
-            <div className="field"><label>Business name</label><input name="name" required minLength={2} /></div>
+            <div className="field"><label>Business name</label><input name="name" required minLength={2} value={businessName} onChange={(event) => setBusinessName(event.target.value)} /></div>
             <div className="field"><label>Legal name (optional)</label><input name="legalName" /></div>
-            <div className="field"><label>Workspace slug</label><input name="slug" required pattern="[a-z0-9-]+" /></div>
             <div className="field"><label>Workspace template</label><select value={templateId} onChange={(event) => setTemplateId(event.target.value)} required>{templates.map((template) => <option key={template.id} value={template.id}>{template.name} · v{template.version}</option>)}</select></div>
             <div className="field"><label>Owner full name</label><input name="ownerName" required minLength={2} autoComplete="name" /></div>
             <div className="field"><label>Owner email</label><input name="email" type="email" required autoComplete="email" /></div>
           </div>
+          <details className="settings-note" style={{ marginTop: 18 }}>
+            <summary><strong>Advanced workspace address</strong></summary>
+            <p>Optional. Leave blank and BDB OS creates an available address from the business name, including a safe numbered alternative when needed.</p>
+            <div className="field"><label>Workspace address</label><input name="slug" pattern="[a-z0-9-]+" value={advancedSlug} onChange={(event) => setAdvancedSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} placeholder={businessName.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "business-name"} /></div>
+          </details>
           <div className="settings-note" style={{ marginTop: 18 }}>
             <ShieldCheck size={20} />
             <strong>{selectedTemplate?.name ?? "No active template"}</strong>

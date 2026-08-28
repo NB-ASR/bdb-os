@@ -1,7 +1,29 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { classifyFounderAdminError } from "@/lib/founder-admin";
 
 export type AdminIdentity = { userId: string; email: string; role: "founder" | "support" };
+
+export class AdminProductError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly status: number,
+    public readonly publicMessage: string,
+    public readonly details: Record<string, unknown> = {},
+  ) {
+    super(code);
+    this.name = "AdminProductError";
+  }
+}
+
+export function adminProductError(
+  code: string,
+  status: number,
+  message: string,
+  details: Record<string, unknown> = {},
+) {
+  return new AdminProductError(code, status, message, details);
+}
 
 export async function requirePlatformAdmin(): Promise<AdminIdentity> {
   const supabase = await createClient();
@@ -17,6 +39,13 @@ export async function requirePlatformAdmin(): Promise<AdminIdentity> {
 }
 
 export function adminErrorResponse(error: unknown) {
+  if (error instanceof AdminProductError) {
+    return Response.json(
+      { error: error.publicMessage, code: error.code, ...error.details },
+      { status: error.status },
+    );
+  }
+
   const message = error instanceof Error ? error.message : "";
   const knownStatuses: Record<string, number> = {
     NOT_CONFIGURED: 503,
@@ -29,6 +58,17 @@ export function adminErrorResponse(error: unknown) {
     return Response.json({ error: message }, { status: knownStatuses[message] });
   }
 
+  const classified = classifyFounderAdminError(error);
+  if (classified) {
+    return Response.json(
+      { error: classified.message, code: classified.code },
+      { status: classified.status },
+    );
+  }
+
   console.error("Founder Admin request failed", error);
-  return Response.json({ error: "Founder Admin data could not be loaded." }, { status: 500 });
+  return Response.json(
+    { error: "Founder Admin could not complete this request.", code: "UNEXPECTED_ADMIN_ERROR" },
+    { status: 500 },
+  );
 }
