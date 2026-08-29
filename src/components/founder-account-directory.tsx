@@ -289,7 +289,7 @@ export function FounderAccountDirectory({
           <section className="admin-panel founder-account-profile-section">
             <div className="admin-section-heading">
               <h3>Global account controls</h3>
-              <p>These actions affect this person's BDB OS sign-in, not a single business role.</p>
+              <p>These actions affect this person&apos;s BDB OS sign-in, not a single business role.</p>
             </div>
             {globallyProtected ? (
               <div className="settings-note">
