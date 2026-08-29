@@ -25,8 +25,8 @@ import {
   UsersRound,
 } from "lucide-react";
 import { BdbMonogram } from "@/components/brand";
+import { FounderAccountDirectory } from "@/components/founder-account-directory";
 import {
-  FounderAccountDirectory,
   FounderAccountWorkspaces,
   type FounderAccount,
 } from "@/components/founder-account-workspaces";
@@ -511,6 +511,12 @@ export default function AdminPage() {
     setDeletionConfirmation("");
   }
 
+  function openAccountBusiness(workspaceId: string) {
+    selectClient(workspaceId);
+    setClientSection("users");
+    setTab("clients");
+  }
+
   if (!data && !error) return <main className="admin-loading"><Loader2 className="spin" /> Loading secure control plane…</main>;
   if (!data) return (
     <main className="admin-loading" style={{ flexDirection: "column", gap: 14 }}>
@@ -850,6 +856,7 @@ export default function AdminPage() {
             onChanged={() => load(true)}
             onError={setError}
             onNotice={setNotice}
+            onOpenBusiness={openAccountBusiness}
           />
         )}
 
