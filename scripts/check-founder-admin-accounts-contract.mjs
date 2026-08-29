@@ -7,6 +7,8 @@ const founderHelpers = fs.readFileSync("src/lib/founder-admin.ts", "utf8");
 const invitations = fs.readFileSync("src/lib/server/founder-admin-invitations.ts", "utf8");
 const adminPage = fs.readFileSync("src/app/admin/page.tsx", "utf8");
 const accountPanel = fs.readFileSync("src/components/founder-account-workspaces.tsx", "utf8");
+const accountDirectory = fs.readFileSync("src/components/founder-account-directory.tsx", "utf8");
+const accountDirectoryHelpers = fs.readFileSync("src/lib/founder-account-directory.ts", "utf8");
 const migration = fs.readFileSync("supabase/migrations/20260828150126_founder_admin_v1_repair.sql", "utf8");
 const identityRepair = fs.readFileSync("scripts/repair-founder-identity-names.mjs", "utf8");
 
@@ -82,6 +84,8 @@ for (const label of [
 assert(adminPage, /Advanced[\s\S]*Account Directory/, "Global account diagnostics must remain secondary.");
 assert(adminPage, /Workspace address[\s\S]*Changing this can affect saved links/, "Slug editing must warn about saved URLs.");
 assert(adminPage, /type the exact business name|Type <strong>/i, "Permanent deletion must require typed-name confirmation.");
+assert(adminPage, /FounderAccountDirectory[\s\S]*onOpenBusiness=\{openAccountBusiness\}/, "Account profiles must jump to the canonical business Users & Access screen.");
+assert(adminPage, /openAccountBusiness[\s\S]*setClientSection\("users"\)[\s\S]*setTab\("clients"\)/, "Account-to-business navigation must reuse Clients → Users & Access.");
 
 for (const pattern of [
   /workspace={activeWorkspace}/,
@@ -97,7 +101,45 @@ for (const pattern of [
   /Delete unused account/,
   /Email verified/,
   /Name mismatch/,
-]) assert(`${adminPage}\n${accountPanel}`, pattern, `Business user workflow missing: ${pattern}`);
+]) assert(`${adminPage}\n${accountPanel}\n${accountDirectory}`, pattern, `Business user workflow missing: ${pattern}`);
+
+for (const label of [
+  "Full name",
+  "Email",
+  "Business access",
+  "Account status",
+  "Email status",
+  "Last sign-in",
+  "Account Profile",
+  "Global account controls",
+  "Open Users & Access",
+  "Platform Admins",
+  "No Business Access",
+  "Pending / Problems",
+]) assert(accountDirectory, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `Account Directory V1 missing ${label}.`);
+
+for (const pattern of [
+  /filterAccountDirectory/,
+  /isAccountGloballySuspended/,
+  /action: "edit-user"/,
+  /action: "account-auth-status"/,
+  /action: "resend-invitation"/,
+  /action: "cancel-invitation"/,
+  /action: "remove-membership"/,
+  /action: "delete-unused-account"/,
+  /globallyProtected/,
+  /selectedAccount\.is_platform_admin/,
+]) assert(accountDirectory, pattern, `Global Account Profile contract missing: ${pattern}`);
+
+for (const pattern of [
+  /AccountDirectoryFilter/,
+  /businessNamesForAccount/,
+  /name_consistent/,
+  /email_confirmed_at/,
+  /platform-admins/,
+  /no-business/,
+  /problems/,
+]) assert(accountDirectoryHelpers, pattern, `Account Directory filter model missing: ${pattern}`);
 
 for (const pattern of [
   /invitation_delivery_status/,
