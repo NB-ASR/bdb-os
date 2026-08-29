@@ -70,14 +70,14 @@ export function businessNamesForAccount(
     .sort((a, b) => a.localeCompare(b));
 }
 
-export function filterAccountDirectory(
-  accounts: AccountDirectoryAccount[],
+export function filterAccountDirectory<T extends AccountDirectoryAccount>(
+  accounts: T[],
   memberships: AccountDirectoryMembership[],
   workspaces: AccountDirectoryWorkspace[],
   query: string,
   filter: AccountDirectoryFilter,
   now = new Date(),
-) {
+): T[] {
   const normalizedQuery = query.trim().toLowerCase();
 
   return accounts
