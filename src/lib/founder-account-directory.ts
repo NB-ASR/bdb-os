@@ -1,5 +1,3 @@
-import { invitationDeliveryState } from "@/lib/founder-admin";
-
 export type AccountDirectoryFilter =
   | "all"
   | "active"
@@ -43,19 +41,9 @@ export function isAccountGloballySuspended(
 export function accountHasPendingOrProblemState(
   account: AccountDirectoryAccount,
   memberships: AccountDirectoryMembership[],
-  now = new Date(),
 ) {
   if (!account.name_consistent || !account.email_confirmed_at) return true;
-  return memberships.some((membership) => {
-    if (membership.status !== "invited") return false;
-    const state = invitationDeliveryState({
-      membershipStatus: membership.status,
-      deliveryStatus: membership.invitation_delivery_status,
-      expiresAt: membership.invitation_expires_at,
-      now,
-    });
-    return ["pending", "failed", "expired", "sent"].includes(state);
-  });
+  return memberships.some((membership) => membership.status === "invited");
 }
 
 export function businessNamesForAccount(
@@ -97,7 +85,7 @@ export function filterAccountDirectory<T extends AccountDirectoryAccount>(
         case "no-business":
           return accountMemberships.length === 0;
         case "problems":
-          return accountHasPendingOrProblemState(account, accountMemberships, now);
+          return accountHasPendingOrProblemState(account, accountMemberships);
         default:
           return true;
       }
