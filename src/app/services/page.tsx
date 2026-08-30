@@ -5,6 +5,7 @@ import { Archive, CalendarDays, CircleDollarSign, Clock3, Plus, RefreshCw, Searc
 import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
+  discardServiceCommand,
   enqueueServiceCommand,
   failServiceCommand,
   flushServiceQueue,
@@ -57,6 +58,7 @@ const emptyForm: ServiceForm = {
 };
 const CACHE_PREFIX = "bdb-services-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-services-last-workspace-v1";
+const CACHE_LIMIT = 500;
 const cacheKey = (workspaceId: string) => `${CACHE_PREFIX}:${workspaceId}`;
 
 function readLastWorkspace() {
@@ -69,7 +71,7 @@ function readCache(workspaceId: string): ServiceRow[] {
   if (typeof window === "undefined") return [];
   try {
     const value = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "[]") as unknown;
-    return Array.isArray(value) ? value as ServiceRow[] : [];
+    return Array.isArray(value) ? (value as ServiceRow[]).slice(0, CACHE_LIMIT) : [];
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId));
     return [];
@@ -77,7 +79,10 @@ function readCache(workspaceId: string): ServiceRow[] {
 }
 function writeCache(workspaceId: string, services: readonly ServiceRow[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(services.map(({ pending: _pending, ...service }) => service)));
+  window.localStorage.setItem(
+    cacheKey(workspaceId),
+    JSON.stringify(services.slice(0, CACHE_LIMIT).map(({ pending: _pending, ...service }) => service)),
+  );
 }
 function formValues(service: ServiceRow): ServiceForm {
   return {
@@ -250,10 +255,7 @@ export default function ServicesPage() {
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Service change could not be saved.";
-      const code = commandError && typeof commandError === "object" && typeof (commandError as { code?: unknown }).code === "string"
-        ? String((commandError as { code: string }).code)
-        : undefined;
-      failServiceCommand(workspaceId, command.id, message, code);
+      failServiceCommand(workspaceId, command.id, commandError);
       setPendingCommands(readServiceQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
@@ -289,13 +291,13 @@ export default function ServicesPage() {
   }
   async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    removeServiceCommand(workspaceId, commandId);
-    setPendingCommands(readServiceQueue(workspaceId));
     try {
+      discardServiceCommand(workspaceId, commandId);
+      setPendingCommands(readServiceQueue(workspaceId));
       await loadCloud();
       setNotice("That pending Service change was discarded. Other queued changes were preserved.");
     } catch (discardError) {
-      setError(discardError instanceof Error ? discardError.message : "Services could not be refreshed.");
+      setError(discardError instanceof Error ? discardError.message : "That pending Service change cannot be discarded safely.");
     }
   }
 
