@@ -36,7 +36,7 @@ function createQueue(prefix = "test-catalogue") {
   });
 }
 
-test("Catalogue offline queue is bounded, workspace-safe and recovers one failed command without losing later work", async () => {
+test("Catalogue offline queue is bounded, workspace-safe and preserves FIFO recovery", async () => {
   const storage = new MemoryStorage();
   installBrowser(storage, true);
   const queue = createQueue();
@@ -87,16 +87,21 @@ test("Catalogue offline queue is bounded, workspace-safe and recovers one failed
 
   try {
     const result = await queue.flush("workspace-a");
-    assert.deepEqual(result, { completed: 1, remaining: 1, blockedCommandId: "command-b" });
+    assert.deepEqual(result, {
+      completed: 1,
+      remaining: 1,
+      blockedCommandId: "command-b",
+      blockedKind: "rejected",
+    });
     const blocked = queue.read("workspace-a")[0];
     assert.equal(blocked.id, second.id);
     assert.equal(blocked.attempts, 1);
     assert.equal(blocked.lastError, "Changed elsewhere");
     assert.equal(blocked.lastErrorCode, "TEST_CONFLICT");
+    assert.equal(blocked.lastFailureKind, "rejected");
 
-    const retried = await queue.retry("workspace-a", "command-b");
-    assert.deepEqual(retried, { action: "update" });
-    assert.equal(queue.read("workspace-a").length, 0);
+    queue.discard("workspace-a", "command-b");
+    assert.equal(queue.read("workspace-a").length, 0, "A confirmed 4xx rejection may be discarded after review.");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -104,11 +109,11 @@ test("Catalogue offline queue is bounded, workspace-safe and recovers one failed
   queue.enqueue("workspace-a", "create", { id: "one" }, "one");
   queue.enqueue("workspace-a", "create", { id: "two" }, "two");
   queue.enqueue("workspace-a", "create", { id: "three" }, "three");
-  queue.remove("workspace-a", "two");
+  queue.discard("workspace-a", "two");
   assert.deepEqual(
     queue.read("workspace-a").map((command) => command.id),
     ["one", "three"],
-    "Discarding one pending change must preserve unrelated queued changes and their order.",
+    "Discarding one never-submitted offline change must preserve unrelated queued work and order.",
   );
 
   installBrowser(storage, false);
@@ -124,6 +129,57 @@ test("Catalogue offline queue is bounded, workspace-safe and recovers one failed
     assert.equal(offlineFetches, 0);
   } finally {
     globalThis.fetch = savedFetch;
+  }
+});
+
+test("ambiguous Catalogue outcomes cannot be discarded and retry the same stable key", async () => {
+  const storage = new MemoryStorage();
+  installBrowser(storage, true);
+  const queue = createQueue("test-catalogue-ambiguous");
+  queue.enqueue("workspace-a", "update", { id: "record-a", expectedVersion: 2 }, "stable-command");
+  queue.enqueue("workspace-a", "archive", { id: "record-b", expectedVersion: 4 }, "later-command");
+
+  const originalFetch = globalThis.fetch;
+  const seenKeys: string[] = [];
+  let firstAttempt = true;
+  globalThis.fetch = async (_input, init) => {
+    const key = new Headers(init?.headers).get("Idempotency-Key") ?? "";
+    seenKeys.push(key);
+    if (firstAttempt) {
+      firstAttempt = false;
+      throw new Error("Connection dropped after send");
+    }
+    return new Response(JSON.stringify({ ok: true, result: { action: "update" } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await queue.flush("workspace-a");
+    assert.deepEqual(result, {
+      completed: 0,
+      remaining: 2,
+      blockedCommandId: "stable-command",
+      blockedKind: "ambiguous",
+    });
+    const blocked = queue.read("workspace-a")[0];
+    assert.equal(blocked.lastFailureKind, "ambiguous");
+    assert.equal(blocked.attempts, 1);
+    assert.throws(
+      () => queue.discard("workspace-a", "stable-command"),
+      (error) => error instanceof CatalogueQueueError && error.code === "CATALOGUE_QUEUE_AMBIGUOUS_DISCARD_BLOCKED",
+    );
+    assert.throws(
+      () => queue.retry("workspace-a", "later-command"),
+      (error) => error instanceof CatalogueQueueError && error.code === "CATALOGUE_QUEUE_ORDER_BLOCKED",
+    );
+
+    await queue.retry("workspace-a", "stable-command");
+    assert.deepEqual(seenKeys, ["stable-command", "stable-command"], "Retry must reuse the original idempotency key.");
+    assert.deepEqual(queue.read("workspace-a").map((command) => command.id), ["later-command"]);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
