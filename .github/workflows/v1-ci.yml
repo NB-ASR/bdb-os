@@ -117,6 +117,10 @@ jobs:
       - name: Run pgTAP database security tests
         run: supabase test db
 
+      - name: Run Catalogue Pass 1 correctness and concurrency torture
+        shell: bash
+        run: bash scripts/catalogue-pass1-concurrency.sh
+
       - name: Run Customer Pass 4 multi-session concurrency torture
         shell: bash
         run: bash scripts/customer-pass4-concurrency.sh
