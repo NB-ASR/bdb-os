@@ -17,6 +17,7 @@ export const readProductQueue = productQueue.read;
 export const writeProductQueue = productQueue.write;
 export const enqueueProductCommand = productQueue.enqueue;
 export const removeProductCommand = productQueue.remove;
+export const discardProductCommand = productQueue.discard;
 export const failProductCommand = productQueue.fail;
 export const submitProductCommand = productQueue.submit;
 export const retryProductCommand = productQueue.retry;
