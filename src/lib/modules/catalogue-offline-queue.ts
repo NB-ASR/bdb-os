@@ -1,3 +1,5 @@
+export type CatalogueFailureKind = "rejected" | "ambiguous";
+
 export type CatalogueQueuedCommand<Action extends string> = {
   id: string;
   workspaceId: string;
@@ -5,14 +7,17 @@ export type CatalogueQueuedCommand<Action extends string> = {
   payload: Record<string, unknown>;
   createdAt: string;
   attempts: number;
+  lastAttemptAt?: string;
   lastError?: string;
   lastErrorCode?: string;
+  lastFailureKind?: CatalogueFailureKind;
 };
 
 export type CatalogueQueueFlushResult = {
   completed: number;
   remaining: number;
   blockedCommandId?: string;
+  blockedKind?: CatalogueFailureKind;
 };
 
 export class CatalogueQueueError extends Error {
@@ -25,12 +30,28 @@ export class CatalogueQueueError extends Error {
   }
 }
 
+export class CatalogueSubmitError extends Error {
+  readonly code: string;
+  readonly confirmedRejected: boolean;
+
+  constructor(message: string, code = "", confirmedRejected = false) {
+    super(message);
+    this.name = "CatalogueSubmitError";
+    this.code = code;
+    this.confirmedRejected = confirmedRejected;
+  }
+}
+
 const MAX_QUEUE_COMMANDS = 200;
 const MAX_COMMAND_SERIALIZED_CHARS = 24_576;
 const MAX_QUEUE_SERIALIZED_CHARS = 262_144;
 
 function serializedLength(value: unknown) {
   return JSON.stringify(value).length;
+}
+
+function failureKind(error: unknown): CatalogueFailureKind {
+  return error instanceof CatalogueSubmitError && error.confirmedRejected ? "rejected" : "ambiguous";
 }
 
 function errorCode(error: unknown) {
@@ -70,8 +91,10 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
       && typeof command.createdAt === "string"
       && Number.isInteger(command.attempts)
       && Number(command.attempts) >= 0
+      && (command.lastAttemptAt === undefined || typeof command.lastAttemptAt === "string")
       && (command.lastError === undefined || typeof command.lastError === "string")
-      && (command.lastErrorCode === undefined || typeof command.lastErrorCode === "string");
+      && (command.lastErrorCode === undefined || typeof command.lastErrorCode === "string")
+      && (command.lastFailureKind === undefined || ["rejected", "ambiguous"].includes(command.lastFailureKind));
   }
 
   function read(workspaceId: string): CatalogueQueuedCommand<Action>[] {
@@ -177,38 +200,69 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
     );
   }
 
-  function fail(workspaceId: string, commandId: string, message: string, code?: string) {
+  function discard(workspaceId: string, commandId: string) {
+    const command = read(workspaceId).find((item) => item.id === commandId);
+    if (!command) {
+      throw new CatalogueQueueError("CATALOGUE_QUEUE_COMMAND_MISSING", "That pending change is no longer in the queue.");
+    }
+    const ambiguous = command.lastFailureKind === "ambiguous"
+      || (command.attempts > 0 && command.lastFailureKind !== "rejected");
+    if (ambiguous) {
+      throw new CatalogueQueueError(
+        "CATALOGUE_QUEUE_AMBIGUOUS_DISCARD_BLOCKED",
+        "This change may already have reached the server. Retry the same change before discarding it.",
+      );
+    }
+    remove(workspaceId, commandId);
+  }
+
+  function fail(workspaceId: string, commandId: string, error: unknown) {
+    const kind = failureKind(error);
     write(
       workspaceId,
       read(workspaceId).map((command) => command.id === commandId
         ? {
           ...command,
           attempts: command.attempts + 1,
-          lastError: message.slice(0, 240),
-          lastErrorCode: code?.slice(0, 120),
+          lastAttemptAt: new Date().toISOString(),
+          lastError: errorMessage(error, `${options.label} command did not receive a confirmed outcome.`).slice(0, 240),
+          lastErrorCode: errorCode(error),
+          lastFailureKind: kind,
         }
         : command),
     );
+    return kind;
   }
 
   async function submit(command: CatalogueQueuedCommand<Action>) {
-    const response = await fetch(options.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": command.id,
-      },
-      body: JSON.stringify({
-        workspaceId: command.workspaceId,
-        action: command.action,
-        ...command.payload,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch(options.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": command.id,
+        },
+        body: JSON.stringify({
+          workspaceId: command.workspaceId,
+          action: command.action,
+          ...command.payload,
+        }),
+      });
+    } catch (error) {
+      throw new CatalogueSubmitError(
+        error instanceof Error ? error.message : `${options.label} command did not receive a server response.`,
+        "",
+        false,
+      );
+    }
+
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) {
-      const error = new Error(result.error ?? `${options.label} command failed.`);
-      Object.assign(error, { code: result.code });
-      throw error;
+      const code = typeof result.code === "string" ? result.code : "";
+      const message = typeof result.error === "string" ? result.error : `${options.label} command failed.`;
+      const confirmedRejected = response.status >= 400 && response.status < 500 && Boolean(code);
+      throw new CatalogueSubmitError(message, code, confirmedRejected);
     }
     return result.result as Record<string, unknown>;
   }
@@ -235,7 +289,7 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
       remove(workspaceId, command.id);
       return result;
     } catch (error) {
-      fail(workspaceId, command.id, errorMessage(error, `${options.label} command failed.`), errorCode(error));
+      fail(workspaceId, command.id, error);
       throw error;
     }
   }
@@ -256,11 +310,12 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
         completed += 1;
         onProgress?.(read(workspaceId).length);
       } catch (error) {
-        fail(workspaceId, command.id, errorMessage(error, `${options.label} command failed.`), errorCode(error));
+        const blockedKind = fail(workspaceId, command.id, error);
         return {
           completed,
           remaining: read(workspaceId).length,
           blockedCommandId: command.id,
+          blockedKind,
         };
       }
     }
@@ -273,6 +328,7 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
     write,
     enqueue,
     remove,
+    discard,
     fail,
     submit,
     retry,
