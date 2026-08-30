@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Archive, CalendarDays, CircleDollarSign, Clock3, Plus, RefreshCw, Search, TriangleAlert, Undo2, Wrench } from "lucide-react";
+import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
   enqueueServiceCommand,
@@ -10,7 +11,6 @@ import {
   readServiceQueue,
   removeServiceCommand,
   submitServiceCommand,
-  writeServiceQueue,
   type ServiceCommandAction,
   type ServiceQueuedCommand,
 } from "@/lib/modules/service-queue";
@@ -133,11 +133,12 @@ export default function ServicesPage() {
   const [filter, setFilter] = useState<ServiceFilter>("all");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<ServiceQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const syncInFlight = useRef(false);
   const supportMode = false;
+  const pendingCount = pendingCommands.length;
   const currency = useMemo(() => new Intl.NumberFormat("en-GB", { style: "currency", currency: state.settings.currency }), [state.settings.currency]);
 
   const loadCloud = useCallback(async () => {
@@ -154,7 +155,7 @@ export default function ServicesPage() {
     writeCache(currentWorkspaceId, cloudServices);
     const queue = readServiceQueue(currentWorkspaceId);
     setServices(queue.reduce(applyCommand, cloudServices));
-    setPendingCount(queue.length);
+    setPendingCommands(queue);
   }, []);
 
   useEffect(() => {
@@ -174,7 +175,7 @@ export default function ServicesPage() {
       if (active && fallbackWorkspace) {
         setWorkspaceId(fallbackWorkspace);
         setServices(queued.reduce(applyCommand, cached));
-        setPendingCount(queued.length);
+        setPendingCommands(queued);
       }
       try {
         setError("");
@@ -205,11 +206,12 @@ export default function ServicesPage() {
     setSyncing(true);
     setError("");
     try {
-      const result = await flushServiceQueue(workspaceId, setPendingCount);
-      setPendingCount(result.remaining);
+      const result = await flushServiceQueue(workspaceId, () => setPendingCommands(readServiceQueue(workspaceId)));
+      setPendingCommands(readServiceQueue(workspaceId));
       if (result.completed) setNotice(`${result.completed} queued Service change${result.completed === 1 ? "" : "s"} synced.`);
       await loadCloud();
     } catch (syncError) {
+      setPendingCommands(readServiceQueue(workspaceId));
       setError(syncError instanceof Error ? syncError.message : "Services could not be refreshed.");
     } finally {
       syncInFlight.current = false;
@@ -224,23 +226,35 @@ export default function ServicesPage() {
   const submitCommand = useCallback(async (action: ServiceCommandAction, payload: Record<string, unknown>) => {
     setError(""); setNotice("");
     const command: ServiceQueuedCommand = { id: crypto.randomUUID(), workspaceId: workspaceId ?? "demo", action, payload, createdAt: new Date().toISOString(), attempts: 0 };
-    setServices((current) => applyCommand(current, command));
-    if (mode === "demo") { setNotice("Saved in this browser's local BDB OS preview."); return true; }
+    if (mode === "demo") {
+      setServices((current) => applyCommand(current, command));
+      setNotice("Saved in this browser's local BDB OS preview.");
+      return true;
+    }
     if (!workspaceId) { setError("The current workspace is unavailable."); return false; }
-    enqueueServiceCommand(workspaceId, action, payload, command.id);
-    setPendingCount(readServiceQueue(workspaceId).length);
+    try {
+      enqueueServiceCommand(workspaceId, action, payload, command.id);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "This Service change could not be stored safely offline.");
+      return false;
+    }
+    setServices((current) => applyCommand(current, command));
+    setPendingCommands(readServiceQueue(workspaceId));
     if (!navigator.onLine) { setNotice("Saved offline. BDB OS will retry this Service change when the connection returns."); return true; }
     try {
       await submitServiceCommand(command);
       removeServiceCommand(workspaceId, command.id);
-      setPendingCount(readServiceQueue(workspaceId).length);
+      setPendingCommands(readServiceQueue(workspaceId));
       await loadCloud();
       setNotice(action === "create" ? "Service created." : action === "update" ? "Service updated." : action === "archive" ? "Service archived." : "Service restored.");
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Service change could not be saved.";
-      failServiceCommand(workspaceId, command.id, message);
-      setPendingCount(readServiceQueue(workspaceId).length);
+      const code = commandError && typeof commandError === "object" && typeof (commandError as { code?: unknown }).code === "string"
+        ? String((commandError as { code: string }).code)
+        : undefined;
+      failServiceCommand(workspaceId, command.id, message, code);
+      setPendingCommands(readServiceQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
     }
@@ -271,13 +285,18 @@ export default function ServicesPage() {
     if (saved) setFormOpen(false);
   }
   async function changeStatus(service: ServiceRow) {
-    if (!supportMode) await submitCommand(service.status === "active" ? "archive" : "restore", { id: service.id, expectedVersion: service.version });
+    if (!supportMode && !service.pending) await submitCommand(service.status === "active" ? "archive" : "restore", { id: service.id, expectedVersion: service.version });
   }
-  async function discardPending() {
+  async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    writeServiceQueue(workspaceId, []);
-    setPendingCount(0);
-    try { await loadCloud(); } catch (discardError) { setError(discardError instanceof Error ? discardError.message : "Services could not be refreshed."); }
+    removeServiceCommand(workspaceId, commandId);
+    setPendingCommands(readServiceQueue(workspaceId));
+    try {
+      await loadCloud();
+      setNotice("That pending Service change was discarded. Other queued changes were preserved.");
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "Services could not be refreshed.");
+    }
   }
 
   const active = services.filter((service) => service.status === "active");
@@ -290,12 +309,21 @@ export default function ServicesPage() {
     {supportMode ? <div className={styles.supportNotice}><Wrench size={18} /><div><strong>Read-only access</strong><span>Service catalogue changes remain blocked during this session.</span></div></div> : null}
     {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Service action needs attention</strong><p>{error}</p></div></div> : null}
     {notice ? <div className="review-callout"><RefreshCw size={19} /><div><strong>Service catalogue</strong><p>{notice}</p></div></div> : null}
-    {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? <div className="review-callout"><RefreshCw size={19} /><div><strong>{pendingCount} pending Service change{pendingCount === 1 ? "" : "s"}</strong><p>Changes retry in order. Synchronisation stops at the first conflict.</p></div><Button variant="quiet" onClick={() => void discardPending()}>Discard pending</Button></div> : null}
+    {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? (
+      <CataloguePendingChanges
+        label="Service"
+        commands={pendingCommands}
+        syncing={syncing}
+        onRetry={() => void syncPending()}
+        onDiscard={(commandId) => void discardPending(commandId)}
+        describe={(command) => String(command.payload.name ?? command.payload.code ?? "Service change")}
+      />
+    ) : null}
 
     <div className="stat-grid"><StatCard label="Active Services" value={String(active.length)} detail={`${services.length - active.length} archived`} icon={<Wrench size={19} />} /><StatCard label="Customer bookable" value={String(bookable)} detail="Available to future booking flows" icon={<CalendarDays size={19} />} /><StatCard label="Priced Services" value={String(priced)} detail="Ready for Sales line selection" icon={<CircleDollarSign size={19} />} /><StatCard label="Catalogue duration" value={`${totalMinutes} min`} detail="Combined active Service duration" icon={<Clock3 size={19} />} /></div>
 
     <Card className={styles.servicesCard}><div className={styles.toolbar}><label className={styles.searchField}><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Service, code, category or booking mode…" aria-label="Search Services" /></label><div className={styles.filters}>{(["all", "bookable", "staff", "archived"] as ServiceFilter[]).map((item) => <button key={item} type="button" className={filter === item ? styles.activeFilter : ""} onClick={() => setFilter(item)}>{item === "all" ? "All" : item === "bookable" ? "Bookable" : item === "staff" ? "Staff only" : "Archived"}</button>)}</div><Badge tone="neutral">{visibleServices.length} Service{visibleServices.length === 1 ? "" : "s"}</Badge></div>
-      <div className="table-scroll"><table className={styles.serviceTable}><thead><tr><th>Service</th><th>Code</th><th>Category</th><th>Duration</th><th>Price</th><th>VAT</th><th>Staff rules</th><th>Booking</th><th>Status</th><th aria-label="Actions" /></tr></thead><tbody>{visibleServices.map((service) => <tr key={service.id}><td><div className={styles.serviceIdentity}><span><Wrench size={17} /></span><div><strong>{service.name}</strong><small>{service.description || "Reusable Service definition"}</small></div></div></td><td><code>{service.code}</code></td><td>{service.category || <span className="muted">—</span>}</td><td><div className={styles.durationCell}><Clock3 size={15} /><span>{service.duration_minutes} min</span></div></td><td>{service.price === null ? <span className="muted">No charge</span> : currency.format(service.price)}</td><td>{service.vat_rate}%</td><td><span className="muted">Not linked</span></td><td><Badge tone={service.booking_mode === "customer" ? "gold" : "blue"}>{service.booking_mode === "customer" ? "Customer bookable" : "Staff only"}</Badge></td><td><Badge tone={service.status === "active" ? "green" : "neutral"}>{service.pending ? "Pending" : service.status === "active" ? "Active" : "Archived"}</Badge></td><td><div className={styles.headerActions}><Button type="button" variant="quiet" onClick={() => openEdit(service)} disabled={supportMode || service.status === "archived"}>Edit</Button><Button type="button" variant="quiet" onClick={() => void changeStatus(service)} disabled={supportMode}>{service.status === "active" ? <Archive size={15} /> : <Undo2 size={15} />}{service.status === "active" ? "Archive" : "Restore"}</Button></div></td></tr>)}</tbody></table></div>
+      <div className="table-scroll"><table className={styles.serviceTable}><thead><tr><th>Service</th><th>Code</th><th>Category</th><th>Duration</th><th>Price</th><th>VAT</th><th>Staff rules</th><th>Booking</th><th>Status</th><th aria-label="Actions" /></tr></thead><tbody>{visibleServices.map((service) => <tr key={service.id}><td><div className={styles.serviceIdentity}><span><Wrench size={17} /></span><div><strong>{service.name}</strong><small>{service.description || "Reusable Service definition"}</small></div></div></td><td><code>{service.code}</code></td><td>{service.category || <span className="muted">—</span>}</td><td><div className={styles.durationCell}><Clock3 size={15} /><span>{service.duration_minutes} min</span></div></td><td>{service.price === null ? <span className="muted">No charge</span> : currency.format(service.price)}</td><td>{service.vat_rate}%</td><td><span className="muted">Not linked</span></td><td><Badge tone={service.booking_mode === "customer" ? "gold" : "blue"}>{service.booking_mode === "customer" ? "Customer bookable" : "Staff only"}</Badge></td><td><Badge tone={service.status === "active" ? "green" : "neutral"}>{service.pending ? "Pending" : service.status === "active" ? "Active" : "Archived"}</Badge></td><td><div className={styles.headerActions}><Button type="button" variant="quiet" onClick={() => openEdit(service)} disabled={supportMode || service.pending || service.status === "archived"}>Edit</Button><Button type="button" variant="quiet" onClick={() => void changeStatus(service)} disabled={supportMode || service.pending}>{service.status === "active" ? <Archive size={15} /> : <Undo2 size={15} />}{service.status === "active" ? "Archive" : "Restore"}</Button></div></td></tr>)}</tbody></table></div>
       {loaded && visibleServices.length === 0 ? <div className={styles.emptyState}><Wrench size={23} /><h3>No Services found</h3><p>Create the first reusable Service or change the current filter.</p></div> : null}
     </Card>
 
