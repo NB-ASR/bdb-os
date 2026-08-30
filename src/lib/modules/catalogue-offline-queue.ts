@@ -61,7 +61,7 @@ function errorCode(error: unknown) {
 }
 
 function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message ? error.message : fallback;
+  return error instanceof Error && error.message ? error.message : typeof error === "string" && error ? error : fallback;
 }
 
 export function createCatalogueOfflineQueue<Action extends string>(options: {
@@ -216,7 +216,7 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
     remove(workspaceId, commandId);
   }
 
-  function fail(workspaceId: string, commandId: string, error: unknown) {
+  function fail(workspaceId: string, commandId: string, error: unknown, legacyCode?: string) {
     const kind = failureKind(error);
     write(
       workspaceId,
@@ -226,7 +226,7 @@ export function createCatalogueOfflineQueue<Action extends string>(options: {
           attempts: command.attempts + 1,
           lastAttemptAt: new Date().toISOString(),
           lastError: errorMessage(error, `${options.label} command did not receive a confirmed outcome.`).slice(0, 240),
-          lastErrorCode: errorCode(error),
+          lastErrorCode: errorCode(error) ?? legacyCode?.slice(0, 120),
           lastFailureKind: kind,
         }
         : command),
