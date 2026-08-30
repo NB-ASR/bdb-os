@@ -15,15 +15,16 @@ import {
   Truck,
   Undo2,
 } from "lucide-react";
+import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
+  discardProductSupplierCommand,
   enqueueProductSupplierCommand,
   failProductSupplierCommand,
   flushProductSupplierQueue,
   readProductSupplierQueue,
   removeProductSupplierCommand,
   submitProductSupplierCommand,
-  writeProductSupplierQueue,
   type ProductSupplierCommandAction,
   type ProductSupplierQueuedCommand,
 } from "@/lib/modules/product-supplier-queue";
@@ -88,6 +89,8 @@ interface RelationshipCache {
 
 const CACHE_PREFIX = "bdb-product-supplier-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
+const SUPPLIER_CACHE_LIMIT = 500;
+const RELATIONSHIP_CACHE_LIMIT = 200;
 
 function createEmptyForm(currency: string): RelationshipForm {
   return {
@@ -121,7 +124,12 @@ function readCache(workspaceId: string, productId: string): RelationshipCache {
   if (typeof window === "undefined") return empty;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId, productId)) ?? "null") as RelationshipCache | null;
-    return parsed && typeof parsed === "object" ? parsed : empty;
+    if (!parsed || typeof parsed !== "object") return empty;
+    return {
+      product: parsed.product ?? null,
+      suppliers: Array.isArray(parsed.suppliers) ? parsed.suppliers.slice(0, SUPPLIER_CACHE_LIMIT) : [],
+      relationships: Array.isArray(parsed.relationships) ? parsed.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT) : [],
+    };
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId, productId));
     return empty;
@@ -134,11 +142,19 @@ function writeCache(
   cache: RelationshipCache,
 ) {
   if (typeof window === "undefined") return;
+  const relationships = cache.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT);
+  const linkedIds = new Set(relationships.map((relationship) => relationship.supplier_id));
+  const linkedSuppliers = cache.suppliers.filter((supplier) => linkedIds.has(supplier.id));
+  const linkedSupplierIds = new Set(linkedSuppliers.map((supplier) => supplier.id));
+  const otherSuppliers = cache.suppliers.filter((supplier) => !linkedSupplierIds.has(supplier.id));
+  const suppliers = [...linkedSuppliers, ...otherSuppliers].slice(0, SUPPLIER_CACHE_LIMIT);
+
   window.localStorage.setItem(
     cacheKey(workspaceId, productId),
     JSON.stringify({
-      ...cache,
-      relationships: cache.relationships.map(({ pending: _pending, ...relationship }) => relationship),
+      product: cache.product,
+      suppliers,
+      relationships: relationships.map(({ pending: _pending, ...relationship }) => relationship),
     }),
   );
 }
@@ -241,10 +257,11 @@ export default function ProductSuppliersPage() {
   const [filter, setFilter] = useState<RelationshipFilter>("active");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<ProductSupplierQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const supportMode = false;
+  const pendingCount = pendingCommands.length;
 
   const supplierById = useMemo(
     () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
@@ -296,7 +313,7 @@ export default function ProductSuppliersPage() {
     setProduct(cloudProduct);
     setSuppliers(cloudSuppliers);
     setRelationships(visibleRelationships);
-    setPendingCount(queue.length);
+    setPendingCommands(queue);
     writeCache(currentWorkspaceId, productId, {
       product: cloudProduct,
       suppliers: cloudSuppliers,
@@ -319,7 +336,7 @@ export default function ProductSuppliersPage() {
           (current, command) => applyCommand(current, command, productId),
           cached.relationships,
         ));
-        setPendingCount(queued.length);
+        setPendingCommands(queued);
       }
 
       try {
@@ -359,15 +376,19 @@ export default function ProductSuppliersPage() {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
     setSyncing(true);
     setError("");
-    const result = await flushProductSupplierQueue(workspaceId, setPendingCount);
-    setPendingCount(result.remaining);
-    if (result.completed) {
-      setNotice(`${result.completed} queued Product Supplier change${result.completed === 1 ? "" : "s"} synced.`);
-    }
-    await loadCloud().catch((syncError) => {
+    try {
+      const result = await flushProductSupplierQueue(workspaceId, () => setPendingCommands(readProductSupplierQueue(workspaceId)));
+      setPendingCommands(readProductSupplierQueue(workspaceId));
+      if (result.completed) {
+        setNotice(`${result.completed} queued Product Supplier change${result.completed === 1 ? "" : "s"} synced.`);
+      }
+      await loadCloud();
+    } catch (syncError) {
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       setError(syncError instanceof Error ? syncError.message : "Product Suppliers could not be refreshed.");
-    });
-    setSyncing(false);
+    } finally {
+      setSyncing(false);
+    }
   }, [loadCloud, syncing, workspaceId]);
 
   useEffect(() => {
@@ -393,9 +414,8 @@ export default function ProductSuppliersPage() {
       attempts: 0,
     };
 
-    setRelationships((current) => applyCommand(current, command, productId));
-
     if (mode === "demo") {
+      setRelationships((current) => applyCommand(current, command, productId));
       setNotice("Saved in this browser's local BDB OS preview.");
       return true;
     }
@@ -404,8 +424,14 @@ export default function ProductSuppliersPage() {
       return false;
     }
 
-    enqueueProductSupplierCommand(workspaceId, action, payload, commandId);
-    setPendingCount(readProductSupplierQueue(workspaceId).length);
+    try {
+      enqueueProductSupplierCommand(workspaceId, action, payload, commandId);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "This Product Supplier change could not be stored safely offline.");
+      return false;
+    }
+    setRelationships((current) => applyCommand(current, command, productId));
+    setPendingCommands(readProductSupplierQueue(workspaceId));
     if (!navigator.onLine) {
       setNotice("Saved offline. BDB OS will retry this Product Supplier change when the connection returns.");
       return true;
@@ -414,7 +440,7 @@ export default function ProductSuppliersPage() {
     try {
       await submitProductSupplierCommand(command);
       removeProductSupplierCommand(workspaceId, command.id);
-      setPendingCount(readProductSupplierQueue(workspaceId).length);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       await loadCloud();
       setNotice(action === "create"
         ? "Supplier linked to Product."
@@ -426,8 +452,8 @@ export default function ProductSuppliersPage() {
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Product Supplier change could not be saved.";
-      failProductSupplierCommand(workspaceId, command.id, message);
-      setPendingCount(readProductSupplierQueue(workspaceId).length);
+      failProductSupplierCommand(workspaceId, command.id, commandError);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
     }
@@ -485,7 +511,12 @@ export default function ProductSuppliersPage() {
     setSaving(true);
     const action = relationship.status === "active" ? "archive" : "restore";
     await submitCommand(action, action === "archive"
-      ? { id: relationship.id, expectedVersion: relationship.version }
+      ? {
+        id: relationship.id,
+        expectedVersion: relationship.version,
+        productId: relationship.product_id,
+        supplierId: relationship.supplier_id,
+      }
       : {
         id: relationship.id,
         expectedVersion: relationship.version,
@@ -502,12 +533,16 @@ export default function ProductSuppliersPage() {
     setSaving(false);
   }
 
-  function discardQueue() {
+  async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    writeProductSupplierQueue(workspaceId, []);
-    setPendingCount(0);
-    void loadCloud();
-    setNotice("Pending local Product Supplier changes were discarded.");
+    try {
+      discardProductSupplierCommand(workspaceId, commandId);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
+      await loadCloud();
+      setNotice("That pending Product Supplier change was discarded. Other queued changes were preserved.");
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "That pending Product Supplier change cannot be discarded safely.");
+    }
   }
 
   if (!loaded) {
@@ -556,17 +591,18 @@ export default function ProductSuppliersPage() {
 
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Product Suppliers updated</strong><p>{notice}</p></div> : null}
 
-      {pendingCount > 0 ? (
-        <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{pendingCount} Product Supplier change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
-          <p>Commands retain stable retry keys. Relationship conflicts are stopped rather than silently overwritten.</p>
-          <div className={styles.queueActions}>
-            <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}>
-              <RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry
-            </Button>
-            <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
-          </div>
-        </div>
+      {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? (
+        <CataloguePendingChanges
+          label="Product Supplier"
+          commands={pendingCommands}
+          syncing={syncing}
+          onRetry={() => void syncPending()}
+          onDiscard={(commandId) => void discardPending(commandId)}
+          describe={(command) => {
+            const supplier = supplierById.get(String(command.payload.supplierId ?? ""));
+            return supplier?.name ?? String(command.payload.supplierSku ?? "Supplier terms change");
+          }}
+        />
       ) : null}
 
       {supportMode ? (
