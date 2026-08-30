@@ -15,15 +15,16 @@ import {
   Truck,
   Undo2,
 } from "lucide-react";
+import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
+  discardProductCommand,
   enqueueProductCommand,
   failProductCommand,
   flushProductQueue,
   readProductQueue,
   removeProductCommand,
   submitProductCommand,
-  writeProductQueue,
   type ProductCommandAction,
   type ProductQueuedCommand,
 } from "@/lib/modules/product-queue";
@@ -202,10 +203,11 @@ export default function ProductsPage() {
   const [filter, setFilter] = useState<ProductFilter>("all");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<ProductQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const supportMode = false;
+  const pendingCount = pendingCommands.length;
 
   const currency = useMemo(
     () => new Intl.NumberFormat("en-GB", { style: "currency", currency: state.settings.currency }),
@@ -230,7 +232,7 @@ export default function ProductsPage() {
     writeCache(currentWorkspaceId, cloudProducts);
     const queue = readProductQueue(currentWorkspaceId);
     setProducts(queue.reduce(applyCommand, cloudProducts));
-    setPendingCount(queue.length);
+    setPendingCommands(queue);
   }, []);
 
   useEffect(() => {
@@ -243,7 +245,7 @@ export default function ProductsPage() {
       if (active && fallbackWorkspace) {
         setWorkspaceId(fallbackWorkspace);
         setProducts(queued.reduce(applyCommand, cached));
-        setPendingCount(queued.length);
+        setPendingCommands(queued);
       }
 
       try {
@@ -281,15 +283,19 @@ export default function ProductsPage() {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
     setSyncing(true);
     setError("");
-    const result = await flushProductQueue(workspaceId, setPendingCount);
-    setPendingCount(result.remaining);
-    if (result.completed) {
-      setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
-    }
-    await loadCloud().catch((syncError) => {
+    try {
+      const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
+      setPendingCommands(readProductQueue(workspaceId));
+      if (result.completed) {
+        setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
+      }
+      await loadCloud();
+    } catch (syncError) {
+      setPendingCommands(readProductQueue(workspaceId));
       setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
-    });
-    setSyncing(false);
+    } finally {
+      setSyncing(false);
+    }
   }, [loadCloud, syncing, workspaceId]);
 
   useEffect(() => {
@@ -315,9 +321,8 @@ export default function ProductsPage() {
       attempts: 0,
     };
 
-    setProducts((current) => applyCommand(current, command));
-
     if (mode === "demo") {
+      setProducts((current) => applyCommand(current, command));
       setNotice("Saved in this browser's local BDB OS preview.");
       return true;
     }
@@ -326,8 +331,14 @@ export default function ProductsPage() {
       return false;
     }
 
-    enqueueProductCommand(workspaceId, action, payload, commandId);
-    setPendingCount(readProductQueue(workspaceId).length);
+    try {
+      enqueueProductCommand(workspaceId, action, payload, commandId);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "This Product change could not be stored safely offline.");
+      return false;
+    }
+    setProducts((current) => applyCommand(current, command));
+    setPendingCommands(readProductQueue(workspaceId));
     if (!navigator.onLine) {
       setNotice("Saved offline. BDB OS will retry this product change when the connection returns.");
       return true;
@@ -336,14 +347,14 @@ export default function ProductsPage() {
     try {
       await submitProductCommand(command);
       removeProductCommand(workspaceId, command.id);
-      setPendingCount(readProductQueue(workspaceId).length);
+      setPendingCommands(readProductQueue(workspaceId));
       await loadCloud();
       setNotice(action === "create" ? "Product created." : action === "update" ? "Product updated." : action === "archive" ? "Product archived." : "Product restored.");
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Product change could not be saved.";
-      failProductCommand(workspaceId, command.id, message);
-      setPendingCount(readProductQueue(workspaceId).length);
+      failProductCommand(workspaceId, command.id, commandError);
+      setPendingCommands(readProductQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
     }
@@ -423,12 +434,16 @@ export default function ProductsPage() {
     setSaving(false);
   }
 
-  function discardQueue() {
+  async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    writeProductQueue(workspaceId, []);
-    setPendingCount(0);
-    void loadCloud();
-    setNotice("Pending local product changes were discarded.");
+    try {
+      discardProductCommand(workspaceId, commandId);
+      setPendingCommands(readProductQueue(workspaceId));
+      await loadCloud();
+      setNotice("That pending Product change was discarded. Other queued changes were preserved.");
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "That pending Product change cannot be discarded safely.");
+    }
   }
 
   if (!loaded) {
@@ -473,15 +488,15 @@ export default function ProductsPage() {
 
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Products updated</strong><p>{notice}</p></div> : null}
 
-      {pendingCount > 0 ? (
-        <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{pendingCount} product change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
-          <p>Commands remain local with stable retry keys. Conflicting edits will be stopped rather than silently overwritten.</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
-            <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
-          </div>
-        </div>
+      {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? (
+        <CataloguePendingChanges
+          label="Product"
+          commands={pendingCommands}
+          syncing={syncing}
+          onRetry={() => void syncPending()}
+          onDiscard={(commandId) => void discardPending(commandId)}
+          describe={(command) => String(command.payload.name ?? command.payload.sku ?? "Product change")}
+        />
       ) : null}
 
       {supportMode ? (
