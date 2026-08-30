@@ -8,6 +8,7 @@ const migration = await readFile(
 const hardening = await readFile("supabase/migrations/20260830190000_catalogue_engine_pass1.sql", "utf8");
 const api = await readFile("src/app/api/product-suppliers/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/product-supplier-queue.ts", "utf8");
+const offlineQueue = await readFile("src/lib/modules/catalogue-offline-queue.ts", "utf8");
 const layout = await readFile("src/app/products/layout.tsx", "utf8");
 const indexPage = await readFile("src/app/products/suppliers/page.tsx", "utf8");
 const detailPage = await readFile("src/app/products/[productId]/suppliers/page.tsx", "utf8");
@@ -56,10 +57,17 @@ assert.match(api, /PRODUCT_SUPPLIER_CONFLICT/);
 assert.match(api, /PRODUCT_SUPPLIER_PREFERRED_EXISTS/);
 assert.match(api, /PRODUCT_SUPPLIER_SKU_DUPLICATE/);
 
-assert.match(queue, /localStorage/);
-assert.match(queue, /Idempotency-Key/);
+assert.match(queue, /createCatalogueOfflineQueue/);
+assert.match(queue, /bdb-product-supplier-queue-v1/);
+assert.match(queue, /retryProductSupplierCommand/);
 assert.match(queue, /flushProductSupplierQueue/);
-assert.match(queue, /break;/);
+assert.match(offlineQueue, /MAX_QUEUE_COMMANDS = 200/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_STORAGE_UNAVAILABLE/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_ID_CONFLICT/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_ORDER_BLOCKED/);
+assert.match(offlineQueue, /blockedCommandId/);
+assert.match(offlineQueue, /lastErrorCode/);
+assert.match(offlineQueue, /Idempotency-Key/);
 
 assert.match(layout, /Catalogue/);
 assert.match(layout, /Supplier terms/);
@@ -73,4 +81,4 @@ assert.match(detailPage, /Linking a Supplier does not change stock/);
 assert.match(detailPage, /actual historical cost and currency/);
 assert.doesNotMatch(`${indexPage}\n${detailPage}`, /platform-support|Founder support/i);
 
-console.log("Product Supplier schema, permissions, command, idempotency, offline and UI contracts are internally consistent.");
+console.log("Product Supplier schema, permissions, command, idempotency, bounded offline and UI contracts are internally consistent.");
