@@ -17,6 +17,7 @@ export const readServiceQueue = serviceQueue.read;
 export const writeServiceQueue = serviceQueue.write;
 export const enqueueServiceCommand = serviceQueue.enqueue;
 export const removeServiceCommand = serviceQueue.remove;
+export const discardServiceCommand = serviceQueue.discard;
 export const failServiceCommand = serviceQueue.fail;
 export const submitServiceCommand = serviceQueue.submit;
 export const retryServiceCommand = serviceQueue.retry;
