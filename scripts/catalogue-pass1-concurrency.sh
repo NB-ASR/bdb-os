@@ -116,7 +116,7 @@ where id in ('${WORKSPACE_A}'::uuid,'${WORKSPACE_B}'::uuid);
 
 insert into public.workspace_memberships(workspace_id,user_id,role,status,access_profile,joined_at) values
   ('${WORKSPACE_A}'::uuid,'${OWNER_A}'::uuid,'owner','active','owner',now()),
-  ('${WORKSPACE_A}'::uuid,'${DENIED_A}'::uuid,'employee','active','employee',now()),
+  ('${WORKSPACE_A}'::uuid,'${DENIED_A}'::uuid,'staff','active','employee',now()),
   ('${WORKSPACE_B}'::uuid,'${OWNER_B}'::uuid,'owner','active','owner',now());
 
 insert into public.workspace_member_permissions(
