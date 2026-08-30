@@ -89,6 +89,7 @@ const emptyForm: ProductForm = {
 
 const CACHE_PREFIX = "bdb-products-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-products-last-workspace-v1";
+const CACHE_LIMIT = 500;
 
 function cacheKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
@@ -108,7 +109,7 @@ function readCache(workspaceId: string): ProductRow[] {
   if (typeof window === "undefined") return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed as ProductRow[] : [];
+    return Array.isArray(parsed) ? (parsed as ProductRow[]).slice(0, CACHE_LIMIT) : [];
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId));
     return [];
@@ -119,7 +120,7 @@ function writeCache(workspaceId: string, products: readonly ProductRow[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     cacheKey(workspaceId),
-    JSON.stringify(products.map(({ pending: _pending, ...product }) => product)),
+    JSON.stringify(products.slice(0, CACHE_LIMIT).map(({ pending: _pending, ...product }) => product)),
   );
 }
 
