@@ -8,6 +8,7 @@ const migration = await readFile(
 const hardening = await readFile("supabase/migrations/20260830190000_catalogue_engine_pass1.sql", "utf8");
 const api = await readFile("src/app/api/products/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/product-queue.ts", "utf8");
+const offlineQueue = await readFile("src/lib/modules/catalogue-offline-queue.ts", "utf8");
 const page = await readFile("src/app/products/page.tsx", "utf8");
 
 for (const statement of [
@@ -46,10 +47,18 @@ assert.match(api, /apply_product_command/);
 assert.match(api, /PRODUCT_CONFLICT/);
 assert.match(api, /PRODUCT_DUPLICATE/);
 
-assert.match(queue, /localStorage/);
-assert.match(queue, /Idempotency-Key/);
+assert.match(queue, /createCatalogueOfflineQueue/);
+assert.match(queue, /bdb-product-queue-v1/);
+assert.match(queue, /retryProductCommand/);
 assert.match(queue, /flushProductQueue/);
-assert.match(queue, /break;/);
+assert.match(offlineQueue, /MAX_QUEUE_COMMANDS = 200/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_STORAGE_UNAVAILABLE/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_ID_CONFLICT/);
+assert.match(offlineQueue, /CATALOGUE_QUEUE_ORDER_BLOCKED/);
+assert.match(offlineQueue, /blockedCommandId/);
+assert.match(offlineQueue, /lastErrorCode/);
+assert.match(offlineQueue, /Idempotency-Key/);
+assert.match(offlineQueue, /for \(const command of read\(workspaceId\)\)/);
 
 assert.match(page, /readCache/);
 assert.match(page, /enqueueProductCommand/);
@@ -58,4 +67,4 @@ assert.match(page, /restore/);
 assert.match(page, /Supplier relationships come next/);
 assert.match(page, /Opening stock is a separate movement/);
 
-console.log("Products schema, command, RLS, idempotency, offline and UI contracts are internally consistent.");
+console.log("Products schema, command, RLS, idempotency, bounded offline and UI contracts are internally consistent.");
