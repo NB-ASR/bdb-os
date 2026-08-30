@@ -17,6 +17,7 @@ export const readProductSupplierQueue = productSupplierQueue.read;
 export const writeProductSupplierQueue = productSupplierQueue.write;
 export const enqueueProductSupplierCommand = productSupplierQueue.enqueue;
 export const removeProductSupplierCommand = productSupplierQueue.remove;
+export const discardProductSupplierCommand = productSupplierQueue.discard;
 export const failProductSupplierCommand = productSupplierQueue.fail;
 export const submitProductSupplierCommand = productSupplierQueue.submit;
 export const retryProductSupplierCommand = productSupplierQueue.retry;
