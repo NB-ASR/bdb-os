@@ -170,8 +170,8 @@ test("ambiguous Catalogue outcomes cannot be discarded and retry the same stable
       () => queue.discard("workspace-a", "stable-command"),
       (error) => error instanceof CatalogueQueueError && error.code === "CATALOGUE_QUEUE_AMBIGUOUS_DISCARD_BLOCKED",
     );
-    assert.throws(
-      () => queue.retry("workspace-a", "later-command"),
+    await assert.rejects(
+      queue.retry("workspace-a", "later-command"),
       (error) => error instanceof CatalogueQueueError && error.code === "CATALOGUE_QUEUE_ORDER_BLOCKED",
     );
 
