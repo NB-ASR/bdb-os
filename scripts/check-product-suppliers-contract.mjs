@@ -5,6 +5,7 @@ const migration = await readFile(
   "supabase/release-sources/vanita-integration-20260813/20260727155000_product_supplier_relationship.sql",
   "utf8",
 );
+const hardening = await readFile("supabase/migrations/20260830190000_catalogue_engine_pass1.sql", "utf8");
 const api = await readFile("src/app/api/product-suppliers/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/product-supplier-queue.ts", "utf8");
 const layout = await readFile("src/app/products/layout.tsx", "utf8");
@@ -41,6 +42,12 @@ assert.doesNotMatch(migration, /\b(bank_account|iban|bic|swift|payment_approval|
 assert.doesNotMatch(migration, /grant\s+(?:insert|update|delete)[\s\S]*public\.product_suppliers\s+to\s+authenticated/i);
 assert.match(migration, /revoke all on function public\.apply_product_supplier_command[\s\S]*authenticated/i);
 
+assert.match(hardening, /receipt\.relationship_id, receipt\.action, receipt\.result/i);
+assert.match(hardening, /previous_relationship_id <> p_relationship_id or previous_action <> p_action/i);
+assert.match(hardening, /Product Supplier idempotency key was already used for another command/i);
+assert.match(hardening, /grant execute on function public\.apply_product_supplier_command[\s\S]*service_role/i);
+assert.doesNotMatch(hardening, /grant execute on function public\.apply_product_supplier_command[\s\S]*authenticated/i);
+
 assert.match(api, /requireWorkspaceCommand/);
 assert.match(api, /IDEMPOTENCY_REQUIRED/);
 assert.match(api, /createAdminClient/);
@@ -66,4 +73,4 @@ assert.match(detailPage, /Linking a Supplier does not change stock/);
 assert.match(detailPage, /actual historical cost and currency/);
 assert.doesNotMatch(`${indexPage}\n${detailPage}`, /platform-support|Founder support/i);
 
-console.log("Product Supplier schema, permissions, command, offline and UI contracts are internally consistent.");
+console.log("Product Supplier schema, permissions, command, idempotency, offline and UI contracts are internally consistent.");
