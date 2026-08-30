@@ -16,12 +16,12 @@ export type CatalogueQueueFlushResult = {
 };
 
 export class CatalogueQueueError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-  ) {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
     super(message);
     this.name = "CatalogueQueueError";
+    this.code = code;
   }
 }
 
