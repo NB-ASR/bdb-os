@@ -92,7 +92,7 @@ const CACHE_PREFIX = "bdb-product-supplier-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
 const SUPPLIER_CACHE_LIMIT = 500;
 const RELATIONSHIP_CACHE_LIMIT = 200;
-const SUPPLIER_PAGE_SIZE = 200;
+const SUPPLIER_PAGE_SIZE = 100;
 
 function createEmptyForm(currency: string): RelationshipForm {
   return {
@@ -152,9 +152,23 @@ function writeCache(workspaceId: string, productId: string, cache: RelationshipC
     JSON.stringify({
       product: cache.product,
       suppliers,
-      relationships: relationships.map(({ pending: _pending, ...relationship }) => relationship),
+      relationships: relationships.map((relationship) => {
+        const { pending, ...persisted } = relationship;
+        void pending;
+        return persisted;
+      }),
     }),
   );
+}
+
+function mergeSuppliers(current: readonly SupplierRow[], incoming: readonly SupplierRow[]) {
+  const merged = new Map(current.map((supplier) => [supplier.id, supplier]));
+  for (const supplier of incoming) merged.set(supplier.id, supplier);
+  return [...merged.values()];
+}
+
+function mergeIds(current: readonly string[], incoming: readonly string[]) {
+  return [...new Set([...current, ...incoming])];
 }
 
 function formValues(relationship: ProductSupplierRow): RelationshipForm {
@@ -239,46 +253,6 @@ function applyCommand(
   });
 }
 
-async function loadSupplierWorkingSet(workspaceId: string, productId: string) {
-  const suppliers = new Map<string, SupplierRow>();
-  const optionSupplierIds = new Set<string>();
-  let cursor: SupplierCursor | null = null;
-  let hasMore = true;
-
-  while (hasMore && optionSupplierIds.size < SUPPLIER_CACHE_LIMIT) {
-    const pageSize = Math.min(SUPPLIER_PAGE_SIZE, SUPPLIER_CACHE_LIMIT - optionSupplierIds.size);
-    const params = new URLSearchParams({
-      workspaceId,
-      productId,
-      pageSize: String(pageSize),
-    });
-    if (cursor) {
-      params.set("afterName", cursor.name);
-      params.set("afterId", cursor.id);
-    }
-
-    const response = await fetch(`/api/product-suppliers/options?${params.toString()}`, { cache: "no-store" });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error ?? "Suppliers could not be loaded.");
-
-    for (const supplier of (result.result?.suppliers ?? []) as SupplierRow[]) {
-      suppliers.set(supplier.id, supplier);
-    }
-    for (const supplierId of (result.result?.optionSupplierIds ?? []) as string[]) {
-      optionSupplierIds.add(String(supplierId));
-    }
-
-    hasMore = Boolean(result.result?.hasMore);
-    cursor = result.result?.nextCursor ?? null;
-    if (hasMore && !cursor) break;
-  }
-
-  return {
-    suppliers: [...suppliers.values()],
-    optionSupplierIds: [...optionSupplierIds],
-  };
-}
-
 export default function ProductSuppliersPage() {
   const params = useParams<{ productId: string }>();
   const router = useRouter();
@@ -288,6 +262,10 @@ export default function ProductSuppliersPage() {
   const [product, setProduct] = useState<ProductRow | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
   const [optionSupplierIds, setOptionSupplierIds] = useState<string[]>([]);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplierHasMore, setSupplierHasMore] = useState(false);
+  const [supplierNextCursor, setSupplierNextCursor] = useState<SupplierCursor | null>(null);
+  const [supplierOptionsLoading, setSupplierOptionsLoading] = useState(false);
   const [relationships, setRelationships] = useState<ProductSupplierRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -315,6 +293,37 @@ export default function ProductSuppliersPage() {
       .sort((left, right) => left.name.localeCompare(right.name));
   }, [optionSupplierIds, relationships, suppliers]);
 
+  const fetchSupplierOptions = useCallback(async (
+    currentWorkspaceId: string,
+    options: { query: string; append?: boolean; cursor?: SupplierCursor | null },
+  ) => {
+    setSupplierOptionsLoading(true);
+    try {
+      const searchParams = new URLSearchParams({
+        workspaceId: currentWorkspaceId,
+        productId,
+        pageSize: String(SUPPLIER_PAGE_SIZE),
+      });
+      if (options.query.trim()) searchParams.set("query", options.query.trim());
+      if (options.cursor) {
+        searchParams.set("afterName", options.cursor.name);
+        searchParams.set("afterId", options.cursor.id);
+      }
+      const response = await fetch(`/api/product-suppliers/options?${searchParams.toString()}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Supplier options could not be loaded.");
+
+      const incomingSuppliers = (result.result?.suppliers ?? []) as SupplierRow[];
+      const incomingOptionIds = (result.result?.optionSupplierIds ?? []).map((id: unknown) => String(id));
+      setSuppliers((current) => options.append ? mergeSuppliers(current, incomingSuppliers) : incomingSuppliers);
+      setOptionSupplierIds((current) => options.append ? mergeIds(current, incomingOptionIds) : incomingOptionIds);
+      setSupplierHasMore(Boolean(result.result?.hasMore));
+      setSupplierNextCursor(result.result?.nextCursor ?? null);
+    } finally {
+      setSupplierOptionsLoading(false);
+    }
+  }, [productId]);
+
   const loadCloud = useCallback(async () => {
     const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
     const context = await contextResponse.json().catch(() => ({}));
@@ -326,20 +335,29 @@ export default function ProductSuppliersPage() {
     setWorkspaceId(currentWorkspaceId);
     rememberWorkspace(currentWorkspaceId);
 
-    const [productResponse, relationshipsResponse, supplierWorkingSet] = await Promise.all([
+    const optionsParams = new URLSearchParams({
+      workspaceId: currentWorkspaceId,
+      productId,
+      pageSize: String(SUPPLIER_PAGE_SIZE),
+    });
+    const [productResponse, relationshipsResponse, optionsResponse] = await Promise.all([
       fetch(`/api/products/${encodeURIComponent(productId)}?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
       fetch(`/api/product-suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}&productId=${encodeURIComponent(productId)}`, { cache: "no-store" }),
-      loadSupplierWorkingSet(currentWorkspaceId, productId),
+      fetch(`/api/product-suppliers/options?${optionsParams.toString()}`, { cache: "no-store" }),
     ]);
-    const [productResult, relationshipsResult] = await Promise.all([
+    const [productResult, relationshipsResult, optionsResult] = await Promise.all([
       productResponse.json().catch(() => ({})),
       relationshipsResponse.json().catch(() => ({})),
+      optionsResponse.json().catch(() => ({})),
     ]);
     if (!productResponse.ok || !productResult.ok) throw new Error(productResult.error ?? "Product could not be loaded.");
     if (!relationshipsResponse.ok || !relationshipsResult.ok) throw new Error(relationshipsResult.error ?? "Product Suppliers could not be loaded.");
+    if (!optionsResponse.ok || !optionsResult.ok) throw new Error(optionsResult.error ?? "Supplier options could not be loaded.");
 
     const cloudProduct = (productResult.result?.product ?? null) as ProductRow | null;
     if (!cloudProduct) throw new Error("The Product could not be found in this workspace.");
+    const cloudSuppliers = (optionsResult.result?.suppliers ?? []) as SupplierRow[];
+    const cloudOptionSupplierIds = (optionsResult.result?.optionSupplierIds ?? []).map((id: unknown) => String(id));
     const cloudRelationships = (relationshipsResult.result?.relationships ?? []) as ProductSupplierRow[];
     const queue = readProductSupplierQueue(currentWorkspaceId);
     const visibleRelationships = queue.reduce(
@@ -348,13 +366,16 @@ export default function ProductSuppliersPage() {
     );
 
     setProduct(cloudProduct);
-    setSuppliers(supplierWorkingSet.suppliers);
-    setOptionSupplierIds(supplierWorkingSet.optionSupplierIds);
+    setSuppliers(cloudSuppliers);
+    setOptionSupplierIds(cloudOptionSupplierIds);
+    setSupplierQuery("");
+    setSupplierHasMore(Boolean(optionsResult.result?.hasMore));
+    setSupplierNextCursor(optionsResult.result?.nextCursor ?? null);
     setRelationships(visibleRelationships);
     setPendingCommands(queue);
     writeCache(currentWorkspaceId, productId, {
       product: cloudProduct,
-      suppliers: supplierWorkingSet.suppliers,
+      suppliers: cloudSuppliers,
       relationships: cloudRelationships,
     });
   }, [productId]);
@@ -412,6 +433,17 @@ export default function ProductSuppliersPage() {
       writeCache("demo", productId, { product, suppliers, relationships });
     }
   }, [loaded, mode, product, productId, relationships, suppliers]);
+
+  useEffect(() => {
+    if (!formOpen || editing || mode !== "cloud" || !workspaceId || !navigator.onLine) return;
+    const timer = window.setTimeout(() => {
+      setError("");
+      void fetchSupplierOptions(workspaceId, { query: supplierQuery }).catch((supplierError) => {
+        setError(supplierError instanceof Error ? supplierError.message : "Supplier options could not be loaded.");
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [editing, fetchSupplierOptions, formOpen, mode, supplierQuery, workspaceId]);
 
   const syncPending = useCallback(async () => {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
@@ -512,6 +544,7 @@ export default function ProductSuppliersPage() {
 
   function openCreate() {
     setEditing(null);
+    setSupplierQuery("");
     setForm(createEmptyForm(state.settings.currency));
     setFormOpen(true);
   }
@@ -608,7 +641,7 @@ export default function ProductSuppliersPage() {
             <Button variant="secondary" onClick={() => router.push("/products")}>
               <ArrowLeft size={17} /> Products
             </Button>
-            <Button onClick={openCreate} disabled={supportMode || !product || product.status !== "active" || availableSuppliers.length === 0}>
+            <Button onClick={openCreate} disabled={supportMode || !product || product.status !== "active"}>
               <Plus size={17} /> Link supplier
             </Button>
           </div>
@@ -738,7 +771,7 @@ export default function ProductSuppliersPage() {
           <div className={styles.emptyState}>
             <Link2 size={23} />
             <h3>{filter === "archived" ? "No archived relationships" : "No suppliers linked"}</h3>
-            <p>{filter === "archived" ? "Archived Product Supplier history will remain here." : availableSuppliers.length ? "Link the first Product supplier." : "Create an active Product supplier before linking it."}</p>
+            <p>{filter === "archived" ? "Archived Product Supplier history will remain here." : "Link the first Product supplier or search the Supplier catalogue."}</p>
           </div>
         ) : null}
       </Card>
@@ -767,6 +800,16 @@ export default function ProductSuppliersPage() {
           <div className={styles.formBody}>
             <div className={styles.formGrid}>
               <label className={styles.wide}>Product<input disabled value={product ? `${product.name} · ${product.sku}` : productId} /></label>
+              {!editing ? (
+                <label className={styles.wide}>Find supplier
+                  <input
+                    maxLength={160}
+                    value={supplierQuery}
+                    onChange={(event) => setSupplierQuery(event.target.value)}
+                    placeholder="Search Supplier name or code…"
+                  />
+                </label>
+              ) : null}
               <label>Supplier
                 <select
                   required
@@ -788,6 +831,18 @@ export default function ProductSuppliersPage() {
                   ).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.code}</option>)}
                 </select>
               </label>
+              {!editing && supplierHasMore && supplierNextCursor && workspaceId && mode === "cloud" ? (
+                <div style={{ display: "flex", alignItems: "end" }}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={supplierOptionsLoading}
+                    onClick={() => void fetchSupplierOptions(workspaceId, { query: supplierQuery, append: true, cursor: supplierNextCursor }).catch((supplierError) => setError(supplierError instanceof Error ? supplierError.message : "More Supplier options could not be loaded."))}
+                  >
+                    {supplierOptionsLoading ? <><RefreshCw className="spin" size={15} /> Loading…</> : "Load more suppliers"}
+                  </Button>
+                </div>
+              ) : null}
               <label>Supplier SKU<input maxLength={64} value={form.supplierSku} onChange={(event) => setForm({ ...form, supplierSku: event.target.value })} placeholder="Supplier's product code" /></label>
               <label>Supplier cost<input min="0" step="0.0001" type="number" value={form.supplierCost} onChange={(event) => setForm({ ...form, supplierCost: event.target.value })} placeholder="Not recorded" /></label>
               <label>Currency<input required minLength={3} maxLength={3} value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>
