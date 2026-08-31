@@ -33,6 +33,7 @@ import styles from "./product-suppliers.module.css";
 
 type RelationshipStatus = "active" | "archived";
 type RelationshipFilter = "active" | "archived";
+type SupplierCursor = { name: string; id: string };
 
 interface ProductRow {
   id: string;
@@ -91,6 +92,7 @@ const CACHE_PREFIX = "bdb-product-supplier-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
 const SUPPLIER_CACHE_LIMIT = 500;
 const RELATIONSHIP_CACHE_LIMIT = 200;
+const SUPPLIER_PAGE_SIZE = 200;
 
 function createEmptyForm(currency: string): RelationshipForm {
   return {
@@ -136,11 +138,7 @@ function readCache(workspaceId: string, productId: string): RelationshipCache {
   }
 }
 
-function writeCache(
-  workspaceId: string,
-  productId: string,
-  cache: RelationshipCache,
-) {
+function writeCache(workspaceId: string, productId: string, cache: RelationshipCache) {
   if (typeof window === "undefined") return;
   const relationships = cache.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT);
   const linkedIds = new Set(relationships.map((relationship) => relationship.supplier_id));
@@ -241,6 +239,46 @@ function applyCommand(
   });
 }
 
+async function loadSupplierWorkingSet(workspaceId: string, productId: string) {
+  const suppliers = new Map<string, SupplierRow>();
+  const optionSupplierIds = new Set<string>();
+  let cursor: SupplierCursor | null = null;
+  let hasMore = true;
+
+  while (hasMore && optionSupplierIds.size < SUPPLIER_CACHE_LIMIT) {
+    const pageSize = Math.min(SUPPLIER_PAGE_SIZE, SUPPLIER_CACHE_LIMIT - optionSupplierIds.size);
+    const params = new URLSearchParams({
+      workspaceId,
+      productId,
+      pageSize: String(pageSize),
+    });
+    if (cursor) {
+      params.set("afterName", cursor.name);
+      params.set("afterId", cursor.id);
+    }
+
+    const response = await fetch(`/api/product-suppliers/options?${params.toString()}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error ?? "Suppliers could not be loaded.");
+
+    for (const supplier of (result.result?.suppliers ?? []) as SupplierRow[]) {
+      suppliers.set(supplier.id, supplier);
+    }
+    for (const supplierId of (result.result?.optionSupplierIds ?? []) as string[]) {
+      optionSupplierIds.add(String(supplierId));
+    }
+
+    hasMore = Boolean(result.result?.hasMore);
+    cursor = result.result?.nextCursor ?? null;
+    if (hasMore && !cursor) break;
+  }
+
+  return {
+    suppliers: [...suppliers.values()],
+    optionSupplierIds: [...optionSupplierIds],
+  };
+}
+
 export default function ProductSuppliersPage() {
   const params = useParams<{ productId: string }>();
   const router = useRouter();
@@ -249,6 +287,7 @@ export default function ProductSuppliersPage() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [product, setProduct] = useState<ProductRow | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const [optionSupplierIds, setOptionSupplierIds] = useState<string[]>([]);
   const [relationships, setRelationships] = useState<ProductSupplierRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -269,11 +308,12 @@ export default function ProductSuppliersPage() {
   );
 
   const availableSuppliers = useMemo(() => {
+    const eligibleIds = new Set(optionSupplierIds);
     const linkedIds = new Set(relationships.map((relationship) => relationship.supplier_id));
     return suppliers
-      .filter((supplier) => supplier.status === "active" && supplier.supplier_type === "product" && !linkedIds.has(supplier.id))
+      .filter((supplier) => eligibleIds.has(supplier.id) && !linkedIds.has(supplier.id))
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [relationships, suppliers]);
+  }, [optionSupplierIds, relationships, suppliers]);
 
   const loadCloud = useCallback(async () => {
     const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
@@ -286,23 +326,20 @@ export default function ProductSuppliersPage() {
     setWorkspaceId(currentWorkspaceId);
     rememberWorkspace(currentWorkspaceId);
 
-    const [productsResponse, suppliersResponse, relationshipsResponse] = await Promise.all([
-      fetch(`/api/products?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
-      fetch(`/api/suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
+    const [productResponse, relationshipsResponse, supplierWorkingSet] = await Promise.all([
+      fetch(`/api/products/${encodeURIComponent(productId)}?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
       fetch(`/api/product-suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}&productId=${encodeURIComponent(productId)}`, { cache: "no-store" }),
+      loadSupplierWorkingSet(currentWorkspaceId, productId),
     ]);
-    const [productsResult, suppliersResult, relationshipsResult] = await Promise.all([
-      productsResponse.json().catch(() => ({})),
-      suppliersResponse.json().catch(() => ({})),
+    const [productResult, relationshipsResult] = await Promise.all([
+      productResponse.json().catch(() => ({})),
       relationshipsResponse.json().catch(() => ({})),
     ]);
-    if (!productsResponse.ok || !productsResult.ok) throw new Error(productsResult.error ?? "Products could not be loaded.");
-    if (!suppliersResponse.ok || !suppliersResult.ok) throw new Error(suppliersResult.error ?? "Suppliers could not be loaded.");
+    if (!productResponse.ok || !productResult.ok) throw new Error(productResult.error ?? "Product could not be loaded.");
     if (!relationshipsResponse.ok || !relationshipsResult.ok) throw new Error(relationshipsResult.error ?? "Product Suppliers could not be loaded.");
 
-    const cloudProduct = ((productsResult.result?.products ?? []) as ProductRow[]).find((item) => item.id === productId) ?? null;
+    const cloudProduct = (productResult.result?.product ?? null) as ProductRow | null;
     if (!cloudProduct) throw new Error("The Product could not be found in this workspace.");
-    const cloudSuppliers = (suppliersResult.result?.suppliers ?? []) as SupplierRow[];
     const cloudRelationships = (relationshipsResult.result?.relationships ?? []) as ProductSupplierRow[];
     const queue = readProductSupplierQueue(currentWorkspaceId);
     const visibleRelationships = queue.reduce(
@@ -311,12 +348,13 @@ export default function ProductSuppliersPage() {
     );
 
     setProduct(cloudProduct);
-    setSuppliers(cloudSuppliers);
+    setSuppliers(supplierWorkingSet.suppliers);
+    setOptionSupplierIds(supplierWorkingSet.optionSupplierIds);
     setRelationships(visibleRelationships);
     setPendingCommands(queue);
     writeCache(currentWorkspaceId, productId, {
       product: cloudProduct,
-      suppliers: cloudSuppliers,
+      suppliers: supplierWorkingSet.suppliers,
       relationships: cloudRelationships,
     });
   }, [productId]);
@@ -332,6 +370,9 @@ export default function ProductSuppliersPage() {
         setWorkspaceId(fallbackWorkspace);
         setProduct(cached.product);
         setSuppliers(cached.suppliers);
+        setOptionSupplierIds(cached.suppliers
+          .filter((supplier) => supplier.status === "active" && supplier.supplier_type === "product")
+          .map((supplier) => supplier.id));
         setRelationships(queued.reduce(
           (current, command) => applyCommand(current, command, productId),
           cached.relationships,
@@ -578,7 +619,7 @@ export default function ProductSuppliersPage() {
         <Link2 size={19} />
         <div>
           <strong>Functional Product–Supplier relationship</strong>
-          <p>Supplier-specific SKU, cost, lead time and order quantity now live in an audited relationship without duplicating the Product or Supplier record.</p>
+          <p>Supplier-specific SKU, cost, lead time and order quantity live in an audited relationship without duplicating the Product or Supplier record.</p>
         </div>
       </div>
 
