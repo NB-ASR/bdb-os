@@ -98,6 +98,13 @@ function registerStatus(value: string | null) {
   return result;
 }
 
+function registerPurpose(value: string | null) {
+  const result = String(value ?? "").trim();
+  if (!result) return null;
+  if (!PURPOSES.has(result)) throw new CommandError("INVALID_PRODUCT_PAGE", "Product purpose filter is invalid.");
+  return result;
+}
+
 function registerCursor(afterName: string | null, afterId: string | null): RegisterCursor | null {
   if (!afterName && !afterId) return null;
   if (!afterName || !afterId || afterName.length > 160 || !UUID_PATTERN.test(afterId)) {
@@ -149,6 +156,7 @@ export async function GET(request: Request) {
 
     const query = registerQuery(url.searchParams.get("query"));
     const status = registerStatus(url.searchParams.get("status"));
+    const purpose = registerPurpose(url.searchParams.get("purpose"));
     const cursor = registerCursor(url.searchParams.get("afterName"), url.searchParams.get("afterId"));
     const [pageResult, summaryResult] = await Promise.all([
       supabase.rpc("catalogue_product_page", {
@@ -158,6 +166,7 @@ export async function GET(request: Request) {
         p_after_id: cursor?.id ?? null,
         p_query: query,
         p_status: status,
+        p_purpose: purpose,
       }),
       supabase.rpc("catalogue_product_summary", { p_workspace_id: workspaceId }),
     ]);
