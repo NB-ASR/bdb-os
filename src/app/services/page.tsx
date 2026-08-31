@@ -290,10 +290,7 @@ export default function ServicesPage() {
   }, [fetchRegister, mode]);
 
   useEffect(() => {
-    if (mode === "demo" && loaded) {
-      writeCache("demo", services);
-      setSummary(summaryFromRows(services));
-    }
+    if (mode === "demo" && loaded) writeCache("demo", services);
   }, [loaded, mode, services]);
 
   useEffect(() => {
