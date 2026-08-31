@@ -125,6 +125,10 @@ jobs:
         shell: bash
         run: bash scripts/catalogue-pass1-cleanup.sh
 
+      - name: Run Catalogue Pass 3 scale and query-plan torture
+        shell: bash
+        run: bash scripts/catalogue-pass3-scale-torture.sh
+
       - name: Run Customer Pass 4 multi-session concurrency torture
         shell: bash
         run: bash scripts/customer-pass4-concurrency.sh
