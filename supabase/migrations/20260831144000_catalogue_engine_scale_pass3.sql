@@ -12,10 +12,14 @@ create index if not exists products_workspace_name_cursor_idx
   on public.products(workspace_id, name, id);
 create index if not exists products_workspace_status_name_cursor_idx
   on public.products(workspace_id, status, name, id);
+create index if not exists products_workspace_status_purpose_name_cursor_idx
+  on public.products(workspace_id, status, purpose, name, id);
 create index if not exists services_workspace_name_cursor_idx
   on public.services(workspace_id, name, id);
 create index if not exists services_workspace_status_name_cursor_idx
   on public.services(workspace_id, status, name, id);
+create index if not exists services_workspace_status_booking_name_cursor_idx
+  on public.services(workspace_id, status, booking_mode, name, id);
 create index if not exists suppliers_workspace_product_status_name_cursor_idx
   on public.suppliers(workspace_id, supplier_type, status, name, id);
 
@@ -37,9 +41,7 @@ create index if not exists services_catalogue_search_trgm_idx
     )
   ) extensions.gin_trgm_ops);
 create index if not exists suppliers_catalogue_search_trgm_idx
-  on public.suppliers using gin ((
-    lower(name || ' ' || code::text)
-  ) extensions.gin_trgm_ops);
+  on public.suppliers using gin ((lower(name || ' ' || code::text)) extensions.gin_trgm_ops);
 
 create or replace function public.catalogue_product_page(
   p_workspace_id uuid,
@@ -47,7 +49,8 @@ create or replace function public.catalogue_product_page(
   p_after_name text default null,
   p_after_id uuid default null,
   p_query text default null,
-  p_status text default null
+  p_status text default null,
+  p_purpose text default null
 )
 returns setof public.products
 language sql
@@ -59,6 +62,7 @@ as $$
   from public.products product
   where product.workspace_id = p_workspace_id
     and (p_status is null or product.status = p_status)
+    and (p_purpose is null or product.purpose = p_purpose)
     and (
       nullif(trim(p_query), '') is null
       or lower(
@@ -104,7 +108,8 @@ create or replace function public.catalogue_service_page(
   p_after_name text default null,
   p_after_id uuid default null,
   p_query text default null,
-  p_status text default null
+  p_status text default null,
+  p_booking_mode text default null
 )
 returns setof public.services
 language sql
@@ -116,6 +121,7 @@ as $$
   from public.services service
   where service.workspace_id = p_workspace_id
     and (p_status is null or service.status = p_status)
+    and (p_booking_mode is null or service.booking_mode = p_booking_mode)
     and (
       nullif(trim(p_query), '') is null
       or lower(
@@ -138,7 +144,9 @@ returns table (
   active_count bigint,
   archived_count bigint,
   customer_bookable_count bigint,
-  staff_only_count bigint
+  staff_only_count bigint,
+  priced_count bigint,
+  active_duration_minutes bigint
 )
 language sql
 stable
@@ -150,7 +158,9 @@ as $$
     count(*) filter (where service.status = 'active')::bigint,
     count(*) filter (where service.status = 'archived')::bigint,
     count(*) filter (where service.status = 'active' and service.booking_mode = 'customer')::bigint,
-    count(*) filter (where service.status = 'active' and service.booking_mode = 'staff')::bigint
+    count(*) filter (where service.status = 'active' and service.booking_mode = 'staff')::bigint,
+    count(*) filter (where service.status = 'active' and service.price is not null)::bigint,
+    coalesce(sum(service.duration_minutes) filter (where service.status = 'active'), 0)::bigint
   from public.services service
   where service.workspace_id = p_workspace_id;
 $$;
@@ -251,24 +261,24 @@ as $$
   limit least(greatest(coalesce(p_limit, 101), 1), 201);
 $$;
 
-revoke all on function public.catalogue_product_page(uuid, integer, text, uuid, text, text) from public, anon;
+revoke all on function public.catalogue_product_page(uuid, integer, text, uuid, text, text, text) from public, anon;
 revoke all on function public.catalogue_product_summary(uuid) from public, anon;
-revoke all on function public.catalogue_service_page(uuid, integer, text, uuid, text, text) from public, anon;
+revoke all on function public.catalogue_service_page(uuid, integer, text, uuid, text, text, text) from public, anon;
 revoke all on function public.catalogue_service_summary(uuid) from public, anon;
 revoke all on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) from public, anon;
 revoke all on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) from public, anon;
 
-grant execute on function public.catalogue_product_page(uuid, integer, text, uuid, text, text) to authenticated, service_role;
+grant execute on function public.catalogue_product_page(uuid, integer, text, uuid, text, text, text) to authenticated, service_role;
 grant execute on function public.catalogue_product_summary(uuid) to authenticated, service_role;
-grant execute on function public.catalogue_service_page(uuid, integer, text, uuid, text, text) to authenticated, service_role;
+grant execute on function public.catalogue_service_page(uuid, integer, text, uuid, text, text, text) to authenticated, service_role;
 grant execute on function public.catalogue_service_summary(uuid) to authenticated, service_role;
 grant execute on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) to authenticated, service_role;
 grant execute on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) to authenticated, service_role;
 
-comment on function public.catalogue_product_page(uuid, integer, text, uuid, text, text) is
-  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination and one indexed search expression.';
-comment on function public.catalogue_service_page(uuid, integer, text, uuid, text, text) is
-  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination and one indexed search expression.';
+comment on function public.catalogue_product_page(uuid, integer, text, uuid, text, text, text) is
+  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination, server-side purpose/status filters and one indexed search expression.';
+comment on function public.catalogue_service_page(uuid, integer, text, uuid, text, text, text) is
+  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination, server-side booking/status filters and one indexed search expression.';
 comment on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) is
   'Catalogue V1 Pass 3 Product Supplier register projection; returns only page-level relationship aggregates instead of hydrating the whole relationship register.';
 comment on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) is
