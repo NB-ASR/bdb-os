@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Link2, Package, RefreshCw, Search, Star, TriangleAlert, Truck } from "lucide-react";
 import { useBdb } from "@/lib/store";
@@ -90,7 +90,7 @@ export default function ProductSupplierIndexPage() {
   const [terms, setTerms] = useState<SupplierTermRow[]>([]);
   const [summary, setSummary] = useState<SupplierTermsSummary>(EMPTY_SUMMARY);
   const [query, setQuery] = useState("");
-  const [nextCursor, setNextCursor] = useState<RegisterCursor | null>(null);
+  const nextCursorRef = useRef<RegisterCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadingPage, setLoadingPage] = useState(false);
@@ -149,8 +149,8 @@ export default function ProductSupplierIndexPage() {
   const loadPage = useCallback(async (options?: { append?: boolean; search?: string }) => {
     if (!workspaceId || workspaceId === "demo" || !navigator.onLine) return;
     const append = Boolean(options?.append);
-    const search = String(options?.search ?? query).trim();
-    const cursor = append ? nextCursor : null;
+    const search = String(options?.search ?? "").trim();
+    const cursor = append ? nextCursorRef.current : null;
     setLoadingPage(true);
     setError("");
     setNotice("");
@@ -173,7 +173,7 @@ export default function ProductSupplierIndexPage() {
       setTerms((current) => append ? [...current, ...pageTerms] : pageTerms);
       setSummary(pageSummary);
       setHasMore(Boolean(result.result?.hasMore));
-      setNextCursor(result.result?.nextCursor ?? null);
+      nextCursorRef.current = result.result?.nextCursor ?? null;
       setPendingCount(readProductSupplierQueue(workspaceId).length);
       if (!append && !search) writeCache(workspaceId, { terms: pageTerms, summary: pageSummary });
     } catch (loadError) {
@@ -188,7 +188,7 @@ export default function ProductSupplierIndexPage() {
     } finally {
       setLoadingPage(false);
     }
-  }, [nextCursor, query, workspaceId]);
+  }, [workspaceId]);
 
   useEffect(() => {
     if (!loaded || mode !== "cloud" || !workspaceId || workspaceId === "demo" || !navigator.onLine) return;
@@ -204,7 +204,8 @@ export default function ProductSupplierIndexPage() {
   }, [loadPage, query, workspaceId]);
 
   const visibleTerms = useMemo(() => {
-    if (mode === "cloud" && navigator.onLine) return terms;
+    const online = typeof navigator !== "undefined" && navigator.onLine;
+    if (mode === "cloud" && online) return terms;
     const needle = query.trim().toLowerCase();
     return terms.filter((term) => !needle || `${term.name} ${term.sku}`.toLowerCase().includes(needle));
   }, [mode, query, terms]);
