@@ -14,6 +14,11 @@ function uuid(value: unknown, field: string) {
   return result;
 }
 
+function optionalUuid(value: string | null, field: string) {
+  if (!value) return null;
+  return uuid(value, field);
+}
+
 function pageSize(value: string | null) {
   const result = Number(value ?? 100);
   if (!Number.isInteger(result) || result < 1 || result > MAX_PAGE_SIZE) {
@@ -45,6 +50,7 @@ export async function GET(request: Request) {
   return runCommand(async () => {
     const url = new URL(request.url);
     const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
+    const productId = optionalUuid(url.searchParams.get("productId"), "Product");
     const requestedPageSize = pageSize(url.searchParams.get("pageSize"));
     const query = registerQuery(url.searchParams.get("query"));
     const cursor = registerCursor(url.searchParams.get("afterName"), url.searchParams.get("afterId"));
@@ -57,23 +63,48 @@ export async function GET(request: Request) {
       throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
     }
 
-    const { data, error } = await supabase.rpc("catalogue_product_supplier_options_page", {
+    const pageResult = await supabase.rpc("catalogue_product_supplier_options_page", {
       p_workspace_id: workspaceId,
       p_limit: requestedPageSize + 1,
       p_after_name: cursor?.name ?? null,
       p_after_id: cursor?.id ?? null,
       p_query: query,
     });
-    if (error) throw error;
+    if (pageResult.error) throw pageResult.error;
 
-    const rows = data ?? [];
+    const rows = pageResult.data ?? [];
     const hasMore = rows.length > requestedPageSize;
-    const suppliers = rows.slice(0, requestedPageSize);
-    const last = suppliers.at(-1) as { name?: unknown; id?: unknown } | undefined;
+    const optionSuppliers = rows.slice(0, requestedPageSize);
+    const last = optionSuppliers.at(-1) as { name?: unknown; id?: unknown } | undefined;
+
+    let linkedSuppliers: typeof optionSuppliers = [];
+    if (productId) {
+      const relationshipResult = await supabase
+        .from("product_suppliers")
+        .select("supplier_id")
+        .eq("workspace_id", workspaceId)
+        .eq("product_id", productId);
+      if (relationshipResult.error) throw relationshipResult.error;
+      const linkedIds = [...new Set((relationshipResult.data ?? []).map((row) => String(row.supplier_id)))];
+      if (linkedIds.length) {
+        const linkedResult = await supabase
+          .from("suppliers")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .in("id", linkedIds);
+        if (linkedResult.error) throw linkedResult.error;
+        linkedSuppliers = linkedResult.data ?? [];
+      }
+    }
+
+    const supplierMap = new Map<string, (typeof optionSuppliers)[number]>();
+    for (const supplier of linkedSuppliers) supplierMap.set(String(supplier.id), supplier);
+    for (const supplier of optionSuppliers) supplierMap.set(String(supplier.id), supplier);
 
     return {
       workspaceId,
-      suppliers,
+      suppliers: [...supplierMap.values()],
+      optionSupplierIds: optionSuppliers.map((supplier) => supplier.id),
       hasMore,
       nextCursor: hasMore && last
         ? { name: String(last.name ?? ""), id: String(last.id ?? "") }
