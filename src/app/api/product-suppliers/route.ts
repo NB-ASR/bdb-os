@@ -179,25 +179,7 @@ export async function GET(request: Request) {
     const { data, error } = await query;
     if (error) throw error;
 
-    const relationships = data ?? [];
-    let linkedSuppliers: Array<Record<string, unknown>> = [];
-    if (productId && relationships.length) {
-      const supplierIds = [...new Set(relationships.map((relationship) => String(relationship.supplier_id)))];
-      const { data: supplierData, error: supplierError } = await supabase
-        .from("suppliers")
-        .select("id, code, name, supplier_type, document_currency, status")
-        .eq("workspace_id", workspaceId)
-        .in("id", supplierIds)
-        .order("name");
-      if (supplierError) throw supplierError;
-      linkedSuppliers = (supplierData ?? []) as Array<Record<string, unknown>>;
-    }
-
-    return {
-      workspaceId,
-      relationships,
-      ...(productId ? { suppliers: linkedSuppliers } : {}),
-    };
+    return { workspaceId, relationships: data ?? [] };
   });
 }
 
