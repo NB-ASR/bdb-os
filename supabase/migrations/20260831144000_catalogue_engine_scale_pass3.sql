@@ -19,23 +19,27 @@ create index if not exists services_workspace_status_name_cursor_idx
 create index if not exists suppliers_workspace_product_status_name_cursor_idx
   on public.suppliers(workspace_id, supplier_type, status, name, id);
 
--- Contains-search indexes preserve the simple V1 search box while avoiding
--- whole-register scans once catalogues grow beyond demo-sized datasets.
-create index if not exists products_name_trgm_idx
-  on public.products using gin (name extensions.gin_trgm_ops);
-create index if not exists products_sku_trgm_idx
-  on public.products using gin ((sku::text) extensions.gin_trgm_ops);
-create index if not exists products_barcode_trgm_idx
-  on public.products using gin ((barcode::text) extensions.gin_trgm_ops)
-  where barcode is not null;
-create index if not exists services_name_trgm_idx
-  on public.services using gin (name extensions.gin_trgm_ops);
-create index if not exists services_code_trgm_idx
-  on public.services using gin ((code::text) extensions.gin_trgm_ops);
-create index if not exists suppliers_name_trgm_idx
-  on public.suppliers using gin (name extensions.gin_trgm_ops);
-create index if not exists suppliers_code_trgm_idx
-  on public.suppliers using gin ((code::text) extensions.gin_trgm_ops);
+-- One indexed search expression per register is deliberately preferred over
+-- several OR-ed ILIKE predicates. It preserves one simple V1 search box while
+-- giving PostgreSQL a predictable trigram plan at scale.
+create index if not exists products_catalogue_search_trgm_idx
+  on public.products using gin ((
+    lower(
+      name || ' ' || sku::text || ' ' || coalesce(barcode::text, '') || ' '
+      || coalesce(brand, '') || ' ' || coalesce(category, '') || ' ' || purpose
+    )
+  ) extensions.gin_trgm_ops);
+create index if not exists services_catalogue_search_trgm_idx
+  on public.services using gin ((
+    lower(
+      name || ' ' || code::text || ' ' || coalesce(category, '') || ' '
+      || coalesce(description, '') || ' ' || booking_mode
+    )
+  ) extensions.gin_trgm_ops);
+create index if not exists suppliers_catalogue_search_trgm_idx
+  on public.suppliers using gin ((
+    lower(name || ' ' || code::text)
+  ) extensions.gin_trgm_ops);
 
 create or replace function public.catalogue_product_page(
   p_workspace_id uuid,
@@ -57,9 +61,10 @@ as $$
     and (p_status is null or product.status = p_status)
     and (
       nullif(trim(p_query), '') is null
-      or product.name ilike '%' || trim(p_query) || '%'
-      or product.sku::text ilike '%' || trim(p_query) || '%'
-      or coalesce(product.barcode::text, '') ilike '%' || trim(p_query) || '%'
+      or lower(
+        product.name || ' ' || product.sku::text || ' ' || coalesce(product.barcode::text, '') || ' '
+        || coalesce(product.brand, '') || ' ' || coalesce(product.category, '') || ' ' || product.purpose
+      ) like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -113,9 +118,10 @@ as $$
     and (p_status is null or service.status = p_status)
     and (
       nullif(trim(p_query), '') is null
-      or service.name ilike '%' || trim(p_query) || '%'
-      or service.code::text ilike '%' || trim(p_query) || '%'
-      or coalesce(service.category, '') ilike '%' || trim(p_query) || '%'
+      or lower(
+        service.name || ' ' || service.code::text || ' ' || coalesce(service.category, '') || ' '
+        || coalesce(service.description, '') || ' ' || service.booking_mode
+      ) like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -199,8 +205,10 @@ as $$
     and product.status = 'active'
     and (
       nullif(trim(p_query), '') is null
-      or product.name ilike '%' || trim(p_query) || '%'
-      or product.sku::text ilike '%' || trim(p_query) || '%'
+      or lower(
+        product.name || ' ' || product.sku::text || ' ' || coalesce(product.barcode::text, '') || ' '
+        || coalesce(product.brand, '') || ' ' || coalesce(product.category, '') || ' ' || product.purpose
+      ) like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -231,8 +239,8 @@ as $$
     and supplier.status = 'active'
     and (
       nullif(trim(p_query), '') is null
-      or supplier.name ilike '%' || trim(p_query) || '%'
-      or supplier.code::text ilike '%' || trim(p_query) || '%'
+      or lower(supplier.name || ' ' || supplier.code::text)
+        like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -258,9 +266,9 @@ grant execute on function public.catalogue_supplier_terms_page(uuid, integer, te
 grant execute on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) to authenticated, service_role;
 
 comment on function public.catalogue_product_page(uuid, integer, text, uuid, text, text) is
-  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination and indexed search.';
+  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination and one indexed search expression.';
 comment on function public.catalogue_service_page(uuid, integer, text, uuid, text, text) is
-  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination and indexed search.';
+  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination and one indexed search expression.';
 comment on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) is
   'Catalogue V1 Pass 3 Product Supplier register projection; returns only page-level relationship aggregates instead of hydrating the whole relationship register.';
 comment on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) is
