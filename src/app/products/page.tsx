@@ -366,10 +366,7 @@ export default function ProductsPage() {
   }, [fetchRegister, mode]);
 
   useEffect(() => {
-    if (mode === "demo" && loaded) {
-      writeCache("demo", products);
-      setSummary(summaryFromRows(products));
-    }
+    if (mode === "demo" && loaded) writeCache("demo", products);
   }, [loaded, mode, products]);
 
   useEffect(() => {
