@@ -222,18 +222,20 @@ end
 SQL
 
 PRODUCT_ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
-PRODUCT_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and name ilike '%Needle-Pass3%' order by name,id limit 101;")"
+PRODUCT_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and lower(name || ' ' || sku::text || ' ' || coalesce(barcode::text,'') || ' ' || coalesce(brand,'') || ' ' || coalesce(category,'') || ' ' || purpose) like '%needle-pass3%' order by name,id limit 101;")"
 SERVICE_ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
-SERVICE_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and name ilike '%Needle-Pass3%' order by name,id limit 101;")"
+SERVICE_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and lower(name || ' ' || code::text || ' ' || coalesce(category,'') || ' ' || coalesce(description,'') || ' ' || booking_mode) like '%needle-pass3%' order by name,id limit 101;")"
 SUPPLIER_OPTIONS_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.suppliers where workspace_id='${WORKSPACE}'::uuid and supplier_type='product' and status='active' order by name,id limit 101;")"
+SUPPLIER_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.suppliers where workspace_id='${WORKSPACE}'::uuid and supplier_type='product' and status='active' and lower(name || ' ' || code::text) like '%needle-pass3%' order by name,id limit 101;")"
 RELATIONSHIP_PLAN="$(psql_exec -Atc "explain (costs off) select count(*) from public.product_suppliers where workspace_id='${WORKSPACE}'::uuid and product_id=md5('catalogue-pass3-product-12345')::uuid and status='active';")"
 
 for pair in \
   "products_workspace_status_name_cursor_idx|${PRODUCT_ACTIVE_PLAN}" \
-  "products_name_trgm_idx|${PRODUCT_SEARCH_PLAN}" \
+  "products_catalogue_search_trgm_idx|${PRODUCT_SEARCH_PLAN}" \
   "services_workspace_status_name_cursor_idx|${SERVICE_ACTIVE_PLAN}" \
-  "services_name_trgm_idx|${SERVICE_SEARCH_PLAN}" \
+  "services_catalogue_search_trgm_idx|${SERVICE_SEARCH_PLAN}" \
   "suppliers_workspace_product_status_name_cursor_idx|${SUPPLIER_OPTIONS_PLAN}" \
+  "suppliers_catalogue_search_trgm_idx|${SUPPLIER_SEARCH_PLAN}" \
   "product_suppliers_product_status_idx|${RELATIONSHIP_PLAN}"; do
   expected="${pair%%|*}"
   plan="${pair#*|}"
