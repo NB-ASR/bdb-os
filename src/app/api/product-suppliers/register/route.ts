@@ -57,19 +57,44 @@ export async function GET(request: Request) {
       throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
     }
 
-    const { data, error } = await supabase.rpc("catalogue_supplier_terms_page", {
-      p_workspace_id: workspaceId,
-      p_limit: requestedPageSize + 1,
-      p_after_name: cursor?.name ?? null,
-      p_after_id: cursor?.id ?? null,
-      p_query: query,
-    });
-    if (error) throw error;
+    const [pageResult, productSummaryResult, relationshipCountResult, preferredCountResult, supplierCountResult] = await Promise.all([
+      supabase.rpc("catalogue_supplier_terms_page", {
+        p_workspace_id: workspaceId,
+        p_limit: requestedPageSize + 1,
+        p_after_name: cursor?.name ?? null,
+        p_after_id: cursor?.id ?? null,
+        p_query: query,
+      }),
+      supabase.rpc("catalogue_product_summary", { p_workspace_id: workspaceId }),
+      supabase
+        .from("product_suppliers")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("status", "active"),
+      supabase
+        .from("product_suppliers")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("status", "active")
+        .eq("is_preferred", true),
+      supabase
+        .from("suppliers")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", workspaceId)
+        .eq("status", "active")
+        .eq("supplier_type", "product"),
+    ]);
+    if (pageResult.error) throw pageResult.error;
+    if (productSummaryResult.error) throw productSummaryResult.error;
+    if (relationshipCountResult.error) throw relationshipCountResult.error;
+    if (preferredCountResult.error) throw preferredCountResult.error;
+    if (supplierCountResult.error) throw supplierCountResult.error;
 
-    const rows = data ?? [];
+    const rows = pageResult.data ?? [];
     const hasMore = rows.length > requestedPageSize;
     const terms = rows.slice(0, requestedPageSize);
     const last = terms.at(-1) as { name?: unknown; product_id?: unknown } | undefined;
+    const productSummary = productSummaryResult.data?.[0] ?? null;
 
     return {
       workspaceId,
@@ -78,6 +103,12 @@ export async function GET(request: Request) {
       nextCursor: hasMore && last
         ? { name: String(last.name ?? ""), id: String(last.product_id ?? "") }
         : null,
+      summary: {
+        activeProducts: Number(productSummary?.active_count ?? 0),
+        activeRelationships: relationshipCountResult.count ?? 0,
+        preferredRelationships: preferredCountResult.count ?? 0,
+        productSuppliers: supplierCountResult.count ?? 0,
+      },
     };
   });
 }
