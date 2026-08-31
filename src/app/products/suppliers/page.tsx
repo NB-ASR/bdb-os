@@ -43,6 +43,9 @@ interface IndexCache {
 
 const CACHE_PREFIX = "bdb-product-supplier-index-v1";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
+const PRODUCT_CACHE_LIMIT = 500;
+const SUPPLIER_CACHE_LIMIT = 500;
+const RELATIONSHIP_CACHE_LIMIT = 1000;
 
 function cacheKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
@@ -63,7 +66,12 @@ function readCache(workspaceId: string): IndexCache {
   if (typeof window === "undefined") return empty;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "null") as IndexCache | null;
-    return parsed && typeof parsed === "object" ? parsed : empty;
+    if (!parsed || typeof parsed !== "object") return empty;
+    return {
+      products: Array.isArray(parsed.products) ? parsed.products.slice(0, PRODUCT_CACHE_LIMIT) : [],
+      suppliers: Array.isArray(parsed.suppliers) ? parsed.suppliers.slice(0, SUPPLIER_CACHE_LIMIT) : [],
+      relationships: Array.isArray(parsed.relationships) ? parsed.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT) : [],
+    };
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId));
     return empty;
@@ -72,7 +80,25 @@ function readCache(workspaceId: string): IndexCache {
 
 function writeCache(workspaceId: string, cache: IndexCache) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(cache));
+
+  const products = cache.products.slice(0, PRODUCT_CACHE_LIMIT);
+  const productIds = new Set(products.map((product) => product.id));
+  const productRelationships = cache.relationships.filter((relationship) => productIds.has(relationship.product_id));
+  const linkedSupplierIds = new Set(productRelationships.map((relationship) => relationship.supplier_id));
+  const linkedSuppliers = cache.suppliers.filter((supplier) => linkedSupplierIds.has(supplier.id));
+  const linkedIds = new Set(linkedSuppliers.map((supplier) => supplier.id));
+  const otherSuppliers = cache.suppliers.filter((supplier) => !linkedIds.has(supplier.id));
+  const suppliers = [...linkedSuppliers, ...otherSuppliers].slice(0, SUPPLIER_CACHE_LIMIT);
+  const supplierIds = new Set(suppliers.map((supplier) => supplier.id));
+  const relationships = productRelationships
+    .filter((relationship) => supplierIds.has(relationship.supplier_id))
+    .slice(0, RELATIONSHIP_CACHE_LIMIT)
+    .map(({ pending: _pending, ...relationship }) => relationship);
+
+  window.localStorage.setItem(
+    cacheKey(workspaceId),
+    JSON.stringify({ products, suppliers, relationships }),
+  );
 }
 
 function queuedRelationship(command: ProductSupplierQueuedCommand): ProductSupplierRow | null {
