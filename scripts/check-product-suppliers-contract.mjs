@@ -7,6 +7,8 @@ const migration = await readFile(
 );
 const hardening = await readFile("supabase/migrations/20260830190000_catalogue_engine_pass1.sql", "utf8");
 const api = await readFile("src/app/api/product-suppliers/route.ts", "utf8");
+const optionsApi = await readFile("src/app/api/product-suppliers/options/route.ts", "utf8");
+const productDetailApi = await readFile("src/app/api/products/[productId]/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/product-supplier-queue.ts", "utf8");
 const offlineQueue = await readFile("src/lib/modules/catalogue-offline-queue.ts", "utf8");
 const layout = await readFile("src/app/products/layout.tsx", "utf8");
@@ -57,6 +59,14 @@ assert.match(api, /PRODUCT_SUPPLIER_CONFLICT/);
 assert.match(api, /PRODUCT_SUPPLIER_PREFERRED_EXISTS/);
 assert.match(api, /PRODUCT_SUPPLIER_SKU_DUPLICATE/);
 
+assert.match(optionsApi, /catalogue_product_supplier_options_page/);
+assert.match(optionsApi, /MAX_PAGE_SIZE = 200/);
+assert.match(optionsApi, /optionSupplierIds/);
+assert.match(optionsApi, /productId/);
+assert.match(optionsApi, /linkedSuppliers/);
+assert.match(productDetailApi, /maybeSingle/);
+assert.match(productDetailApi, /eq\("id", productId\)/);
+
 assert.match(queue, /createCatalogueOfflineQueue/);
 assert.match(queue, /bdb-product-supplier-queue-v1/);
 assert.match(queue, /retryProductSupplierCommand/);
@@ -77,8 +87,17 @@ assert.match(detailPage, /readCache/);
 assert.match(detailPage, /enqueueProductSupplierCommand/);
 assert.match(detailPage, /archive/);
 assert.match(detailPage, /restore/);
+assert.match(detailPage, /SUPPLIER_PAGE_SIZE = 100/);
+assert.match(detailPage, /SUPPLIER_CACHE_LIMIT = 500/);
+assert.match(detailPage, /RELATIONSHIP_CACHE_LIMIT = 200/);
+assert.match(detailPage, /api\/products\/\$\{encodeURIComponent\(productId\)\}/);
+assert.match(detailPage, /api\/product-suppliers\/options\?/);
+assert.match(detailPage, /supplierQuery/);
+assert.match(detailPage, /Load more suppliers/);
+assert.doesNotMatch(detailPage, /api\/products\?workspaceId=/);
+assert.doesNotMatch(detailPage, /api\/suppliers\?workspaceId=/);
 assert.match(detailPage, /Linking a Supplier does not change stock/);
 assert.match(detailPage, /actual historical cost and currency/);
 assert.doesNotMatch(`${indexPage}\n${detailPage}`, /platform-support|Founder support/i);
 
-console.log("Product Supplier schema, permissions, command, idempotency, bounded offline and UI contracts are internally consistent.");
+console.log("Product Supplier schema, permissions, command, idempotency, bounded scale, offline and UI contracts are internally consistent.");
