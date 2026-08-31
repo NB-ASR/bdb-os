@@ -105,6 +105,13 @@ function registerStatus(value: string | null) {
   return result;
 }
 
+function registerBookingMode(value: string | null) {
+  const result = String(value ?? "").trim();
+  if (!result) return null;
+  if (!BOOKING_MODES.has(result)) throw new CommandError("INVALID_SERVICE_PAGE", "Service booking filter is invalid.");
+  return result;
+}
+
 function registerCursor(afterName: string | null, afterId: string | null): RegisterCursor | null {
   if (!afterName && !afterId) return null;
   if (!afterName || !afterId || afterName.length > 160 || !UUID_PATTERN.test(afterId)) {
@@ -156,6 +163,7 @@ export async function GET(request: Request) {
 
     const query = registerQuery(url.searchParams.get("query"));
     const status = registerStatus(url.searchParams.get("status"));
+    const bookingMode = registerBookingMode(url.searchParams.get("bookingMode"));
     const cursor = registerCursor(url.searchParams.get("afterName"), url.searchParams.get("afterId"));
     const [pageResult, summaryResult] = await Promise.all([
       supabase.rpc("catalogue_service_page", {
@@ -165,6 +173,7 @@ export async function GET(request: Request) {
         p_after_id: cursor?.id ?? null,
         p_query: query,
         p_status: status,
+        p_booking_mode: bookingMode,
       }),
       supabase.rpc("catalogue_service_summary", { p_workspace_id: workspaceId }),
     ]);
