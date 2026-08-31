@@ -5,6 +5,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const MAX_PAGE_SIZE = 200;
 
 type RegisterCursor = { name: string; id: string };
+type SupplierOptionIdentity = { id: string };
 
 function uuid(value: unknown, field: string) {
   const result = String(value ?? "").trim();
@@ -104,7 +105,7 @@ export async function GET(request: Request) {
     return {
       workspaceId,
       suppliers: [...supplierMap.values()],
-      optionSupplierIds: optionSuppliers.map((supplier) => supplier.id),
+      optionSupplierIds: optionSuppliers.map((supplier: SupplierOptionIdentity) => supplier.id),
       hasMore,
       nextCursor: hasMore && last
         ? { name: String(last.name ?? ""), id: String(last.id ?? "") }
