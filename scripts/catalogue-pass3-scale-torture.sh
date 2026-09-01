@@ -12,6 +12,7 @@ psql_exec() {
 }
 
 WORKSPACE="76000000-0000-4000-8000-000000000001"
+DECOY_WORKSPACE="76000000-0000-4000-8000-000000000003"
 USER_ID="76000000-0000-4000-8000-000000000002"
 
 psql_exec <<SQL
@@ -20,15 +21,17 @@ insert into auth.users(id,email) values ('${USER_ID}'::uuid,'catalogue-pass3-sca
 update public.profiles
 set full_name='Catalogue Pass 3 Scale Actor', is_active=true
 where id='${USER_ID}'::uuid;
-insert into public.workspaces(id,slug,name) values ('${WORKSPACE}'::uuid,'catalogue-pass3-scale','Catalogue Pass 3 Scale');
+insert into public.workspaces(id,slug,name) values
+  ('${WORKSPACE}'::uuid,'catalogue-pass3-scale','Catalogue Pass 3 Scale'),
+  ('${DECOY_WORKSPACE}'::uuid,'catalogue-pass3-decoy','Catalogue Pass 3 Decoy');
 update public.workspaces
 set status='active', plan_id=(select plan_id from public.workspaces where slug='bdb-os')
-where id='${WORKSPACE}'::uuid;
+where id in ('${WORKSPACE}'::uuid,'${DECOY_WORKSPACE}'::uuid);
 insert into public.workspace_memberships(workspace_id,user_id,role,status,access_profile,joined_at)
 values ('${WORKSPACE}'::uuid,'${USER_ID}'::uuid,'owner','active','owner',now());
 
--- Read-scale volume is inserted directly. Mutation correctness, permission denial,
--- concurrency and idempotency remain covered by Catalogue Pass 1.
+-- Target-workspace volume is inserted directly. Mutation correctness, permission
+-- denial, concurrency and idempotency remain covered by Catalogue Pass 1.
 insert into public.products(
   id,workspace_id,sku,name,barcode,purpose,unit_label,unit_cost,selling_price,vat_rate,
   reorder_level,status,created_by,updated_by
@@ -128,6 +131,65 @@ select
 from generate_series(1,25000) g
 where g%10<>0;
 
+-- Preserve the full per-business target above, then add a larger second tenant.
+-- This makes the query-plan test representative of the multi-tenant Production
+-- table rather than a synthetic database where one workspace owns every row.
+insert into public.products(
+  id,workspace_id,sku,name,purpose,unit_label,unit_cost,selling_price,vat_rate,
+  reorder_level,status,created_by,updated_by
+)
+select
+  md5('catalogue-pass3-decoy-product-'||g)::uuid,
+  '${DECOY_WORKSPACE}'::uuid,
+  'D3P-'||lpad(g::text,6,'0'),
+  'Decoy Product '||lpad(g::text,6,'0'),
+  case when g%2=0 then 'resale' else 'supply' end,
+  'unit',
+  (g%500)::numeric / 10,
+  (g%900)::numeric / 10,
+  18,
+  g%25,
+  case when g%10=0 then 'archived' else 'active' end,
+  '${USER_ID}'::uuid,
+  '${USER_ID}'::uuid
+from generate_series(1,75000) g;
+
+insert into public.services(
+  id,workspace_id,code,name,category,duration_minutes,preparation_buffer_minutes,
+  recovery_buffer_minutes,price,vat_rate,booking_mode,status,created_by,updated_by
+)
+select
+  md5('catalogue-pass3-decoy-service-'||g)::uuid,
+  '${DECOY_WORKSPACE}'::uuid,
+  'D3S-'||lpad(g::text,6,'0'),
+  'Decoy Service '||lpad(g::text,6,'0'),
+  'General',
+  30 + (g%12)*5,
+  g%15,
+  g%10,
+  (g%700)::numeric / 10,
+  18,
+  case when g%2=1 then 'customer' else 'staff' end,
+  case when g%10=0 then 'archived' else 'active' end,
+  '${USER_ID}'::uuid,
+  '${USER_ID}'::uuid
+from generate_series(1,75000) g;
+
+insert into public.suppliers(
+  id,workspace_id,code,name,supplier_type,document_currency,status,created_by,updated_by
+)
+select
+  md5('catalogue-pass3-decoy-supplier-'||g)::uuid,
+  '${DECOY_WORKSPACE}'::uuid,
+  'D3SUP-'||lpad(g::text,6,'0'),
+  'Decoy Supplier '||lpad(g::text,6,'0'),
+  'product',
+  'EUR',
+  'active',
+  '${USER_ID}'::uuid,
+  '${USER_ID}'::uuid
+from generate_series(1,15000) g;
+
 analyze public.products;
 analyze public.services;
 analyze public.suppliers;
@@ -155,8 +217,16 @@ begin
   if (select count(*) from public.services where workspace_id='${WORKSPACE}'::uuid) <> 25000 then
     raise exception 'Catalogue Pass 3 Service synthetic register count mismatch';
   end if;
+  if (select count(*) from public.suppliers where workspace_id='${WORKSPACE}'::uuid) <> 5000 then
+    raise exception 'Catalogue Pass 3 Supplier synthetic register count mismatch';
+  end if;
   if (select count(*) from public.product_suppliers where workspace_id='${WORKSPACE}'::uuid) <> 45000 then
     raise exception 'Catalogue Pass 3 Product Supplier synthetic relationship count mismatch';
+  end if;
+  if (select count(*) from public.products) < 100000
+     or (select count(*) from public.services) < 100000
+     or (select count(*) from public.suppliers) < 20000 then
+    raise exception 'Catalogue Pass 3 multi-tenant decoy volume was not established';
   end if;
 
   select active_count, archived_count, resale_count, supply_count
@@ -246,6 +316,7 @@ for pair in \
   fi
 done
 
-echo "Catalogue Pass 3 synthetic scale: 25,000 Products; 25,000 Services; 5,000 Suppliers; 45,000 Product-Supplier relationships"
-echo "Catalogue bounded keyset pagination, summaries, indexed search and Supplier Terms aggregation passed"
+echo "Catalogue Pass 3 target workspace: 25,000 Products; 25,000 Services; 5,000 Suppliers; 45,000 Product-Supplier relationships"
+echo "Catalogue Pass 3 global multi-tenant plan volume: at least 100,000 Products; 100,000 Services; 20,000 Suppliers"
+echo "Catalogue bounded keyset pagination, summaries, workspace-aware indexed search and Supplier Terms aggregation passed"
 echo "Catalogue Pass 3 scale/query-plan torture passed"
