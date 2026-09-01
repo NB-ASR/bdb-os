@@ -23,25 +23,44 @@ create index if not exists services_workspace_status_booking_name_cursor_idx
 create index if not exists suppliers_workspace_product_status_name_cursor_idx
   on public.suppliers(workspace_id, supplier_type, status, name, id);
 
--- One indexed search expression per register is deliberately preferred over
--- several OR-ed ILIKE predicates. It preserves one simple V1 search box while
--- giving PostgreSQL a predictable trigram plan at scale.
+-- Match the proven Customer register scale pattern: keep one generated search
+-- document per register and index that stored value with pg_trgm. This avoids
+-- repeatedly planning a long concatenated expression and gives PostgreSQL
+-- statistics on the searched value itself.
+alter table public.products
+  add column if not exists catalogue_search_text text generated always as (
+    lower(
+      coalesce(name, '') || ' ' || coalesce(sku::text, '') || ' ' || coalesce(barcode::text, '') || ' '
+      || coalesce(brand, '') || ' ' || coalesce(category, '') || ' ' || coalesce(purpose, '')
+    )
+  ) stored;
+
+alter table public.services
+  add column if not exists catalogue_search_text text generated always as (
+    lower(
+      coalesce(name, '') || ' ' || coalesce(code::text, '') || ' ' || coalesce(category, '') || ' '
+      || coalesce(description, '') || ' ' || coalesce(booking_mode, '')
+    )
+  ) stored;
+
+alter table public.suppliers
+  add column if not exists catalogue_search_text text generated always as (
+    lower(coalesce(name, '') || ' ' || coalesce(code::text, ''))
+  ) stored;
+
+comment on column public.products.catalogue_search_text is
+  'Generated Catalogue register search document. Derived search data only; not canonical Product business data.';
+comment on column public.services.catalogue_search_text is
+  'Generated Catalogue register search document. Derived search data only; not canonical Service business data.';
+comment on column public.suppliers.catalogue_search_text is
+  'Generated Catalogue register search document. Derived search data only; not canonical Supplier business data.';
+
 create index if not exists products_catalogue_search_trgm_idx
-  on public.products using gin ((
-    lower(
-      name || ' ' || sku::text || ' ' || coalesce(barcode::text, '') || ' '
-      || coalesce(brand, '') || ' ' || coalesce(category, '') || ' ' || purpose
-    )
-  ) extensions.gin_trgm_ops);
+  on public.products using gin (catalogue_search_text extensions.gin_trgm_ops);
 create index if not exists services_catalogue_search_trgm_idx
-  on public.services using gin ((
-    lower(
-      name || ' ' || code::text || ' ' || coalesce(category, '') || ' '
-      || coalesce(description, '') || ' ' || booking_mode
-    )
-  ) extensions.gin_trgm_ops);
+  on public.services using gin (catalogue_search_text extensions.gin_trgm_ops);
 create index if not exists suppliers_catalogue_search_trgm_idx
-  on public.suppliers using gin ((lower(name || ' ' || code::text)) extensions.gin_trgm_ops);
+  on public.suppliers using gin (catalogue_search_text extensions.gin_trgm_ops);
 
 create or replace function public.catalogue_product_page(
   p_workspace_id uuid,
@@ -65,10 +84,7 @@ as $$
     and (p_purpose is null or product.purpose = p_purpose)
     and (
       nullif(trim(p_query), '') is null
-      or lower(
-        product.name || ' ' || product.sku::text || ' ' || coalesce(product.barcode::text, '') || ' '
-        || coalesce(product.brand, '') || ' ' || coalesce(product.category, '') || ' ' || product.purpose
-      ) like '%' || lower(trim(p_query)) || '%'
+      or product.catalogue_search_text like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -124,10 +140,7 @@ as $$
     and (p_booking_mode is null or service.booking_mode = p_booking_mode)
     and (
       nullif(trim(p_query), '') is null
-      or lower(
-        service.name || ' ' || service.code::text || ' ' || coalesce(service.category, '') || ' '
-        || coalesce(service.description, '') || ' ' || service.booking_mode
-      ) like '%' || lower(trim(p_query)) || '%'
+      or service.catalogue_search_text like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -215,10 +228,7 @@ as $$
     and product.status = 'active'
     and (
       nullif(trim(p_query), '') is null
-      or lower(
-        product.name || ' ' || product.sku::text || ' ' || coalesce(product.barcode::text, '') || ' '
-        || coalesce(product.brand, '') || ' ' || coalesce(product.category, '') || ' ' || product.purpose
-      ) like '%' || lower(trim(p_query)) || '%'
+      or product.catalogue_search_text like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -249,8 +259,7 @@ as $$
     and supplier.status = 'active'
     and (
       nullif(trim(p_query), '') is null
-      or lower(supplier.name || ' ' || supplier.code::text)
-        like '%' || lower(trim(p_query)) || '%'
+      or supplier.catalogue_search_text like '%' || lower(trim(p_query)) || '%'
     )
     and (
       p_after_name is null
@@ -276,9 +285,9 @@ grant execute on function public.catalogue_supplier_terms_page(uuid, integer, te
 grant execute on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) to authenticated, service_role;
 
 comment on function public.catalogue_product_page(uuid, integer, text, uuid, text, text, text) is
-  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination, server-side purpose/status filters and one indexed search expression.';
+  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination, server-side purpose/status filters and indexed generated search text.';
 comment on function public.catalogue_service_page(uuid, integer, text, uuid, text, text, text) is
-  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination, server-side booking/status filters and one indexed search expression.';
+  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination, server-side booking/status filters and indexed generated search text.';
 comment on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) is
   'Catalogue V1 Pass 3 Product Supplier register projection; returns only page-level relationship aggregates instead of hydrating the whole relationship register.';
 comment on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) is
