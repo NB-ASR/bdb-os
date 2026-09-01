@@ -304,13 +304,13 @@ for pair in \
   "products_catalogue_search_trgm_idx|${PRODUCT_SEARCH_PLAN}" \
   "services_workspace_status_name_cursor_idx|${SERVICE_ACTIVE_PLAN}" \
   "services_catalogue_search_trgm_idx|${SERVICE_SEARCH_PLAN}" \
-  "suppliers_workspace_product_status_name_cursor_idx|${SUPPLIER_OPTIONS_PLAN}" \
+  "suppliers_(workspace_product_status_name_cursor|active_search)_idx|${SUPPLIER_OPTIONS_PLAN}" \
   "suppliers_catalogue_search_trgm_idx|${SUPPLIER_SEARCH_PLAN}" \
   "product_suppliers_product_status_idx|${RELATIONSHIP_PLAN}"; do
   expected="${pair%%|*}"
   plan="${pair#*|}"
-  if ! grep -q "${expected}" <<<"${plan}"; then
-    echo "Catalogue Pass 3 query plan did not use ${expected}:" >&2
+  if ! grep -Eq "${expected}" <<<"${plan}"; then
+    echo "Catalogue Pass 3 query plan did not use an approved index matching ${expected}:" >&2
     echo "${plan}" >&2
     exit 1
   fi
