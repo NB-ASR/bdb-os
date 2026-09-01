@@ -304,7 +304,6 @@ for pair in \
   "products_catalogue_search_trgm_idx|${PRODUCT_SEARCH_PLAN}" \
   "services_workspace_status_name_cursor_idx|${SERVICE_ACTIVE_PLAN}" \
   "services_catalogue_search_trgm_idx|${SERVICE_SEARCH_PLAN}" \
-  "suppliers_catalogue_search_trgm_idx|${SUPPLIER_SEARCH_PLAN}" \
   "product_suppliers_product_status_idx|${RELATIONSHIP_PLAN}"; do
   expected="${pair%%|*}"
   plan="${pair#*|}"
@@ -321,7 +320,18 @@ if ! grep -Eq 'suppliers_(workspace_product_status_name_cursor|active_search)_id
   exit 1
 fi
 
+if grep -q 'Seq Scan on suppliers' <<<"${SUPPLIER_SEARCH_PLAN}"; then
+  echo "Catalogue Pass 3 Supplier search fell back to a global sequential scan:" >&2
+  echo "${SUPPLIER_SEARCH_PLAN}" >&2
+  exit 1
+fi
+if ! grep -Eq 'suppliers_(catalogue_search_trgm_idx|workspace_id_code_key|active_search_idx|workspace_product_status_name_cursor_idx)' <<<"${SUPPLIER_SEARCH_PLAN}"; then
+  echo "Catalogue Pass 3 Supplier search did not use an approved tenant-bounded index:" >&2
+  echo "${SUPPLIER_SEARCH_PLAN}" >&2
+  exit 1
+fi
+
 echo "Catalogue Pass 3 target workspace: 25,000 Products; 25,000 Services; 5,000 Suppliers; 45,000 Product-Supplier relationships"
 echo "Catalogue Pass 3 global multi-tenant plan volume: at least 100,000 Products; 100,000 Services; 20,000 Suppliers"
-echo "Catalogue bounded keyset pagination, summaries, workspace-aware indexed search and Supplier Terms aggregation passed"
+echo "Catalogue bounded keyset pagination, summaries, tenant-bounded indexed search and Supplier Terms aggregation passed"
 echo "Catalogue Pass 3 scale/query-plan torture passed"
