@@ -222,11 +222,11 @@ end
 SQL
 
 PRODUCT_ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
-PRODUCT_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and lower(name || ' ' || sku::text || ' ' || coalesce(barcode::text,'') || ' ' || coalesce(brand,'') || ' ' || coalesce(category,'') || ' ' || purpose) like '%needle-pass3%' order by name,id limit 101;")"
+PRODUCT_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.products where workspace_id='${WORKSPACE}'::uuid and catalogue_search_text like '%needle-pass3%' order by name,id limit 101;")"
 SERVICE_ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
-SERVICE_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and lower(name || ' ' || code::text || ' ' || coalesce(category,'') || ' ' || coalesce(description,'') || ' ' || booking_mode) like '%needle-pass3%' order by name,id limit 101;")"
+SERVICE_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.services where workspace_id='${WORKSPACE}'::uuid and catalogue_search_text like '%needle-pass3%' order by name,id limit 101;")"
 SUPPLIER_OPTIONS_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.suppliers where workspace_id='${WORKSPACE}'::uuid and supplier_type='product' and status='active' order by name,id limit 101;")"
-SUPPLIER_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.suppliers where workspace_id='${WORKSPACE}'::uuid and supplier_type='product' and status='active' and lower(name || ' ' || code::text) like '%needle-pass3%' order by name,id limit 101;")"
+SUPPLIER_SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.suppliers where workspace_id='${WORKSPACE}'::uuid and supplier_type='product' and status='active' and catalogue_search_text like '%needle-pass3%' order by name,id limit 101;")"
 RELATIONSHIP_PLAN="$(psql_exec -Atc "explain (costs off) select count(*) from public.product_suppliers where workspace_id='${WORKSPACE}'::uuid and product_id=md5('catalogue-pass3-product-12345')::uuid and status='active';")"
 
 for pair in \
