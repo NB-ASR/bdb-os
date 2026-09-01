@@ -5,6 +5,7 @@ begin;
 -- silently broken while Catalogue screens move onto the scalable contracts.
 
 create extension if not exists pg_trgm with schema extensions;
+create extension if not exists btree_gin with schema extensions;
 
 -- Stable keyset pagination indexes. The status-specific variants support the
 -- normal Active/Archived filters without large OFFSET scans.
@@ -24,9 +25,9 @@ create index if not exists suppliers_workspace_product_status_name_cursor_idx
   on public.suppliers(workspace_id, supplier_type, status, name, id);
 
 -- Match the proven Customer register scale pattern: keep one generated search
--- document per register and index that stored value with pg_trgm. This avoids
--- repeatedly planning a long concatenated expression and gives PostgreSQL
--- statistics on the searched value itself.
+-- document per register and index that stored value with pg_trgm. The search GIN
+-- also contains workspace_id through btree_gin so tenant selection and substring
+-- search can be resolved by one index in a multi-tenant Catalogue table.
 alter table public.products
   add column if not exists catalogue_search_text text generated always as (
     lower(
@@ -56,11 +57,11 @@ comment on column public.suppliers.catalogue_search_text is
   'Generated Catalogue register search document. Derived search data only; not canonical Supplier business data.';
 
 create index if not exists products_catalogue_search_trgm_idx
-  on public.products using gin (catalogue_search_text extensions.gin_trgm_ops);
+  on public.products using gin (workspace_id extensions.uuid_ops, catalogue_search_text extensions.gin_trgm_ops);
 create index if not exists services_catalogue_search_trgm_idx
-  on public.services using gin (catalogue_search_text extensions.gin_trgm_ops);
+  on public.services using gin (workspace_id extensions.uuid_ops, catalogue_search_text extensions.gin_trgm_ops);
 create index if not exists suppliers_catalogue_search_trgm_idx
-  on public.suppliers using gin (catalogue_search_text extensions.gin_trgm_ops);
+  on public.suppliers using gin (workspace_id extensions.uuid_ops, catalogue_search_text extensions.gin_trgm_ops);
 
 create or replace function public.catalogue_product_page(
   p_workspace_id uuid,
@@ -285,9 +286,9 @@ grant execute on function public.catalogue_supplier_terms_page(uuid, integer, te
 grant execute on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) to authenticated, service_role;
 
 comment on function public.catalogue_product_page(uuid, integer, text, uuid, text, text, text) is
-  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination, server-side purpose/status filters and indexed generated search text.';
+  'Catalogue V1 Pass 3 bounded Product register read using stable name/id keyset pagination, server-side purpose/status filters and workspace-aware indexed generated search text.';
 comment on function public.catalogue_service_page(uuid, integer, text, uuid, text, text, text) is
-  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination, server-side booking/status filters and indexed generated search text.';
+  'Catalogue V1 Pass 3 bounded Service register read using stable name/id keyset pagination, server-side booking/status filters and workspace-aware indexed generated search text.';
 comment on function public.catalogue_supplier_terms_page(uuid, integer, text, uuid, text) is
   'Catalogue V1 Pass 3 Product Supplier register projection; returns only page-level relationship aggregates instead of hydrating the whole relationship register.';
 comment on function public.catalogue_product_supplier_options_page(uuid, integer, text, uuid, text) is
