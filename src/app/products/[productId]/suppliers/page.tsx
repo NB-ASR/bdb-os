@@ -15,15 +15,16 @@ import {
   Truck,
   Undo2,
 } from "lucide-react";
+import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
+  discardProductSupplierCommand,
   enqueueProductSupplierCommand,
   failProductSupplierCommand,
   flushProductSupplierQueue,
   readProductSupplierQueue,
   removeProductSupplierCommand,
   submitProductSupplierCommand,
-  writeProductSupplierQueue,
   type ProductSupplierCommandAction,
   type ProductSupplierQueuedCommand,
 } from "@/lib/modules/product-supplier-queue";
@@ -32,6 +33,7 @@ import styles from "./product-suppliers.module.css";
 
 type RelationshipStatus = "active" | "archived";
 type RelationshipFilter = "active" | "archived";
+type SupplierCursor = { name: string; id: string };
 
 interface ProductRow {
   id: string;
@@ -88,6 +90,9 @@ interface RelationshipCache {
 
 const CACHE_PREFIX = "bdb-product-supplier-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
+const SUPPLIER_CACHE_LIMIT = 500;
+const RELATIONSHIP_CACHE_LIMIT = 200;
+const SUPPLIER_PAGE_SIZE = 100;
 
 function createEmptyForm(currency: string): RelationshipForm {
   return {
@@ -121,26 +126,49 @@ function readCache(workspaceId: string, productId: string): RelationshipCache {
   if (typeof window === "undefined") return empty;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId, productId)) ?? "null") as RelationshipCache | null;
-    return parsed && typeof parsed === "object" ? parsed : empty;
+    if (!parsed || typeof parsed !== "object") return empty;
+    return {
+      product: parsed.product ?? null,
+      suppliers: Array.isArray(parsed.suppliers) ? parsed.suppliers.slice(0, SUPPLIER_CACHE_LIMIT) : [],
+      relationships: Array.isArray(parsed.relationships) ? parsed.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT) : [],
+    };
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId, productId));
     return empty;
   }
 }
 
-function writeCache(
-  workspaceId: string,
-  productId: string,
-  cache: RelationshipCache,
-) {
+function writeCache(workspaceId: string, productId: string, cache: RelationshipCache) {
   if (typeof window === "undefined") return;
+  const relationships = cache.relationships.slice(0, RELATIONSHIP_CACHE_LIMIT);
+  const linkedIds = new Set(relationships.map((relationship) => relationship.supplier_id));
+  const linkedSuppliers = cache.suppliers.filter((supplier) => linkedIds.has(supplier.id));
+  const linkedSupplierIds = new Set(linkedSuppliers.map((supplier) => supplier.id));
+  const otherSuppliers = cache.suppliers.filter((supplier) => !linkedSupplierIds.has(supplier.id));
+  const suppliers = [...linkedSuppliers, ...otherSuppliers].slice(0, SUPPLIER_CACHE_LIMIT);
+
   window.localStorage.setItem(
     cacheKey(workspaceId, productId),
     JSON.stringify({
-      ...cache,
-      relationships: cache.relationships.map(({ pending: _pending, ...relationship }) => relationship),
+      product: cache.product,
+      suppliers,
+      relationships: relationships.map((relationship) => {
+        const { pending, ...persisted } = relationship;
+        void pending;
+        return persisted;
+      }),
     }),
   );
+}
+
+function mergeSuppliers(current: readonly SupplierRow[], incoming: readonly SupplierRow[]) {
+  const merged = new Map(current.map((supplier) => [supplier.id, supplier]));
+  for (const supplier of incoming) merged.set(supplier.id, supplier);
+  return [...merged.values()];
+}
+
+function mergeIds(current: readonly string[], incoming: readonly string[]) {
+  return [...new Set([...current, ...incoming])];
 }
 
 function formValues(relationship: ProductSupplierRow): RelationshipForm {
@@ -233,6 +261,11 @@ export default function ProductSuppliersPage() {
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
   const [product, setProduct] = useState<ProductRow | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
+  const [optionSupplierIds, setOptionSupplierIds] = useState<string[]>([]);
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [supplierHasMore, setSupplierHasMore] = useState(false);
+  const [supplierNextCursor, setSupplierNextCursor] = useState<SupplierCursor | null>(null);
+  const [supplierOptionsLoading, setSupplierOptionsLoading] = useState(false);
   const [relationships, setRelationships] = useState<ProductSupplierRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -241,10 +274,11 @@ export default function ProductSuppliersPage() {
   const [filter, setFilter] = useState<RelationshipFilter>("active");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<ProductSupplierQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const supportMode = false;
+  const pendingCount = pendingCommands.length;
 
   const supplierById = useMemo(
     () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
@@ -252,11 +286,43 @@ export default function ProductSuppliersPage() {
   );
 
   const availableSuppliers = useMemo(() => {
+    const eligibleIds = new Set(optionSupplierIds);
     const linkedIds = new Set(relationships.map((relationship) => relationship.supplier_id));
     return suppliers
-      .filter((supplier) => supplier.status === "active" && supplier.supplier_type === "product" && !linkedIds.has(supplier.id))
+      .filter((supplier) => eligibleIds.has(supplier.id) && !linkedIds.has(supplier.id))
       .sort((left, right) => left.name.localeCompare(right.name));
-  }, [relationships, suppliers]);
+  }, [optionSupplierIds, relationships, suppliers]);
+
+  const fetchSupplierOptions = useCallback(async (
+    currentWorkspaceId: string,
+    options: { query: string; append?: boolean; cursor?: SupplierCursor | null },
+  ) => {
+    setSupplierOptionsLoading(true);
+    try {
+      const searchParams = new URLSearchParams({
+        workspaceId: currentWorkspaceId,
+        productId,
+        pageSize: String(SUPPLIER_PAGE_SIZE),
+      });
+      if (options.query.trim()) searchParams.set("query", options.query.trim());
+      if (options.cursor) {
+        searchParams.set("afterName", options.cursor.name);
+        searchParams.set("afterId", options.cursor.id);
+      }
+      const response = await fetch(`/api/product-suppliers/options?${searchParams.toString()}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Supplier options could not be loaded.");
+
+      const incomingSuppliers = (result.result?.suppliers ?? []) as SupplierRow[];
+      const incomingOptionIds = (result.result?.optionSupplierIds ?? []).map((id: unknown) => String(id));
+      setSuppliers((current) => options.append ? mergeSuppliers(current, incomingSuppliers) : incomingSuppliers);
+      setOptionSupplierIds((current) => options.append ? mergeIds(current, incomingOptionIds) : incomingOptionIds);
+      setSupplierHasMore(Boolean(result.result?.hasMore));
+      setSupplierNextCursor(result.result?.nextCursor ?? null);
+    } finally {
+      setSupplierOptionsLoading(false);
+    }
+  }, [productId]);
 
   const loadCloud = useCallback(async () => {
     const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
@@ -269,23 +335,29 @@ export default function ProductSuppliersPage() {
     setWorkspaceId(currentWorkspaceId);
     rememberWorkspace(currentWorkspaceId);
 
-    const [productsResponse, suppliersResponse, relationshipsResponse] = await Promise.all([
-      fetch(`/api/products?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
-      fetch(`/api/suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
+    const optionsParams = new URLSearchParams({
+      workspaceId: currentWorkspaceId,
+      productId,
+      pageSize: String(SUPPLIER_PAGE_SIZE),
+    });
+    const [productResponse, relationshipsResponse, optionsResponse] = await Promise.all([
+      fetch(`/api/products/${encodeURIComponent(productId)}?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
       fetch(`/api/product-suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}&productId=${encodeURIComponent(productId)}`, { cache: "no-store" }),
+      fetch(`/api/product-suppliers/options?${optionsParams.toString()}`, { cache: "no-store" }),
     ]);
-    const [productsResult, suppliersResult, relationshipsResult] = await Promise.all([
-      productsResponse.json().catch(() => ({})),
-      suppliersResponse.json().catch(() => ({})),
+    const [productResult, relationshipsResult, optionsResult] = await Promise.all([
+      productResponse.json().catch(() => ({})),
       relationshipsResponse.json().catch(() => ({})),
+      optionsResponse.json().catch(() => ({})),
     ]);
-    if (!productsResponse.ok || !productsResult.ok) throw new Error(productsResult.error ?? "Products could not be loaded.");
-    if (!suppliersResponse.ok || !suppliersResult.ok) throw new Error(suppliersResult.error ?? "Suppliers could not be loaded.");
+    if (!productResponse.ok || !productResult.ok) throw new Error(productResult.error ?? "Product could not be loaded.");
     if (!relationshipsResponse.ok || !relationshipsResult.ok) throw new Error(relationshipsResult.error ?? "Product Suppliers could not be loaded.");
+    if (!optionsResponse.ok || !optionsResult.ok) throw new Error(optionsResult.error ?? "Supplier options could not be loaded.");
 
-    const cloudProduct = ((productsResult.result?.products ?? []) as ProductRow[]).find((item) => item.id === productId) ?? null;
+    const cloudProduct = (productResult.result?.product ?? null) as ProductRow | null;
     if (!cloudProduct) throw new Error("The Product could not be found in this workspace.");
-    const cloudSuppliers = (suppliersResult.result?.suppliers ?? []) as SupplierRow[];
+    const cloudSuppliers = (optionsResult.result?.suppliers ?? []) as SupplierRow[];
+    const cloudOptionSupplierIds = (optionsResult.result?.optionSupplierIds ?? []).map((id: unknown) => String(id));
     const cloudRelationships = (relationshipsResult.result?.relationships ?? []) as ProductSupplierRow[];
     const queue = readProductSupplierQueue(currentWorkspaceId);
     const visibleRelationships = queue.reduce(
@@ -295,8 +367,12 @@ export default function ProductSuppliersPage() {
 
     setProduct(cloudProduct);
     setSuppliers(cloudSuppliers);
+    setOptionSupplierIds(cloudOptionSupplierIds);
+    setSupplierQuery("");
+    setSupplierHasMore(Boolean(optionsResult.result?.hasMore));
+    setSupplierNextCursor(optionsResult.result?.nextCursor ?? null);
     setRelationships(visibleRelationships);
-    setPendingCount(queue.length);
+    setPendingCommands(queue);
     writeCache(currentWorkspaceId, productId, {
       product: cloudProduct,
       suppliers: cloudSuppliers,
@@ -315,11 +391,14 @@ export default function ProductSuppliersPage() {
         setWorkspaceId(fallbackWorkspace);
         setProduct(cached.product);
         setSuppliers(cached.suppliers);
+        setOptionSupplierIds(cached.suppliers
+          .filter((supplier) => supplier.status === "active" && supplier.supplier_type === "product")
+          .map((supplier) => supplier.id));
         setRelationships(queued.reduce(
           (current, command) => applyCommand(current, command, productId),
           cached.relationships,
         ));
-        setPendingCount(queued.length);
+        setPendingCommands(queued);
       }
 
       try {
@@ -355,19 +434,34 @@ export default function ProductSuppliersPage() {
     }
   }, [loaded, mode, product, productId, relationships, suppliers]);
 
+  useEffect(() => {
+    if (!formOpen || editing || mode !== "cloud" || !workspaceId || !navigator.onLine) return;
+    const timer = window.setTimeout(() => {
+      setError("");
+      void fetchSupplierOptions(workspaceId, { query: supplierQuery }).catch((supplierError) => {
+        setError(supplierError instanceof Error ? supplierError.message : "Supplier options could not be loaded.");
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [editing, fetchSupplierOptions, formOpen, mode, supplierQuery, workspaceId]);
+
   const syncPending = useCallback(async () => {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
     setSyncing(true);
     setError("");
-    const result = await flushProductSupplierQueue(workspaceId, setPendingCount);
-    setPendingCount(result.remaining);
-    if (result.completed) {
-      setNotice(`${result.completed} queued Product Supplier change${result.completed === 1 ? "" : "s"} synced.`);
-    }
-    await loadCloud().catch((syncError) => {
+    try {
+      const result = await flushProductSupplierQueue(workspaceId, () => setPendingCommands(readProductSupplierQueue(workspaceId)));
+      setPendingCommands(readProductSupplierQueue(workspaceId));
+      if (result.completed) {
+        setNotice(`${result.completed} queued Product Supplier change${result.completed === 1 ? "" : "s"} synced.`);
+      }
+      await loadCloud();
+    } catch (syncError) {
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       setError(syncError instanceof Error ? syncError.message : "Product Suppliers could not be refreshed.");
-    });
-    setSyncing(false);
+    } finally {
+      setSyncing(false);
+    }
   }, [loadCloud, syncing, workspaceId]);
 
   useEffect(() => {
@@ -393,9 +487,8 @@ export default function ProductSuppliersPage() {
       attempts: 0,
     };
 
-    setRelationships((current) => applyCommand(current, command, productId));
-
     if (mode === "demo") {
+      setRelationships((current) => applyCommand(current, command, productId));
       setNotice("Saved in this browser's local BDB OS preview.");
       return true;
     }
@@ -404,8 +497,14 @@ export default function ProductSuppliersPage() {
       return false;
     }
 
-    enqueueProductSupplierCommand(workspaceId, action, payload, commandId);
-    setPendingCount(readProductSupplierQueue(workspaceId).length);
+    try {
+      enqueueProductSupplierCommand(workspaceId, action, payload, commandId);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "This Product Supplier change could not be stored safely offline.");
+      return false;
+    }
+    setRelationships((current) => applyCommand(current, command, productId));
+    setPendingCommands(readProductSupplierQueue(workspaceId));
     if (!navigator.onLine) {
       setNotice("Saved offline. BDB OS will retry this Product Supplier change when the connection returns.");
       return true;
@@ -414,7 +513,7 @@ export default function ProductSuppliersPage() {
     try {
       await submitProductSupplierCommand(command);
       removeProductSupplierCommand(workspaceId, command.id);
-      setPendingCount(readProductSupplierQueue(workspaceId).length);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       await loadCloud();
       setNotice(action === "create"
         ? "Supplier linked to Product."
@@ -426,8 +525,8 @@ export default function ProductSuppliersPage() {
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Product Supplier change could not be saved.";
-      failProductSupplierCommand(workspaceId, command.id, message);
-      setPendingCount(readProductSupplierQueue(workspaceId).length);
+      failProductSupplierCommand(workspaceId, command.id, commandError);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
     }
@@ -445,6 +544,7 @@ export default function ProductSuppliersPage() {
 
   function openCreate() {
     setEditing(null);
+    setSupplierQuery("");
     setForm(createEmptyForm(state.settings.currency));
     setFormOpen(true);
   }
@@ -485,7 +585,12 @@ export default function ProductSuppliersPage() {
     setSaving(true);
     const action = relationship.status === "active" ? "archive" : "restore";
     await submitCommand(action, action === "archive"
-      ? { id: relationship.id, expectedVersion: relationship.version }
+      ? {
+        id: relationship.id,
+        expectedVersion: relationship.version,
+        productId: relationship.product_id,
+        supplierId: relationship.supplier_id,
+      }
       : {
         id: relationship.id,
         expectedVersion: relationship.version,
@@ -502,12 +607,16 @@ export default function ProductSuppliersPage() {
     setSaving(false);
   }
 
-  function discardQueue() {
+  async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    writeProductSupplierQueue(workspaceId, []);
-    setPendingCount(0);
-    void loadCloud();
-    setNotice("Pending local Product Supplier changes were discarded.");
+    try {
+      discardProductSupplierCommand(workspaceId, commandId);
+      setPendingCommands(readProductSupplierQueue(workspaceId));
+      await loadCloud();
+      setNotice("That pending Product Supplier change was discarded. Other queued changes were preserved.");
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "That pending Product Supplier change cannot be discarded safely.");
+    }
   }
 
   if (!loaded) {
@@ -532,7 +641,7 @@ export default function ProductSuppliersPage() {
             <Button variant="secondary" onClick={() => router.push("/products")}>
               <ArrowLeft size={17} /> Products
             </Button>
-            <Button onClick={openCreate} disabled={supportMode || !product || product.status !== "active" || availableSuppliers.length === 0}>
+            <Button onClick={openCreate} disabled={supportMode || !product || product.status !== "active"}>
               <Plus size={17} /> Link supplier
             </Button>
           </div>
@@ -543,7 +652,7 @@ export default function ProductSuppliersPage() {
         <Link2 size={19} />
         <div>
           <strong>Functional Product–Supplier relationship</strong>
-          <p>Supplier-specific SKU, cost, lead time and order quantity now live in an audited relationship without duplicating the Product or Supplier record.</p>
+          <p>Supplier-specific SKU, cost, lead time and order quantity live in an audited relationship without duplicating the Product or Supplier record.</p>
         </div>
       </div>
 
@@ -556,17 +665,18 @@ export default function ProductSuppliersPage() {
 
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Product Suppliers updated</strong><p>{notice}</p></div> : null}
 
-      {pendingCount > 0 ? (
-        <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{pendingCount} Product Supplier change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
-          <p>Commands retain stable retry keys. Relationship conflicts are stopped rather than silently overwritten.</p>
-          <div className={styles.queueActions}>
-            <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}>
-              <RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry
-            </Button>
-            <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
-          </div>
-        </div>
+      {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? (
+        <CataloguePendingChanges
+          label="Product Supplier"
+          commands={pendingCommands}
+          syncing={syncing}
+          onRetry={() => void syncPending()}
+          onDiscard={(commandId) => void discardPending(commandId)}
+          describe={(command) => {
+            const supplier = supplierById.get(String(command.payload.supplierId ?? ""));
+            return supplier?.name ?? String(command.payload.supplierSku ?? "Supplier terms change");
+          }}
+        />
       ) : null}
 
       {supportMode ? (
@@ -661,7 +771,7 @@ export default function ProductSuppliersPage() {
           <div className={styles.emptyState}>
             <Link2 size={23} />
             <h3>{filter === "archived" ? "No archived relationships" : "No suppliers linked"}</h3>
-            <p>{filter === "archived" ? "Archived Product Supplier history will remain here." : availableSuppliers.length ? "Link the first Product supplier." : "Create an active Product supplier before linking it."}</p>
+            <p>{filter === "archived" ? "Archived Product Supplier history will remain here." : "Link the first Product supplier or search the Supplier catalogue."}</p>
           </div>
         ) : null}
       </Card>
@@ -690,6 +800,16 @@ export default function ProductSuppliersPage() {
           <div className={styles.formBody}>
             <div className={styles.formGrid}>
               <label className={styles.wide}>Product<input disabled value={product ? `${product.name} · ${product.sku}` : productId} /></label>
+              {!editing ? (
+                <label className={styles.wide}>Find supplier
+                  <input
+                    maxLength={160}
+                    value={supplierQuery}
+                    onChange={(event) => setSupplierQuery(event.target.value)}
+                    placeholder="Search Supplier name or code…"
+                  />
+                </label>
+              ) : null}
               <label>Supplier
                 <select
                   required
@@ -711,6 +831,18 @@ export default function ProductSuppliersPage() {
                   ).map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.code}</option>)}
                 </select>
               </label>
+              {!editing && supplierHasMore && supplierNextCursor && workspaceId && mode === "cloud" ? (
+                <div style={{ display: "flex", alignItems: "end" }}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={supplierOptionsLoading}
+                    onClick={() => void fetchSupplierOptions(workspaceId, { query: supplierQuery, append: true, cursor: supplierNextCursor }).catch((supplierError) => setError(supplierError instanceof Error ? supplierError.message : "More Supplier options could not be loaded."))}
+                  >
+                    {supplierOptionsLoading ? <><RefreshCw className="spin" size={15} /> Loading…</> : "Load more suppliers"}
+                  </Button>
+                </div>
+              ) : null}
               <label>Supplier SKU<input maxLength={64} value={form.supplierSku} onChange={(event) => setForm({ ...form, supplierSku: event.target.value })} placeholder="Supplier's product code" /></label>
               <label>Supplier cost<input min="0" step="0.0001" type="number" value={form.supplierCost} onChange={(event) => setForm({ ...form, supplierCost: event.target.value })} placeholder="Not recorded" /></label>
               <label>Currency<input required minLength={3} maxLength={3} value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>

@@ -1,48 +1,49 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Link2, Package, RefreshCw, Search, Star, TriangleAlert, Truck } from "lucide-react";
 import { useBdb } from "@/lib/store";
-import { readProductSupplierQueue, type ProductSupplierQueuedCommand } from "@/lib/modules/product-supplier-queue";
+import { readProductSupplierQueue } from "@/lib/modules/product-supplier-queue";
 import { Badge, Button, Card, PageHeader, StatCard } from "@/components/ui";
 import styles from "./product-supplier-index.module.css";
 
-interface ProductRow {
-  id: string;
+interface SupplierTermRow {
+  product_id: string;
   sku: string;
   name: string;
-  status: "active" | "archived";
+  active_supplier_count: number;
+  preferred_supplier_id: string | null;
+  preferred_supplier_name: string | null;
 }
 
-interface SupplierRow {
-  id: string;
-  code: string;
+interface SupplierTermsSummary {
+  activeProducts: number;
+  activeRelationships: number;
+  preferredRelationships: number;
+  productSuppliers: number;
+}
+
+interface RegisterCursor {
   name: string;
-  supplier_type: "product" | "service" | "expense";
-  status: "active" | "archived";
-}
-
-interface ProductSupplierRow {
   id: string;
-  product_id: string;
-  supplier_id: string;
-  supplier_cost: number | null;
-  currency: string;
-  is_preferred: boolean;
-  status: "active" | "archived";
-  version: number;
-  pending?: boolean;
 }
 
 interface IndexCache {
-  products: ProductRow[];
-  suppliers: SupplierRow[];
-  relationships: ProductSupplierRow[];
+  terms: SupplierTermRow[];
+  summary: SupplierTermsSummary;
 }
 
-const CACHE_PREFIX = "bdb-product-supplier-index-v1";
+const CACHE_PREFIX = "bdb-product-supplier-index-v2";
 const LAST_WORKSPACE_KEY = "bdb-product-supplier-last-workspace-v1";
+const CACHE_LIMIT = 500;
+const PAGE_SIZE = 100;
+const EMPTY_SUMMARY: SupplierTermsSummary = {
+  activeProducts: 0,
+  activeRelationships: 0,
+  preferredRelationships: 0,
+  productSuppliers: 0,
+};
 
 function cacheKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
@@ -59,11 +60,15 @@ function rememberWorkspace(workspaceId: string) {
 }
 
 function readCache(workspaceId: string): IndexCache {
-  const empty: IndexCache = { products: [], suppliers: [], relationships: [] };
+  const empty: IndexCache = { terms: [], summary: EMPTY_SUMMARY };
   if (typeof window === "undefined") return empty;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "null") as IndexCache | null;
-    return parsed && typeof parsed === "object" ? parsed : empty;
+    if (!parsed || typeof parsed !== "object") return empty;
+    return {
+      terms: Array.isArray(parsed.terms) ? parsed.terms.slice(0, CACHE_LIMIT) : [],
+      summary: parsed.summary && typeof parsed.summary === "object" ? parsed.summary : EMPTY_SUMMARY,
+    };
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId));
     return empty;
@@ -72,159 +77,138 @@ function readCache(workspaceId: string): IndexCache {
 
 function writeCache(workspaceId: string, cache: IndexCache) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(cacheKey(workspaceId), JSON.stringify(cache));
-}
-
-function queuedRelationship(command: ProductSupplierQueuedCommand): ProductSupplierRow | null {
-  const payload = command.payload;
-  if (!payload.id || !payload.productId || !payload.supplierId) return null;
-  return {
-    id: String(payload.id),
-    product_id: String(payload.productId),
-    supplier_id: String(payload.supplierId),
-    supplier_cost: payload.supplierCost === null || payload.supplierCost === "" ? null : Number(payload.supplierCost),
-    currency: String(payload.currency ?? "EUR"),
-    is_preferred: Boolean(payload.isPreferred),
-    status: command.action === "archive" ? "archived" : "active",
-    version: Number(payload.expectedVersion ?? 0) + 1,
-    pending: true,
-  };
-}
-
-function applyQueue(
-  relationships: readonly ProductSupplierRow[],
-  commands: readonly ProductSupplierQueuedCommand[],
-) {
-  return commands.reduce<ProductSupplierRow[]>((current, command) => {
-    const payloadId = String(command.payload.id ?? "");
-    if (command.action === "create") {
-      const queued = queuedRelationship(command);
-      return queued && !current.some((item) => item.id === queued.id) ? [...current, queued] : current;
-    }
-    return current.map((relationship) => {
-      if (relationship.id !== payloadId) return relationship;
-      if (command.action === "archive") return { ...relationship, status: "archived", pending: true };
-      const queued = queuedRelationship(command);
-      return queued ? { ...relationship, ...queued, id: relationship.id } : relationship;
-    });
-  }, [...relationships]);
+  window.localStorage.setItem(
+    cacheKey(workspaceId),
+    JSON.stringify({ terms: cache.terms.slice(0, CACHE_LIMIT), summary: cache.summary }),
+  );
 }
 
 export default function ProductSupplierIndexPage() {
   const router = useRouter();
   const { mode } = useBdb();
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [products, setProducts] = useState<ProductRow[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierRow[]>([]);
-  const [relationships, setRelationships] = useState<ProductSupplierRow[]>([]);
+  const [terms, setTerms] = useState<SupplierTermRow[]>([]);
+  const [summary, setSummary] = useState<SupplierTermsSummary>(EMPTY_SUMMARY);
   const [query, setQuery] = useState("");
+  const nextCursorRef = useRef<RegisterCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const supportMode = false;
 
-  const loadCloud = useCallback(async () => {
-    const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
-    const context = await contextResponse.json().catch(() => ({}));
-    if (!contextResponse.ok || !context.currentWorkspaceId) {
-      throw new Error(context.error ?? "The current workspace could not be resolved.");
-    }
-
-    const currentWorkspaceId = String(context.currentWorkspaceId);
-    setWorkspaceId(currentWorkspaceId);
-    rememberWorkspace(currentWorkspaceId);
-
-    const [productsResponse, suppliersResponse, relationshipsResponse] = await Promise.all([
-      fetch(`/api/products?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
-      fetch(`/api/suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
-      fetch(`/api/product-suppliers?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" }),
-    ]);
-    const [productsResult, suppliersResult, relationshipsResult] = await Promise.all([
-      productsResponse.json().catch(() => ({})),
-      suppliersResponse.json().catch(() => ({})),
-      relationshipsResponse.json().catch(() => ({})),
-    ]);
-    if (!productsResponse.ok || !productsResult.ok) throw new Error(productsResult.error ?? "Products could not be loaded.");
-    if (!suppliersResponse.ok || !suppliersResult.ok) throw new Error(suppliersResult.error ?? "Suppliers could not be loaded.");
-    if (!relationshipsResponse.ok || !relationshipsResult.ok) throw new Error(relationshipsResult.error ?? "Supplier terms could not be loaded.");
-
-    const cloudProducts = (productsResult.result?.products ?? []) as ProductRow[];
-    const cloudSuppliers = (suppliersResult.result?.suppliers ?? []) as SupplierRow[];
-    const cloudRelationships = (relationshipsResult.result?.relationships ?? []) as ProductSupplierRow[];
-    const queue = readProductSupplierQueue(currentWorkspaceId);
-
-    setProducts(cloudProducts);
-    setSuppliers(cloudSuppliers);
-    setRelationships(applyQueue(cloudRelationships, queue));
-    setPendingCount(queue.length);
-    writeCache(currentWorkspaceId, {
-      products: cloudProducts,
-      suppliers: cloudSuppliers,
-      relationships: cloudRelationships,
-    });
-  }, []);
-
   useEffect(() => {
     let active = true;
-    async function initialise() {
+    async function resolveWorkspace() {
       const fallbackWorkspace = mode === "demo" ? "demo" : readLastWorkspace();
-      const cached = fallbackWorkspace ? readCache(fallbackWorkspace) : { products: [], suppliers: [], relationships: [] };
-      const queue = fallbackWorkspace ? readProductSupplierQueue(fallbackWorkspace) : [];
-
-      if (active && fallbackWorkspace) {
+      if (fallbackWorkspace && active) {
+        const cached = readCache(fallbackWorkspace);
         setWorkspaceId(fallbackWorkspace);
-        setProducts(cached.products);
-        setSuppliers(cached.suppliers);
-        setRelationships(applyQueue(cached.relationships, queue));
-        setPendingCount(queue.length);
+        setTerms(cached.terms);
+        setSummary(cached.summary);
+        setPendingCount(readProductSupplierQueue(fallbackWorkspace).length);
       }
 
       try {
-        setError("");
         if (mode === "demo") return;
         if (!navigator.onLine) {
-          if (cached.products.length) setNotice("Showing cached Product Supplier terms while offline.");
-          else setError("Supplier terms need one successful online load before this page can open from a cold offline start.");
+          if (fallbackWorkspace && readCache(fallbackWorkspace).terms.length) {
+            setNotice("Showing cached Supplier terms while offline.");
+          } else {
+            setError("Supplier terms need one successful online load before this page can open from a cold offline start.");
+          }
           return;
         }
-        await loadCloud();
+
+        const response = await fetch("/api/workspace/context", { cache: "no-store" });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.currentWorkspaceId) {
+          throw new Error(result.error ?? "The current workspace could not be resolved.");
+        }
+        if (!active) return;
+        const currentWorkspaceId = String(result.currentWorkspaceId);
+        setWorkspaceId(currentWorkspaceId);
+        rememberWorkspace(currentWorkspaceId);
+        setPendingCount(readProductSupplierQueue(currentWorkspaceId).length);
       } catch (initialError) {
-        const message = initialError instanceof Error ? initialError.message : "Supplier terms could not be loaded.";
-        if (cached.products.length) {
-          if (active) setNotice("Showing cached Supplier terms while cloud access is unavailable.");
-        } else if (active) {
-          setError(message);
+        if (!fallbackWorkspace || readCache(fallbackWorkspace).terms.length === 0) {
+          setError(initialError instanceof Error ? initialError.message : "Supplier terms could not be loaded.");
+        } else {
+          setNotice("Showing cached Supplier terms while cloud access is unavailable.");
         }
       } finally {
         if (active) setLoaded(true);
       }
     }
-    void initialise();
+    void resolveWorkspace();
     return () => { active = false; };
-  }, [loadCloud, mode]);
+  }, [mode]);
 
-  const supplierById = useMemo(
-    () => new Map(suppliers.map((supplier) => [supplier.id, supplier])),
-    [suppliers],
-  );
+  const loadPage = useCallback(async (options?: { append?: boolean; search?: string }) => {
+    if (!workspaceId || workspaceId === "demo" || !navigator.onLine) return;
+    const append = Boolean(options?.append);
+    const search = String(options?.search ?? "").trim();
+    const cursor = append ? nextCursorRef.current : null;
+    setLoadingPage(true);
+    setError("");
+    setNotice("");
+    try {
+      const params = new URLSearchParams({
+        workspaceId,
+        pageSize: String(PAGE_SIZE),
+      });
+      if (search) params.set("query", search);
+      if (cursor) {
+        params.set("afterName", cursor.name);
+        params.set("afterId", cursor.id);
+      }
+      const response = await fetch(`/api/product-suppliers/register?${params.toString()}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Supplier terms could not be loaded.");
 
-  const activeProducts = useMemo(
-    () => products.filter((product) => product.status === "active"),
-    [products],
-  );
+      const pageTerms = (result.result?.terms ?? []) as SupplierTermRow[];
+      const pageSummary = (result.result?.summary ?? EMPTY_SUMMARY) as SupplierTermsSummary;
+      setTerms((current) => append ? [...current, ...pageTerms] : pageTerms);
+      setSummary(pageSummary);
+      setHasMore(Boolean(result.result?.hasMore));
+      nextCursorRef.current = result.result?.nextCursor ?? null;
+      setPendingCount(readProductSupplierQueue(workspaceId).length);
+      if (!append && !search) writeCache(workspaceId, { terms: pageTerms, summary: pageSummary });
+    } catch (loadError) {
+      const cached = readCache(workspaceId);
+      if (!append && !search && cached.terms.length) {
+        setTerms(cached.terms);
+        setSummary(cached.summary);
+        setNotice("Showing cached Supplier terms while cloud access is unavailable.");
+      } else {
+        setError(loadError instanceof Error ? loadError.message : "Supplier terms could not be loaded.");
+      }
+    } finally {
+      setLoadingPage(false);
+    }
+  }, [workspaceId]);
 
-  const visibleProducts = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    return activeProducts
-      .filter((product) => !term || `${product.name} ${product.sku}`.toLowerCase().includes(term))
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [activeProducts, query]);
+  useEffect(() => {
+    if (!loaded || mode !== "cloud" || !workspaceId || workspaceId === "demo" || !navigator.onLine) return;
+    const timer = window.setTimeout(() => void loadPage({ search: query }), 250);
+    return () => window.clearTimeout(timer);
+  }, [loaded, loadPage, mode, query, workspaceId]);
 
-  const activeRelationships = relationships.filter((relationship) => relationship.status === "active");
-  const linkedProductCount = new Set(activeRelationships.map((relationship) => relationship.product_id)).size;
-  const preferredCount = activeRelationships.filter((relationship) => relationship.is_preferred).length;
-  const availableProductSuppliers = suppliers.filter((supplier) => supplier.status === "active" && supplier.supplier_type === "product").length;
+  useEffect(() => {
+    if (!workspaceId || workspaceId === "demo") return;
+    const handleOnline = () => void loadPage({ search: query });
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [loadPage, query, workspaceId]);
+
+  const visibleTerms = useMemo(() => {
+    const online = typeof navigator !== "undefined" && navigator.onLine;
+    if (mode === "cloud" && online) return terms;
+    const needle = query.trim().toLowerCase();
+    return terms.filter((term) => !needle || `${term.name} ${term.sku}`.toLowerCase().includes(needle));
+  }, [mode, query, terms]);
 
   if (!loaded) {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Supplier terms…</main>;
@@ -236,7 +220,15 @@ export default function ProductSupplierIndexPage() {
         eyebrow="Product purchasing terms"
         title="Supplier terms"
         description="Choose a Product to manage Supplier-specific SKU, cost, lead time, minimum order quantity and preferred status."
-        action={<Button variant="secondary" onClick={() => void loadCloud()} disabled={!workspaceId || mode === "demo"}><RefreshCw size={17} /> Refresh</Button>}
+        action={(
+          <Button
+            variant="secondary"
+            onClick={() => void loadPage({ search: query })}
+            disabled={!workspaceId || workspaceId === "demo" || loadingPage}
+          >
+            <RefreshCw className={loadingPage ? "spin" : undefined} size={17} /> Refresh
+          </Button>
+        )}
       />
 
       <div className="review-callout">
@@ -250,10 +242,10 @@ export default function ProductSupplierIndexPage() {
       {supportMode ? <div className={styles.supportNotice}><Link2 size={18} /><div><strong>Read-only access</strong><span>Supplier terms are visible but cannot be changed during this session.</span></div></div> : null}
 
       <div className="stat-grid">
-        <StatCard label="Active products" value={String(activeProducts.length)} detail="Catalogue records available for sourcing" icon={<Package size={19} />} />
-        <StatCard label="Products linked" value={String(linkedProductCount)} detail="Products with at least one Supplier" icon={<Link2 size={19} />} />
-        <StatCard label="Preferred assigned" value={String(preferredCount)} detail="Products with a preferred Supplier" icon={<Star size={19} />} />
-        <StatCard label="Product suppliers" value={String(availableProductSuppliers)} detail="Active Suppliers available to link" icon={<Truck size={19} />} />
+        <StatCard label="Active products" value={String(summary.activeProducts)} detail="Catalogue records available for sourcing" icon={<Package size={19} />} />
+        <StatCard label="Active relationships" value={String(summary.activeRelationships)} detail="Current Product-to-Supplier links" icon={<Link2 size={19} />} />
+        <StatCard label="Preferred assigned" value={String(summary.preferredRelationships)} detail="Products with a preferred Supplier" icon={<Star size={19} />} />
+        <StatCard label="Product suppliers" value={String(summary.productSuppliers)} detail="Active Suppliers available to link" icon={<Truck size={19} />} />
       </div>
 
       <Card className={styles.indexCard}>
@@ -262,32 +254,34 @@ export default function ProductSupplierIndexPage() {
             <Search size={17} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Product or SKU…" aria-label="Search Products" />
           </label>
-          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleProducts.length} products</Badge>
+          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleTerms.length}{hasMore ? "+" : ""} products</Badge>
         </div>
 
         <div className="table-scroll">
           <table className={styles.indexTable}>
             <thead><tr><th>Product</th><th>SKU</th><th>Active suppliers</th><th>Preferred supplier</th><th aria-label="Actions" /></tr></thead>
             <tbody>
-              {visibleProducts.map((product) => {
-                const productRelationships = activeRelationships.filter((relationship) => relationship.product_id === product.id);
-                const preferred = productRelationships.find((relationship) => relationship.is_preferred);
-                const preferredSupplier = preferred ? supplierById.get(preferred.supplier_id) : null;
-                return (
-                  <tr key={product.id}>
-                    <td><div className={styles.productIdentity}><span><Package size={17} /></span><strong>{product.name}</strong></div></td>
-                    <td><code>{product.sku}</code></td>
-                    <td>{productRelationships.length}</td>
-                    <td>{preferredSupplier ? <Badge tone="gold"><Star size={13} /> {preferredSupplier.name}</Badge> : <span className="muted">Not assigned</span>}</td>
-                    <td><Button type="button" variant="quiet" onClick={() => router.push(`/products/${product.id}/suppliers`)}>Manage terms</Button></td>
-                  </tr>
-                );
-              })}
+              {visibleTerms.map((term) => (
+                <tr key={term.product_id}>
+                  <td><div className={styles.productIdentity}><span><Package size={17} /></span><strong>{term.name}</strong></div></td>
+                  <td><code>{term.sku}</code></td>
+                  <td>{term.active_supplier_count}</td>
+                  <td>{term.preferred_supplier_name ? <Badge tone="gold"><Star size={13} /> {term.preferred_supplier_name}</Badge> : <span className="muted">Not assigned</span>}</td>
+                  <td><Button type="button" variant="quiet" onClick={() => router.push(`/products/${term.product_id}/suppliers`)}>Manage terms</Button></td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
 
-        {visibleProducts.length === 0 ? <div className={styles.emptyState}><Package size={23} /><h3>{query ? "No matching Products" : "No active Products"}</h3><p>{query ? "Change the search term." : "Create a Product before adding Supplier terms."}</p></div> : null}
+        {visibleTerms.length === 0 ? <div className={styles.emptyState}><Package size={23} /><h3>{query ? "No matching Products" : "No active Products"}</h3><p>{query ? "Change the search term." : "Create a Product before adding Supplier terms."}</p></div> : null}
+        {hasMore && mode === "cloud" ? (
+          <div className={styles.toolbar} style={{ justifyContent: "center", borderTop: "1px solid var(--border)", borderBottom: 0 }}>
+            <Button type="button" variant="secondary" onClick={() => void loadPage({ append: true, search: query })} disabled={loadingPage}>
+              {loadingPage ? <RefreshCw className="spin" size={17} /> : null} Load more
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </>
   );

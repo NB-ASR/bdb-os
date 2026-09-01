@@ -90,7 +90,10 @@ const canonicalProductionHistory = [
   "20260828150126_founder_admin_v1_repair.sql",
 ];
 
-const pendingMigrations = [];
+const pendingMigrations = [
+  "20260830190000_catalogue_engine_pass1.sql",
+  "20260831144000_catalogue_engine_scale_pass3.sql",
+];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
 

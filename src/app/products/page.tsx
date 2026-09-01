@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Archive,
   Barcode,
@@ -15,15 +15,16 @@ import {
   Truck,
   Undo2,
 } from "lucide-react";
+import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
 import { useBdb } from "@/lib/store";
 import {
+  discardProductCommand,
   enqueueProductCommand,
   failProductCommand,
   flushProductQueue,
   readProductQueue,
   removeProductCommand,
   submitProductCommand,
-  writeProductQueue,
   type ProductCommandAction,
   type ProductQueuedCommand,
 } from "@/lib/modules/product-queue";
@@ -33,6 +34,14 @@ import styles from "./products.module.css";
 type ProductFilter = "all" | "resale" | "supplies" | "archived";
 type ProductPurpose = "resale" | "supply";
 type ProductStatus = "active" | "archived";
+type RegisterCursor = { name: string; id: string };
+type ProductSummary = {
+  totalCount: number;
+  activeCount: number;
+  archivedCount: number;
+  resaleCount: number;
+  supplyCount: number;
+};
 
 type ProductRow = {
   id: string;
@@ -88,6 +97,8 @@ const emptyForm: ProductForm = {
 
 const CACHE_PREFIX = "bdb-products-cache-v1";
 const LAST_WORKSPACE_KEY = "bdb-products-last-workspace-v1";
+const CACHE_LIMIT = 500;
+const PAGE_SIZE = 100;
 
 function cacheKey(workspaceId: string) {
   return `${CACHE_PREFIX}:${workspaceId}`;
@@ -107,7 +118,7 @@ function readCache(workspaceId: string): ProductRow[] {
   if (typeof window === "undefined") return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(cacheKey(workspaceId)) ?? "[]") as unknown;
-    return Array.isArray(parsed) ? parsed as ProductRow[] : [];
+    return Array.isArray(parsed) ? (parsed as ProductRow[]).slice(0, CACHE_LIMIT) : [];
   } catch {
     window.localStorage.removeItem(cacheKey(workspaceId));
     return [];
@@ -118,8 +129,17 @@ function writeCache(workspaceId: string, products: readonly ProductRow[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
     cacheKey(workspaceId),
-    JSON.stringify(products.map(({ pending: _pending, ...product }) => product)),
+    JSON.stringify(products.slice(0, CACHE_LIMIT).map(({ pending: _pending, ...product }) => product)),
   );
+}
+
+function mergeCache(workspaceId: string, products: readonly ProductRow[]) {
+  const merged = new Map<string, ProductRow>();
+  for (const product of products) merged.set(product.id, product);
+  for (const product of readCache(workspaceId)) {
+    if (!merged.has(product.id)) merged.set(product.id, product);
+  }
+  writeCache(workspaceId, [...merged.values()]);
 }
 
 function formValues(product: ProductRow): ProductForm {
@@ -190,10 +210,49 @@ function applyCommand(products: readonly ProductRow[], command: ProductQueuedCom
   });
 }
 
+function mergeRows(current: readonly ProductRow[], incoming: readonly ProductRow[]) {
+  const merged = new Map(current.map((product) => [product.id, product]));
+  for (const product of incoming) merged.set(product.id, product);
+  return [...merged.values()];
+}
+
+function summaryFromRows(products: readonly ProductRow[]): ProductSummary {
+  const active = products.filter((product) => product.status === "active");
+  return {
+    totalCount: products.length,
+    activeCount: active.length,
+    archivedCount: products.length - active.length,
+    resaleCount: active.filter((product) => product.purpose === "resale").length,
+    supplyCount: active.filter((product) => product.purpose === "supply").length,
+  };
+}
+
+function parseSummary(value: Record<string, unknown> | null | undefined): ProductSummary | null {
+  if (!value) return null;
+  return {
+    totalCount: Number(value.total_count ?? 0),
+    activeCount: Number(value.active_count ?? 0),
+    archivedCount: Number(value.archived_count ?? 0),
+    resaleCount: Number(value.resale_count ?? 0),
+    supplyCount: Number(value.supply_count ?? 0),
+  };
+}
+
+function registerFilter(filter: ProductFilter) {
+  return {
+    status: filter === "archived" ? "archived" : "active",
+    purpose: filter === "resale" ? "resale" : filter === "supplies" ? "supply" : null,
+  };
+}
+
 export default function ProductsPage() {
   const { state, mode } = useBdb();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ProductSummary | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<RegisterCursor | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRow | null>(null);
@@ -202,35 +261,55 @@ export default function ProductsPage() {
   const [filter, setFilter] = useState<ProductFilter>("all");
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [pendingCommands, setPendingCommands] = useState<ProductQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const initialRegisterLoaded = useRef(false);
   const supportMode = false;
+  const pendingCount = pendingCommands.length;
 
   const currency = useMemo(
     () => new Intl.NumberFormat("en-GB", { style: "currency", currency: state.settings.currency }),
     [state.settings.currency],
   );
 
-  const loadCloud = useCallback(async () => {
-    const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
-    const context = await contextResponse.json().catch(() => ({}));
-    if (!contextResponse.ok || !context.currentWorkspaceId) {
-      throw new Error(context.error ?? "The current workspace could not be resolved.");
+  const fetchRegister = useCallback(async (
+    currentWorkspaceId: string,
+    options: { query: string; filter: ProductFilter; append?: boolean; cursor?: RegisterCursor | null },
+  ) => {
+    setPageLoading(true);
+    try {
+      const params = new URLSearchParams({
+        workspaceId: currentWorkspaceId,
+        pageSize: String(PAGE_SIZE),
+      });
+      const register = registerFilter(options.filter);
+      params.set("status", register.status);
+      if (register.purpose) params.set("purpose", register.purpose);
+      if (options.query.trim()) params.set("query", options.query.trim());
+      if (options.cursor) {
+        params.set("afterName", options.cursor.name);
+        params.set("afterId", options.cursor.id);
+      }
+
+      const response = await fetch(`/api/products?${params.toString()}`, { cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error ?? "Products could not be loaded.");
+
+      const cloudProducts = (result.result?.products ?? []) as ProductRow[];
+      const queue = readProductQueue(currentWorkspaceId);
+      mergeCache(currentWorkspaceId, cloudProducts);
+      setProducts((current) => queue.reduce(
+        applyCommand,
+        options.append ? mergeRows(current, cloudProducts) : cloudProducts,
+      ));
+      setPendingCommands(queue);
+      setSummary(parseSummary(result.result?.summary));
+      setHasMore(Boolean(result.result?.hasMore));
+      setNextCursor(result.result?.nextCursor ?? null);
+    } finally {
+      setPageLoading(false);
     }
-
-    const currentWorkspaceId = String(context.currentWorkspaceId);
-    setWorkspaceId(currentWorkspaceId);
-    rememberWorkspace(currentWorkspaceId);
-    const response = await fetch(`/api/products?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error ?? "Products could not be loaded.");
-
-    const cloudProducts = (result.result?.products ?? []) as ProductRow[];
-    writeCache(currentWorkspaceId, cloudProducts);
-    const queue = readProductQueue(currentWorkspaceId);
-    setProducts(queue.reduce(applyCommand, cloudProducts));
-    setPendingCount(queue.length);
   }, []);
 
   useEffect(() => {
@@ -242,8 +321,10 @@ export default function ProductsPage() {
 
       if (active && fallbackWorkspace) {
         setWorkspaceId(fallbackWorkspace);
-        setProducts(queued.reduce(applyCommand, cached));
-        setPendingCount(queued.length);
+        const optimistic = queued.reduce(applyCommand, cached);
+        setProducts(optimistic);
+        setSummary(summaryFromRows(optimistic));
+        setPendingCommands(queued);
       }
 
       try {
@@ -257,7 +338,18 @@ export default function ProductsPage() {
           }
           return;
         }
-        await loadCloud();
+
+        const contextResponse = await fetch("/api/workspace/context", { cache: "no-store" });
+        const context = await contextResponse.json().catch(() => ({}));
+        if (!contextResponse.ok || !context.currentWorkspaceId) {
+          throw new Error(context.error ?? "The current workspace could not be resolved.");
+        }
+        const currentWorkspaceId = String(context.currentWorkspaceId);
+        if (!active) return;
+        setWorkspaceId(currentWorkspaceId);
+        rememberWorkspace(currentWorkspaceId);
+        await fetchRegister(currentWorkspaceId, { query: "", filter: "all" });
+        initialRegisterLoaded.current = true;
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Products could not be loaded.";
         if (cached.length || queued.length) {
@@ -271,26 +363,47 @@ export default function ProductsPage() {
     }
     void initialise();
     return () => { active = false; };
-  }, [loadCloud, mode]);
+  }, [fetchRegister, mode]);
 
   useEffect(() => {
     if (mode === "demo" && loaded) writeCache("demo", products);
   }, [loaded, mode, products]);
 
+  useEffect(() => {
+    if (!loaded || mode !== "cloud" || !workspaceId || !navigator.onLine) return;
+    if (!initialRegisterLoaded.current) return;
+    const timer = window.setTimeout(() => {
+      setError("");
+      void fetchRegister(workspaceId, { query, filter }).catch((registerError) => {
+        setError(registerError instanceof Error ? registerError.message : "Products could not be loaded.");
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [fetchRegister, filter, loaded, mode, query, workspaceId]);
+
+  const refreshCurrent = useCallback(async () => {
+    if (!workspaceId || workspaceId === "demo") return;
+    await fetchRegister(workspaceId, { query, filter });
+  }, [fetchRegister, filter, query, workspaceId]);
+
   const syncPending = useCallback(async () => {
     if (!workspaceId || workspaceId === "demo" || syncing) return;
     setSyncing(true);
     setError("");
-    const result = await flushProductQueue(workspaceId, setPendingCount);
-    setPendingCount(result.remaining);
-    if (result.completed) {
-      setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
-    }
-    await loadCloud().catch((syncError) => {
+    try {
+      const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
+      setPendingCommands(readProductQueue(workspaceId));
+      if (result.completed) {
+        setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
+      }
+      await refreshCurrent();
+    } catch (syncError) {
+      setPendingCommands(readProductQueue(workspaceId));
       setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
-    });
-    setSyncing(false);
-  }, [loadCloud, syncing, workspaceId]);
+    } finally {
+      setSyncing(false);
+    }
+  }, [refreshCurrent, syncing, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
@@ -315,9 +428,8 @@ export default function ProductsPage() {
       attempts: 0,
     };
 
-    setProducts((current) => applyCommand(current, command));
-
     if (mode === "demo") {
+      setProducts((current) => applyCommand(current, command));
       setNotice("Saved in this browser's local BDB OS preview.");
       return true;
     }
@@ -326,8 +438,14 @@ export default function ProductsPage() {
       return false;
     }
 
-    enqueueProductCommand(workspaceId, action, payload, commandId);
-    setPendingCount(readProductQueue(workspaceId).length);
+    try {
+      enqueueProductCommand(workspaceId, action, payload, commandId);
+    } catch (queueError) {
+      setError(queueError instanceof Error ? queueError.message : "This Product change could not be stored safely offline.");
+      return false;
+    }
+    setProducts((current) => applyCommand(current, command));
+    setPendingCommands(readProductQueue(workspaceId));
     if (!navigator.onLine) {
       setNotice("Saved offline. BDB OS will retry this product change when the connection returns.");
       return true;
@@ -336,18 +454,18 @@ export default function ProductsPage() {
     try {
       await submitProductCommand(command);
       removeProductCommand(workspaceId, command.id);
-      setPendingCount(readProductQueue(workspaceId).length);
-      await loadCloud();
+      setPendingCommands(readProductQueue(workspaceId));
+      await refreshCurrent();
       setNotice(action === "create" ? "Product created." : action === "update" ? "Product updated." : action === "archive" ? "Product archived." : "Product restored.");
       return true;
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Product change could not be saved.";
-      failProductCommand(workspaceId, command.id, message);
-      setPendingCount(readProductQueue(workspaceId).length);
+      failProductCommand(workspaceId, command.id, commandError);
+      setPendingCommands(readProductQueue(workspaceId));
       setError(`${message} The change remains in the local retry queue.`);
       return false;
     }
-  }, [loadCloud, mode, workspaceId]);
+  }, [mode, refreshCurrent, workspaceId]);
 
   const visibleProducts = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -423,20 +541,24 @@ export default function ProductsPage() {
     setSaving(false);
   }
 
-  function discardQueue() {
+  async function discardPending(commandId: string) {
     if (!workspaceId || workspaceId === "demo") return;
-    writeProductQueue(workspaceId, []);
-    setPendingCount(0);
-    void loadCloud();
-    setNotice("Pending local product changes were discarded.");
+    try {
+      discardProductCommand(workspaceId, commandId);
+      setPendingCommands(readProductQueue(workspaceId));
+      await refreshCurrent();
+      setNotice("That pending Product change was discarded. Other queued changes were preserved.");
+    } catch (discardError) {
+      setError(discardError instanceof Error ? discardError.message : "That pending Product change cannot be discarded safely.");
+    }
   }
 
   if (!loaded) {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Products…</main>;
   }
 
-  const activeProducts = products.filter((product) => product.status === "active");
-  const archivedProducts = products.filter((product) => product.status === "archived");
+  const fallbackSummary = summaryFromRows(products);
+  const metrics = summary ?? fallbackSummary;
 
   return (
     <>
@@ -473,15 +595,15 @@ export default function ProductsPage() {
 
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Products updated</strong><p>{notice}</p></div> : null}
 
-      {pendingCount > 0 ? (
-        <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{pendingCount} product change{pendingCount === 1 ? "" : "s"} waiting to sync</strong>
-          <p>Commands remain local with stable retry keys. Conflicting edits will be stopped rather than silently overwritten.</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            <Button variant="secondary" disabled={syncing} onClick={() => void syncPending()}><RefreshCw size={16} className={syncing ? "spin" : ""} /> Retry</Button>
-            <Button variant="quiet" onClick={discardQueue}>Discard local changes</Button>
-          </div>
-        </div>
+      {pendingCount > 0 && workspaceId && workspaceId !== "demo" ? (
+        <CataloguePendingChanges
+          label="Product"
+          commands={pendingCommands}
+          syncing={syncing}
+          onRetry={() => void syncPending()}
+          onDiscard={(commandId) => void discardPending(commandId)}
+          describe={(command) => String(command.payload.name ?? command.payload.sku ?? "Product change")}
+        />
       ) : null}
 
       {supportMode ? (
@@ -492,10 +614,10 @@ export default function ProductsPage() {
       ) : null}
 
       <div className="stat-grid">
-        <StatCard label="Active products" value={String(activeProducts.length)} detail="Available catalogue records" icon={<Package size={19} />} />
-        <StatCard label="Resale items" value={String(activeProducts.filter((item) => item.purpose === "resale").length)} detail="Available for customer sales" icon={<Tags size={19} />} />
-        <StatCard label="Business supplies" value={String(activeProducts.filter((item) => item.purpose === "supply").length)} detail="Tracked but not sold" icon={<Boxes size={19} />} />
-        <StatCard label="Archived" value={String(archivedProducts.length)} detail="Retained for historical links" icon={<Archive size={19} />} />
+        <StatCard label="Active products" value={String(metrics.activeCount)} detail="Available catalogue records" icon={<Package size={19} />} />
+        <StatCard label="Resale items" value={String(metrics.resaleCount)} detail="Available for customer sales" icon={<Tags size={19} />} />
+        <StatCard label="Business supplies" value={String(metrics.supplyCount)} detail="Tracked but not sold" icon={<Boxes size={19} />} />
+        <StatCard label="Archived" value={String(metrics.archivedCount)} detail="Retained for historical links" icon={<Archive size={19} />} />
       </div>
 
       <Card className={styles.catalogueCard}>
@@ -504,6 +626,7 @@ export default function ProductsPage() {
             <Search size={17} />
             <input
               value={query}
+              maxLength={160}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search name, SKU, brand, category or barcode…"
               aria-label="Search products"
@@ -521,7 +644,7 @@ export default function ProductsPage() {
               </button>
             ))}
           </div>
-          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleProducts.length} products</Badge>
+          <Badge tone={pendingCount ? "gold" : "neutral"}>{visibleProducts.length}{hasMore ? "+" : ""} loaded</Badge>
         </div>
 
         <div className="table-scroll">
@@ -572,7 +695,20 @@ export default function ProductsPage() {
           </table>
         </div>
 
-        {visibleProducts.length === 0 ? (
+        {hasMore && nextCursor && mode === "cloud" ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: 16 }}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pageLoading}
+              onClick={() => workspaceId && void fetchRegister(workspaceId, { query, filter, append: true, cursor: nextCursor }).catch((loadError) => setError(loadError instanceof Error ? loadError.message : "More Products could not be loaded."))}
+            >
+              {pageLoading ? <><RefreshCw className="spin" size={16} /> Loading…</> : "Load more"}
+            </Button>
+          </div>
+        ) : null}
+
+        {visibleProducts.length === 0 && !pageLoading ? (
           <div className={styles.emptyState}>
             <Package size={23} />
             <h3>{query ? "No matching products" : filter === "archived" ? "No archived products" : "No products yet"}</h3>
@@ -592,7 +728,7 @@ export default function ProductsPage() {
           <div className={styles.cardIcon}><Truck size={20} /></div>
           <p className="eyebrow">Supplier boundary</p>
           <h2>Supplier relationships come next</h2>
-          <p className="muted">Products may have several suppliers. Supplier codes, preferred status, lead time and supplier-specific costs will live in a separate relationship record.</p>
+          <p className="muted">Products may have several suppliers. Supplier codes, preferred status, lead time and supplier-specific costs live in a separate relationship record.</p>
         </Card>
       </div>
 
@@ -610,7 +746,7 @@ export default function ProductsPage() {
               <label>SKU / stock code<input required maxLength={64} value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} placeholder="e.g. RPHMS" /></label>
               <label>Barcode<div className={styles.barcodeInput}><input maxLength={64} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Type barcode" /><Button type="button" variant="secondary" disabled><Barcode size={16} /> Scan</Button></div></label>
               <label>Brand<input maxLength={120} value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="Brand name" /></label>
-              <label>Supplier<select disabled defaultValue=""><option value="">Connected in next slice</option></select></label>
+              <label>Supplier<select disabled defaultValue=""><option value="">Connected in Supplier terms</option></select></label>
               <label>Category<input maxLength={120} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="e.g. Skincare" /></label>
               <label>Item purpose<select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
               <label>Unit label<input required maxLength={24} value={form.unitLabel} onChange={(event) => setForm({ ...form, unitLabel: event.target.value })} placeholder="unit" /></label>
