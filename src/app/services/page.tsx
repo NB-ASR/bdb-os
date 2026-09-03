@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Archive, CalendarDays, CircleDollarSign, Clock3, Plus, RefreshCw, Search, TriangleAlert, Undo2, Wrench } from "lucide-react";
 import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   discardServiceCommand,
@@ -410,7 +411,7 @@ export default function ServicesPage() {
   const metrics = summary ?? summaryFromRows(services);
 
   return <>
-    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
+    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><StandardDataImport entity="services" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || !online} /><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
     {supportMode ? <div className={styles.supportNotice}><Wrench size={18} /><div><strong>Read-only access</strong><span>Service catalogue changes remain blocked during this session.</span></div></div> : null}
     {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Service action needs attention</strong><p>{error}</p></div></div> : null}
     {notice ? <div className="review-callout"><RefreshCw size={19} /><div><strong>Service catalogue</strong><p>{notice}</p></div></div> : null}
