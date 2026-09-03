@@ -29,6 +29,13 @@ async function expectTemplateDownload(page: Page, expectedName: string) {
   expect(download.suggestedFilename()).toBe(expectedName);
 }
 
+async function confirmImportAndWaitForRefresh(page: Page, buttonName: string) {
+  const reloadPromise = page.waitForEvent("load");
+  await page.getByRole("button", { name: buttonName }).click();
+  await reloadPromise;
+  await page.waitForLoadState("networkidle");
+}
+
 async function waitForRecordRow(page: Page, text: string) {
   const row = page.locator("tbody tr").filter({ hasText: text }).first();
   await expect(row).toBeVisible({ timeout: 15_000 });
@@ -71,7 +78,7 @@ test.describe("authenticated owner journey", () => {
     await uploadCsv(page, `name,email,company\n${customerName},acceptance-${unique}@example.invalid,BDB OS Acceptance\n`);
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
     await expect(page.getByText(customerName)).toBeVisible();
-    await page.getByRole("button", { name: "Confirm 1 Customers" }).click();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Customers");
 
     await page.getByLabel("Search Customers").fill(customerName);
     let row = await waitForRecordRow(page, customerName);
@@ -106,7 +113,7 @@ test.describe("authenticated owner journey", () => {
     await uploadCsv(page, `sku,name,purpose,unit_cost,selling_price,vat_rate,reorder_level\n${sku},${productName},resale,10,20,18,2\n`);
     await expect(page.getByRole("heading", { name: "Review Products import" })).toBeVisible();
     await expect(page.getByText(productName)).toBeVisible();
-    await page.getByRole("button", { name: "Confirm 1 Products" }).click();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Products");
 
     await page.getByLabel("Search products").fill(sku);
     let row = await waitForRecordRow(page, sku);
@@ -139,7 +146,7 @@ test.describe("authenticated owner journey", () => {
     await uploadCsv(page, `code,name,duration_minutes,price,vat_rate,booking_mode\n${code},${serviceName},45,30,18,customer\n`);
     await expect(page.getByRole("heading", { name: "Review Services import" })).toBeVisible();
     await expect(page.getByText(serviceName)).toBeVisible();
-    await page.getByRole("button", { name: "Confirm 1 Services" }).click();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Services");
 
     await page.getByLabel("Search Services").fill(code);
     let row = await waitForRecordRow(page, code);
