@@ -16,6 +16,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   discardProductCommand,
@@ -568,9 +569,7 @@ export default function ProductsPage() {
         description="Define the reusable catalogue that Inventory, Purchasing, Sales and invoice lines reference."
         action={(
           <div className={styles.headerActions}>
-            <Button variant="secondary" disabled title="Bulk catalogue import follows the controlled single-record workflow">
-              <Boxes size={17} /> Import catalogue
-            </Button>
+            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud"} />
             <Button onClick={openCreate} disabled={supportMode}>
               <PackagePlus size={17} /> Add product
             </Button>
