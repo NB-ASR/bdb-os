@@ -16,6 +16,7 @@ import {
   UserRoundPlus,
   UsersRound,
 } from "lucide-react";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   enqueueCustomerCommand,
@@ -631,9 +632,10 @@ export default function CustomersPage() {
         description="One authoritative Customer identity connected to Appointments, Sales, invoices, Documents, Communications and history."
         action={(
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <StandardDataImport entity="customers" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || offline} />
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importSnapshot(event)} />
-            <Button variant="secondary" disabled={supportMode || importing || mode !== "cloud"} onClick={() => importInputRef.current?.click()}>
-              <FileUp size={17} /> {importing ? "Importing…" : "Import Customers"}
+            <Button variant="quiet" disabled={supportMode || importing || mode !== "cloud" || offline} onClick={() => importInputRef.current?.click()} title="Import a legacy Vanita JSON snapshot">
+              <FileUp size={16} /> {importing ? "Importing legacy…" : "Legacy Vanita JSON"}
             </Button>
             <Button onClick={openCreate} disabled={supportMode}>
               <UserRoundPlus size={17} /> Add Customer
@@ -767,7 +769,7 @@ export default function CustomersPage() {
 
         {loadingPage ? <div className="card-pad"><p className="muted"><RefreshCw className="spin" size={15} style={{ display: "inline", marginRight: 6 }} />Loading Customer page…</p></div> : null}
         {!loadingPage && visibleCustomers.length === 0 ? (
-          <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a reviewed Vanita JSON snapshot.</p></div>
+          <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a standard Customer CSV.</p></div>
         ) : null}
         {hasMore && !offline && mode === "cloud" ? (
           <div className="card-pad" style={{ display: "flex", justifyContent: "center" }}>
