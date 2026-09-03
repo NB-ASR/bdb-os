@@ -44,7 +44,7 @@ jobs:
 
       - name: Start disposable Supabase and replay all migrations
         shell: bash
-        run: supabase db start
+        run: supabase start
 
       - name: Configure exact-candidate local cloud environment
         shell: bash
@@ -52,6 +52,9 @@ jobs:
           set -euo pipefail
           supabase status -o env > /tmp/supabase.env
           source /tmp/supabase.env
+          test -n "${API_URL:-}"
+          test -n "${ANON_KEY:-}"
+          test -n "${SERVICE_ROLE_KEY:-}"
           {
             echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${ANON_KEY}"
