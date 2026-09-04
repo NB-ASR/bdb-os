@@ -3,6 +3,12 @@ import { normaliseImportHeader, type CsvRecord } from "@/lib/modules/standard-cs
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
+const RECOGNISED_HEADERS = new Set([
+  "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
+  "email", "email_address", "phone", "phone_number", "phone_numbers", "telephone", "mobile", "mobile_number",
+  "address", "postal_address", "company", "business", "organisation", "organization", "code", "customer_code", "client_code",
+  "sku", "product", "product_name", "product_code", "service", "service_name", "service_code", "description",
+]);
 
 function decode(bytes: Uint8Array) {
   return new TextDecoder("utf-8").decode(bytes);
@@ -82,6 +88,14 @@ function cellText(cell: Element, shared: string[]) {
   return raw;
 }
 
+function findHeaderIndex(matrix: string[][]) {
+  return matrix.findIndex((row) => {
+    const headers = row.map((value) => normaliseImportHeader(String(value ?? ""))).filter(Boolean);
+    const recognised = headers.filter((header) => RECOGNISED_HEADERS.has(header)).length;
+    return headers.length >= 2 && recognised >= 2;
+  });
+}
+
 export async function parseXlsx(file: File): Promise<CsvRecord[]> {
   const buffer = await file.arrayBuffer();
   const workbookBytes = await unzipEntry(buffer, "xl/workbook.xml");
@@ -111,12 +125,20 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
   }).filter((row) => row.some((value) => String(value ?? "").trim()));
 
   if (matrix.length < 2) throw new Error("The Excel worksheet must contain a header row and at least one data row.");
-  const headers = matrix[0].map((value, index) => normaliseImportHeader(String(value ?? `column_${index + 1}`)));
+  const headerIndex = findHeaderIndex(matrix);
+  if (headerIndex < 0) throw new Error("BDB OS could not find a recognised Customer, Product or Service header row in this workbook.");
+
+  const rawHeaders = matrix[headerIndex];
+  const lastHeaderColumn = rawHeaders.reduce((last, value, index) => String(value ?? "").trim() ? index : last, -1);
+  const headers = rawHeaders.slice(0, lastHeaderColumn + 1).map((value) => normaliseImportHeader(String(value ?? "")));
   if (headers.some((header) => !header)) throw new Error("Every Excel column needs a header.");
   if (new Set(headers).size !== headers.length) throw new Error("The Excel worksheet contains duplicate column headers.");
-  return matrix.slice(1).map((values) => {
-    const record: CsvRecord = {};
-    headers.forEach((header, index) => { record[header] = String(values[index] ?? "").trim(); });
-    return record;
-  });
+
+  return matrix.slice(headerIndex + 1)
+    .filter((values) => values.some((value) => String(value ?? "").trim()))
+    .map((values) => {
+      const record: CsvRecord = {};
+      headers.forEach((header, index) => { record[header] = String(values[index] ?? "").trim(); });
+      return record;
+    });
 }
