@@ -90,10 +90,10 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
 
   const workbook = xml(decode(workbookBytes));
   const rels = xml(decode(relsBytes));
-  const sheet = Array.from(workbook.getElementsByTagName("sheet")).find((node) => node.getAttribute("state") !== "hidden") ?? workbook.getElementsByTagNameName?.("sheet")?.[0];
-  const resolvedSheet = sheet ?? workbook.getElementsByTagName("sheet")[0];
-  if (!resolvedSheet) throw new Error("The Excel workbook does not contain a worksheet.");
-  const relationshipId = resolvedSheet.getAttribute("r:id") ?? resolvedSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "";
+  const sheets = Array.from(workbook.getElementsByTagName("sheet"));
+  const sheet = sheets.find((node) => node.getAttribute("state") !== "hidden") ?? sheets[0];
+  if (!sheet) throw new Error("The Excel workbook does not contain a worksheet.");
+  const relationshipId = sheet.getAttribute("r:id") ?? sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "";
   const worksheetPath = relationshipTarget(rels, relationshipId);
   const worksheetBytes = await unzipEntry(buffer, worksheetPath);
   if (!worksheetBytes) throw new Error("The Excel worksheet could not be read.");
