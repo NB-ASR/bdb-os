@@ -19,6 +19,7 @@ const importApi = await readFile("src/app/api/customers/import/route.ts", "utf8"
 const queue = await readFile("src/lib/modules/customer-queue.ts", "utf8");
 const cache = await readFile("src/lib/modules/customer-cache.ts", "utf8");
 const importer = await readFile("src/lib/modules/customer-import.ts", "utf8");
+const standardImporter = await readFile("src/components/standard-data-import.tsx", "utf8");
 const page = await readFile("src/app/customers/page.tsx", "utf8");
 const profilePage = await readFile("src/app/customers/[customerId]/page.tsx", "utf8");
 const databaseTest = await readFile("supabase/tests/customer_foundation.sql", "utf8");
@@ -96,8 +97,12 @@ assert.match(importer, /record\.clients/);
 assert.match(importer, /data\.clients/);
 
 assert.match(page, /Email is optional/);
-assert.match(page, /Import Customers/);
-assert.doesNotMatch(page, /Import Vanita JSON/, "Customer UI must use the generic import label for every workspace.");
+assert.match(page, /StandardDataImport entity="customers"/, "Customer directory must expose the standard customer-ready CSV importer.");
+assert.match(standardImporter, /entity === "customers" \? "Customers"/, "Standard importer must present Customers as a first-class business import.");
+assert.match(standardImporter, /accept="\.csv,text\/csv"/, "Standard Customer import must expose CSV files in the browser file picker.");
+assert.match(standardImporter, /Review \$\{label\} import/, "Standard imports must require review before commit.");
+assert.match(page, /Legacy Vanita JSON/, "Vanita JSON migration must remain available but be labelled truthfully as a legacy path.");
+assert.doesNotMatch(page, />Import Customers<\/Button>/, "Customer page must not masquerade the legacy JSON picker as the generic importer.");
 assert.match(page, /Saved offline/);
 assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);
 assert.match(page, /archive/);
@@ -176,4 +181,4 @@ assert.match(databaseTest, /final 64 UUID bits/i);
 assert.match(databaseTest, /covering indexes/i);
 assert.match(databaseTest, /sales_active_customer_guard/i, "Database tests must pin the archived-Customer Sale guard.");
 
-console.log("Customer foundation, scale, bounded offline state, archive guards, hardened replay and closure contracts are internally consistent.");
+console.log("Customer foundation, scale, bounded offline state, archive guards, hardened replay and customer-ready import contracts are internally consistent.");

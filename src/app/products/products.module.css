@@ -232,6 +232,14 @@
   resize: none;
 }
 
+/* Barcode camera capture and direct Supplier selection are deliberately not
+   V1 Product-form actions. Until those workflows are genuinely operational,
+   their old disabled controls are not presented to customers. */
+.barcodeInput > button:disabled,
+.formGrid > label:has(select:disabled) {
+  display: none;
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -240,6 +248,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.barcodeInput:has(> button:disabled) {
+  grid-template-columns: 1fr;
 }
 
 .openingStockNote {

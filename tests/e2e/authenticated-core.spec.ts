@@ -1,15 +1,45 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const email = process.env.BDB_E2E_OWNER_EMAIL;
 const password = process.env.BDB_E2E_OWNER_PASSWORD;
 const workspaceName = process.env.BDB_E2E_WORKSPACE_NAME;
 
-async function signIn(page: import("@playwright/test").Page) {
+async function signIn(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Work email").fill(email ?? "");
   await page.getByLabel("Password").fill(password ?? "");
   await page.getByRole("button", { name: /sign in/i }).click();
   await page.waitForURL(/\/workspace/);
+}
+
+async function uploadCsv(page: Page, csv: string) {
+  const input = page.locator('input[type="file"][accept*=".csv"]').first();
+  await expect(input).toBeAttached();
+  await input.setInputFiles({
+    name: "operational-acceptance.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(csv),
+  });
+}
+
+async function expectTemplateDownload(page: Page, expectedName: string) {
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Template" }).first().click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(expectedName);
+}
+
+async function confirmImportAndWaitForRefresh(page: Page, buttonName: string) {
+  const reloadPromise = page.waitForEvent("load");
+  await page.getByRole("button", { name: buttonName }).click();
+  await reloadPromise;
+  await page.waitForLoadState("networkidle");
+}
+
+async function waitForRecordRow(page: Page, text: string) {
+  const row = page.locator("tbody tr").filter({ hasText: text }).first();
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  return row;
 }
 
 test.describe("authenticated owner journey", () => {
@@ -26,12 +56,114 @@ test.describe("authenticated owner journey", () => {
 
     const uniqueName = `E2E Customer ${Date.now()}`;
     await page.getByRole("button", { name: /add customer/i }).first().click();
-    await page.getByLabel("Contact name").fill(uniqueName);
+    await page.getByLabel("Customer name").fill(uniqueName);
     await page.getByLabel("Company").fill("BDB OS Quality Test");
     await page.getByLabel("Email").fill(`e2e-${Date.now()}@example.invalid`);
-    await page.getByRole("button", { name: /^add customer$/i }).click();
+    await page.getByRole("button", { name: /^create customer$/i }).click();
 
-    await expect(page.getByText(uniqueName)).toBeVisible();
+    await expect(page).toHaveURL(/\/customers\//);
+    await expect(page.getByText(uniqueName).first()).toBeVisible();
+  });
+
+  test("Customer CSV import and lifecycle are customer-operational", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/customers");
+    await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Legacy Vanita JSON" })).toBeVisible();
+    await expectTemplateDownload(page, "bdb-os-customers-import-template.csv");
+
+    const unique = Date.now();
+    const customerName = `Acceptance Customer ${unique}`;
+    const updatedCompany = `Acceptance Company ${unique}`;
+    await uploadCsv(page, `name,email,company\n${customerName},acceptance-${unique}@example.invalid,BDB OS Acceptance\n`);
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
+    await expect(page.getByText(customerName)).toBeVisible();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Customers");
+
+    await page.getByLabel("Search Customers").fill(customerName);
+    let row = await waitForRecordRow(page, customerName);
+    await row.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Company").fill(updatedCompany);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    row = await waitForRecordRow(page, customerName);
+    await expect(row).toContainText(updatedCompany);
+
+    await row.getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("button", { name: "Archived", exact: true }).click();
+    row = await waitForRecordRow(page, customerName);
+    await expect(row).toContainText("Archived");
+    await row.getByRole("button", { name: "Restore" }).click();
+    await page.getByRole("button", { name: "Active", exact: true }).click();
+    row = await waitForRecordRow(page, customerName);
+    await expect(row).toContainText("Active");
+  });
+
+  test("Product CSV import and lifecycle replace the old dead catalogue controls", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/products");
+    await expect(page.getByRole("button", { name: "Import Products" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /import catalogue/i })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^scan$/i })).toHaveCount(0);
+    await expectTemplateDownload(page, "bdb-os-products-import-template.csv");
+
+    const unique = Date.now();
+    const sku = `ACC-${unique}`;
+    const productName = `Acceptance Product ${unique}`;
+    const updatedName = `${productName} Updated`;
+    await uploadCsv(page, `sku,name,purpose,unit_cost,selling_price,vat_rate,reorder_level\n${sku},${productName},resale,10,20,18,2\n`);
+    await expect(page.getByRole("heading", { name: "Review Products import" })).toBeVisible();
+    await expect(page.getByText(productName)).toBeVisible();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Products");
+
+    await page.getByLabel("Search products").fill(sku);
+    let row = await waitForRecordRow(page, sku);
+    await row.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Product name").fill(updatedName);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    row = await waitForRecordRow(page, sku);
+    await expect(row).toContainText(updatedName);
+
+    await row.getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("button", { name: "Archived", exact: true }).click();
+    row = await waitForRecordRow(page, sku);
+    await expect(row).toContainText("Archived");
+    await row.getByRole("button", { name: "Restore" }).click();
+    await page.getByRole("button", { name: "All active", exact: true }).click();
+    row = await waitForRecordRow(page, sku);
+    await expect(row).toContainText("Active");
+  });
+
+  test("Service CSV import and lifecycle are customer-operational", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/services");
+    await expect(page.getByRole("button", { name: "Import Services" })).toBeEnabled();
+    await expectTemplateDownload(page, "bdb-os-services-import-template.csv");
+
+    const unique = Date.now();
+    const code = `AS-${unique}`;
+    const serviceName = `Acceptance Service ${unique}`;
+    const updatedName = `${serviceName} Updated`;
+    await uploadCsv(page, `code,name,duration_minutes,price,vat_rate,booking_mode\n${code},${serviceName},45,30,18,customer\n`);
+    await expect(page.getByRole("heading", { name: "Review Services import" })).toBeVisible();
+    await expect(page.getByText(serviceName)).toBeVisible();
+    await confirmImportAndWaitForRefresh(page, "Confirm 1 Services");
+
+    await page.getByLabel("Search Services").fill(code);
+    let row = await waitForRecordRow(page, code);
+    await row.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Service name").fill(updatedName);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    row = await waitForRecordRow(page, code);
+    await expect(row).toContainText(updatedName);
+
+    await row.getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("button", { name: "Archived", exact: true }).click();
+    row = await waitForRecordRow(page, code);
+    await expect(row).toContainText("Archived");
+    await row.getByRole("button", { name: "Restore" }).click();
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    row = await waitForRecordRow(page, code);
+    await expect(row).toContainText("Active");
   });
 
   test("Accounts journeys stay in the consolidated workspaces", async ({ page }) => {
