@@ -11,6 +11,7 @@ import {
   stableImportUuid,
   type CsvRecord,
 } from "@/lib/modules/standard-csv-import";
+import { parseXlsx } from "@/lib/modules/xlsx-import";
 
 type ImportEntity = "customers" | "products" | "services";
 
@@ -18,6 +19,7 @@ type StandardDataImportProps = {
   entity: ImportEntity;
   workspaceId: string | null;
   disabled?: boolean;
+  onImported?: () => void | Promise<void>;
 };
 
 type RowFailure = { row: number; message: string };
@@ -31,6 +33,8 @@ type PreparedImport = {
 };
 
 const MAX_STANDARD_ROWS = 1000;
+const MAX_CUSTOMER_ROWS = 5000;
+const IMPORT_CONCURRENCY = 8;
 const TEMPLATE_HEADERS: Record<ImportEntity, string[]> = {
   customers: ["name", "code", "company", "email", "phone", "address", "vat_number", "preferences"],
   products: ["sku", "name", "barcode", "brand", "category", "purpose", "unit_label", "unit_cost", "selling_price", "vat_rate", "reorder_level", "notes"],
@@ -65,18 +69,25 @@ function downloadTemplate(entity: ImportEntity) {
   URL.revokeObjectURL(url);
 }
 
+async function fileHash(file: File) {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()));
+  return [...bytes].map((item) => item.toString(16).padStart(2, "0")).join("");
+}
+
 function customerPayload(row: CsvRecord) {
-  const name = importValue(row, ["name", "customer", "customer_name", "contact_name", "client"]);
+  const name = importValue(row, ["name", "full_name", "customer", "customer_name", "contact_name", "client"]);
   if (!name) throw new Error("Customer name is required.");
   const email = importValue(row, ["email", "email_address"]);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Email address is invalid.");
+  const address = importValue(row, ["address", "postal_address"]);
+  const city = importValue(row, ["city", "town", "locality"]);
   return {
     code: importValue(row, ["code", "customer_code", "client_code"]),
     name,
     company: importValue(row, ["company", "business", "organisation", "organization"]),
     email,
     phone: importValue(row, ["phone", "telephone", "mobile", "mobile_number"]),
-    address: importValue(row, ["address", "postal_address"]),
+    address: [address, city].filter(Boolean).join(address && city ? ", " : ""),
     vatNumber: importValue(row, ["vat_number", "vat", "tax_number"]),
     preferences: importValue(row, ["preferences", "notes"]) ? { summary: importValue(row, ["preferences", "notes"]) } : {},
     allowDuplicate: false,
@@ -95,9 +106,7 @@ function productPayload(row: CsvRecord) {
   const sellingPrice = numericImportValue(importValue(row, ["selling_price", "sale_price", "price", "rrp"]), null);
   const vatRate = numericImportValue(importValue(row, ["vat_rate", "vat", "vat_percent"]), 18);
   const reorderLevel = numericImportValue(importValue(row, ["reorder_level", "reorder_at", "minimum_stock"]), 0);
-  if ([unitCost, sellingPrice, vatRate, reorderLevel].some((value) => typeof value === "number" && Number.isNaN(value))) {
-    throw new Error("One or more Product numeric values are invalid.");
-  }
+  if ([unitCost, sellingPrice, vatRate, reorderLevel].some((value) => typeof value === "number" && Number.isNaN(value))) throw new Error("One or more Product numeric values are invalid.");
   if (Number(vatRate) < 0 || Number(vatRate) > 100) throw new Error("VAT rate must be between 0 and 100.");
   return {
     sku,
@@ -125,9 +134,7 @@ function servicePayload(row: CsvRecord) {
   const recoveryBufferMinutes = numericImportValue(importValue(row, ["recovery_buffer_minutes", "recovery_buffer", "cleanup_buffer"]), 0);
   const price = numericImportValue(importValue(row, ["price", "selling_price"]), null);
   const vatRate = numericImportValue(importValue(row, ["vat_rate", "vat", "vat_percent"]), 18);
-  if ([durationMinutes, preparationBufferMinutes, recoveryBufferMinutes, price, vatRate].some((value) => typeof value === "number" && Number.isNaN(value))) {
-    throw new Error("One or more Service numeric values are invalid.");
-  }
+  if ([durationMinutes, preparationBufferMinutes, recoveryBufferMinutes, price, vatRate].some((value) => typeof value === "number" && Number.isNaN(value))) throw new Error("One or more Service numeric values are invalid.");
   if (!Number.isInteger(durationMinutes) || Number(durationMinutes) < 5 || Number(durationMinutes) > 1440) throw new Error("Duration must be 5–1440 whole minutes.");
   if (!Number.isInteger(preparationBufferMinutes) || Number(preparationBufferMinutes) < 0 || Number(preparationBufferMinutes) > 240) throw new Error("Preparation buffer must be 0–240 whole minutes.");
   if (!Number.isInteger(recoveryBufferMinutes) || Number(recoveryBufferMinutes) < 0 || Number(recoveryBufferMinutes) > 240) throw new Error("Recovery buffer must be 0–240 whole minutes.");
@@ -156,12 +163,8 @@ function payloadFor(entity: ImportEntity, row: CsvRecord) {
 }
 
 function previewFor(entity: ImportEntity, payload: Record<string, unknown>) {
-  if (entity === "customers") {
-    return { label: String(payload.name), secondary: String(payload.email || payload.phone || payload.company || "No contact detail") };
-  }
-  if (entity === "products") {
-    return { label: String(payload.name), secondary: `${String(payload.sku)} · ${String(payload.purpose)}` };
-  }
+  if (entity === "customers") return { label: String(payload.name), secondary: String(payload.email || payload.phone || payload.company || "No contact detail") };
+  if (entity === "products") return { label: String(payload.name), secondary: `${String(payload.sku)} · ${String(payload.purpose)}` };
   return { label: String(payload.name), secondary: `${String(payload.code)} · ${String(payload.durationMinutes)} min` };
 }
 
@@ -187,13 +190,42 @@ async function createRecord(entity: ImportEntity, workspaceId: string, id: strin
   throw new Error(lastError);
 }
 
-export function StandardDataImport({ entity, workspaceId, disabled = false }: StandardDataImportProps) {
+async function importRows(
+  entity: ImportEntity,
+  workspaceId: string,
+  prepared: PreparedImport,
+  onFailure: (failure: RowFailure) => void,
+) {
+  let nextIndex = 0;
+  let created = 0;
+  const worker = async () => {
+    while (nextIndex < prepared.rows.length) {
+      const row = prepared.rows[nextIndex];
+      nextIndex += 1;
+      try {
+        const seed = `${workspaceId}:${entity}:${prepared.fileHash}:${row.row}`;
+        const id = await stableImportUuid(seed);
+        const idempotencyKey = `stdimp:${entity}:${prepared.fileHash}:${row.row}`;
+        await createRecord(entity, workspaceId, id, idempotencyKey, row.payload);
+        created += 1;
+      } catch (error) {
+        onFailure({ row: row.row, message: error instanceof Error ? error.message : "Row could not be imported." });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(IMPORT_CONCURRENCY, prepared.rows.length) }, () => worker()));
+  return created;
+}
+
+export function StandardDataImport({ entity, workspaceId, disabled = false, onImported }: StandardDataImportProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [prepared, setPrepared] = useState<PreparedImport | null>(null);
   const label = entityLabel(entity);
   const previewRows = useMemo(() => prepared?.rows.slice(0, 8) ?? [], [prepared]);
+  const maxRows = entity === "customers" ? MAX_CUSTOMER_ROWS : MAX_STANDARD_ROWS;
+  const acceptsExcel = entity === "customers";
 
   async function prepareFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -207,16 +239,17 @@ export function StandardDataImport({ entity, workspaceId, disabled = false }: St
       setStatus(`${label} bulk import is online-only so duplicate checks use current shared data.`);
       return;
     }
-    if (file.size > 5_000_000) {
-      setStatus("Choose a CSV smaller than 5 MB.");
+    if (file.size > 10_000_000) {
+      setStatus("Choose an import file smaller than 10 MB.");
       return;
     }
 
     setStatus("");
     try {
-      const text = await file.text();
-      const rows = parseCsv(text);
-      if (rows.length > MAX_STANDARD_ROWS) throw new Error(`Import no more than ${MAX_STANDARD_ROWS} ${label} at once.`);
+      const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
+      if (isXlsx && !acceptsExcel) throw new Error(`${label} import currently accepts CSV files.`);
+      const rows = isXlsx ? await parseXlsx(file) : parseCsv(await file.text());
+      if (rows.length > maxRows) throw new Error(`Import no more than ${maxRows.toLocaleString()} ${label} at once.`);
       const failures: RowFailure[] = [];
       const validRows: PreviewRow[] = [];
       rows.forEach((row, index) => {
@@ -228,11 +261,12 @@ export function StandardDataImport({ entity, workspaceId, disabled = false }: St
           failures.push({ row: index + 2, message: error instanceof Error ? error.message : "Row is invalid." });
         }
       });
-      if (!validRows.length) throw new Error(failures[0]?.message ?? "No valid rows were found in this CSV.");
-      setPrepared({ fileName: file.name, fileHash: await sha256Hex(text), rows: validRows, failures });
+      if (!validRows.length) throw new Error(failures[0]?.message ?? "No valid rows were found in this import file.");
+      const hash = isXlsx ? await fileHash(file) : await sha256Hex(await file.text());
+      setPrepared({ fileName: file.name, fileHash: hash, rows: validRows, failures });
     } catch (error) {
       setPrepared(null);
-      setStatus(error instanceof Error ? error.message : `${label} CSV could not be read.`);
+      setStatus(error instanceof Error ? error.message : `${label} import file could not be read.`);
     }
   }
 
@@ -245,35 +279,34 @@ export function StandardDataImport({ entity, workspaceId, disabled = false }: St
 
     setBusy(true);
     const failures: RowFailure[] = [...prepared.failures];
-    let created = 0;
-    for (const row of prepared.rows) {
-      try {
-        const seed = `${workspaceId}:${entity}:${prepared.fileHash}:${row.row}`;
-        const id = await stableImportUuid(seed);
-        const idempotencyKey = `stdimp:${entity}:${prepared.fileHash}:${row.row}`;
-        await createRecord(entity, workspaceId, id, idempotencyKey, row.payload);
-        created += 1;
-      } catch (error) {
-        failures.push({ row: row.row, message: error instanceof Error ? error.message : "Row could not be imported." });
+    try {
+      const created = await importRows(entity, workspaceId, prepared, (failure) => failures.push(failure));
+      setPrepared(null);
+      if (failures.length) {
+        const first = failures.slice(0, 5).map((failure) => `row ${failure.row}: ${failure.message}`).join(" · ");
+        setStatus(`${created} imported · ${failures.length} need review. ${first}`);
+      } else {
+        setStatus(`${created} ${label} imported successfully.`);
       }
-    }
-
-    setPrepared(null);
-    setBusy(false);
-    if (failures.length) {
-      const first = failures.slice(0, 5).map((failure) => `row ${failure.row}: ${failure.message}`).join(" · ");
-      setStatus(`${created} imported · ${failures.length} need review. ${first}`);
-      if (created > 0) window.setTimeout(() => window.location.reload(), 1800);
-    } else {
-      setStatus(`${created} ${label} imported successfully. Refreshing…`);
-      window.setTimeout(() => window.location.reload(), 600);
+      if (created > 0) {
+        if (onImported) await onImported();
+        else window.location.reload();
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <input ref={inputRef} hidden type="file" accept=".csv,text/csv" onChange={(event) => void prepareFile(event)} />
+        <input
+          ref={inputRef}
+          hidden
+          type="file"
+          accept={acceptsExcel ? ".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : ".csv,text/csv"}
+          onChange={(event) => void prepareFile(event)}
+        />
         <Button variant="secondary" disabled={disabled || busy} onClick={() => inputRef.current?.click()}>
           <FileUp size={17} /> {busy ? "Importing…" : `Import ${label}`}
         </Button>
@@ -297,7 +330,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false }: St
             </div>
             <div className="table-scroll">
               <table>
-                <thead><tr><th>CSV row</th><th>{entity === "customers" ? "Customer" : entity === "products" ? "Product" : "Service"}</th><th>Details</th></tr></thead>
+                <thead><tr><th>Source row</th><th>{entity === "customers" ? "Customer" : entity === "products" ? "Product" : "Service"}</th><th>Details</th></tr></thead>
                 <tbody>{previewRows.map((row) => <tr key={row.row}><td>{row.row}</td><td><strong>{row.label}</strong></td><td>{row.secondary}</td></tr>)}</tbody>
               </table>
             </div>
