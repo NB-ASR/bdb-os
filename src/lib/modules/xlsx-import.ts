@@ -1,4 +1,4 @@
-import type { CsvRecord } from "@/lib/modules/standard-csv-import";
+import { normaliseImportHeader, type CsvRecord } from "@/lib/modules/standard-csv-import";
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
@@ -90,9 +90,10 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
 
   const workbook = xml(decode(workbookBytes));
   const rels = xml(decode(relsBytes));
-  const sheet = Array.from(workbook.getElementsByTagName("sheet")).find((node) => node.getAttribute("state") !== "hidden") ?? workbook.getElementsByTagName("sheet")[0];
-  if (!sheet) throw new Error("The Excel workbook does not contain a worksheet.");
-  const relationshipId = sheet.getAttribute("r:id") ?? sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "";
+  const sheet = Array.from(workbook.getElementsByTagName("sheet")).find((node) => node.getAttribute("state") !== "hidden") ?? workbook.getElementsByTagNameName?.("sheet")?.[0];
+  const resolvedSheet = sheet ?? workbook.getElementsByTagName("sheet")[0];
+  if (!resolvedSheet) throw new Error("The Excel workbook does not contain a worksheet.");
+  const relationshipId = resolvedSheet.getAttribute("r:id") ?? resolvedSheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "";
   const worksheetPath = relationshipTarget(rels, relationshipId);
   const worksheetBytes = await unzipEntry(buffer, worksheetPath);
   if (!worksheetBytes) throw new Error("The Excel worksheet could not be read.");
@@ -110,7 +111,9 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
   }).filter((row) => row.some((value) => String(value ?? "").trim()));
 
   if (matrix.length < 2) throw new Error("The Excel worksheet must contain a header row and at least one data row.");
-  const headers = matrix[0].map((value, index) => String(value ?? `column_${index + 1}`).trim());
+  const headers = matrix[0].map((value, index) => normaliseImportHeader(String(value ?? `column_${index + 1}`)));
+  if (headers.some((header) => !header)) throw new Error("Every Excel column needs a header.");
+  if (new Set(headers).size !== headers.length) throw new Error("The Excel worksheet contains duplicate column headers.");
   return matrix.slice(1).map((values) => {
     const record: CsvRecord = {};
     headers.forEach((header, index) => { record[header] = String(values[index] ?? "").trim(); });
