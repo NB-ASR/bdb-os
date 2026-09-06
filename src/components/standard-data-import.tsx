@@ -19,7 +19,7 @@ type StandardDataImportProps = {
   entity: ImportEntity;
   workspaceId: string | null;
   disabled?: boolean;
-  onImported?: () => void | Promise<void>;
+  onImported?: () => unknown | Promise<unknown>;
 };
 
 type RowFailure = { row: number; message: string };
