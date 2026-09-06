@@ -18,12 +18,15 @@ These conditions were visible to a normal business user but were not caught by t
 
 ### Customers
 
-- Add a standard CSV import path for normal business migration/onboarding.
-- Provide a downloadable CSV template.
+- Add standard CSV and `.xlsx` import paths for normal business migration/onboarding.
+- Accept common Customer export layouts rather than vendor-specific workbook logic: visible worksheets, report/preamble rows, full-name or split first/last-name headings, and common email/phone/address headings.
+- Reject unrecognised or ambiguous workbook layouts with a clear message rather than guessing Customer identities.
+- Provide a downloadable CSV template as the recommended interchange format.
 - Require preview/review before records are created.
 - Use the existing hardened canonical Customer command for standard rows.
+- Await the existing Customer register refresh before reporting a standard import as complete.
 - Keep legacy Vanita JSON migration available as a separately labelled legacy path with its existing provenance/receipt semantics.
-- Do not create fake Vanita provenance for standard CSV imports.
+- Do not create fake Vanita provenance for standard CSV/XLSX imports.
 
 ### Products
 
@@ -41,11 +44,11 @@ These conditions were visible to a normal business user but were not caught by t
 
 ## Reliability model
 
-Standard CSV import is intentionally online-only in V1 because each row must validate against current shared duplicate/uniqueness state.
+Standard Customer CSV/XLSX import and Product/Service CSV import are intentionally online-only in V1 because each row must validate against current shared duplicate/uniqueness state.
 
 The selected file is parsed locally and reviewed before any write occurs. Each file/row receives a deterministic entity ID and stable idempotency key derived from the file content so retrying the same import cannot silently create a second record after an ambiguous response.
 
-Normal offline Customer/Product/Service create/edit/archive/restore queues remain unchanged.
+Customer imports are bounded to 5,000 rows per file. Product and Service imports retain their smaller V1 boundary. Normal offline Customer/Product/Service create/edit/archive/restore queues remain unchanged.
 
 ## Alternatives considered
 
@@ -57,6 +60,14 @@ Rejected. They would bypass the frozen command boundaries, permissions, validati
 
 Rejected. It is a migration format for one historical application, not a reasonable customer-facing interchange format.
 
+### Vendor-specific Excel adapters
+
+Rejected for V1. Standard `.xlsx` ingestion recognises common Customer headings and workbook structures. BDB OS must not encode Vanita/Fresha-specific workbook semantics into the canonical Customer importer.
+
+### Arbitrary spreadsheet guessing
+
+Rejected. If a workbook does not expose recognisable Customer identity columns, BDB OS asks for a clearer export/template instead of inferring identities from unrelated columns. A future explicit field-mapping UI may expand this safely if customer demand justifies it.
+
 ### Keep deferred Catalogue actions visible but disabled
 
 Rejected. A V1-closed customer screen must not present a normal business action that cannot be used.
@@ -67,9 +78,9 @@ Rejected. Quantity belongs to the Inventory movement ledger. Product import crea
 
 ## Risks
 
-- Standard CSV import deliberately stops/flags individual duplicate or invalid rows instead of silently merging data.
+- Standard imports deliberately stop/flag individual duplicate or invalid rows instead of silently merging data.
 - Large imports are bounded; V1 is not a data-warehouse ingestion product.
-- Spreadsheet-native `.xlsx` is not advertised by this repair. Businesses can use the supplied CSV template or export CSV from their spreadsheet software. Native workbook ingestion can be added later only if it adds real onboarding value.
+- Legacy binary `.xls` is not advertised. Customer onboarding supports CSV and standard `.xlsx`; unsupported formats fail clearly rather than being misread.
 - The exact authenticated customer acceptance gate still has to pass before this repair can merge.
 
 ## Future implications
