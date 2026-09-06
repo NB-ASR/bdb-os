@@ -5,9 +5,15 @@ const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
 const RECOGNISED_HEADERS = new Set([
   "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
-  "email", "email_address", "phone", "phone_number", "phone_numbers", "telephone", "mobile", "mobile_number",
-  "address", "postal_address", "company", "business", "organisation", "organization", "code", "customer_code", "client_code",
-  "sku", "product", "product_name", "product_code", "service", "service_name", "service_code", "description",
+  "first_name", "firstname", "given_name", "forename", "last_name", "lastname", "surname", "family_name",
+  "email", "email_address", "phone", "phone_number", "phone_numbers", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no",
+  "address", "postal_address", "address_line_1", "street_address", "city", "town", "locality",
+  "company", "business", "organisation", "organization", "code", "customer_code", "client_code",
+  "vat_number", "vat", "tax_number", "preferences", "notes",
+]);
+const NAME_HEADERS = new Set([
+  "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
+  "first_name", "firstname", "given_name", "forename", "last_name", "lastname", "surname", "family_name",
 ]);
 
 function decode(bytes: Uint8Array) {
@@ -19,6 +25,16 @@ function columnIndex(reference: string) {
   let result = 0;
   for (const letter of letters) result = result * 26 + letter.charCodeAt(0) - 64;
   return Math.max(0, result - 1);
+}
+
+function normaliseZipPath(path: string) {
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") parts.pop();
+    else parts.push(part);
+  }
+  return parts.join("/");
 }
 
 async function unzipEntry(buffer: ArrayBuffer, entryName: string) {
@@ -68,8 +84,8 @@ function relationshipTarget(rels: Document, relationshipId: string) {
   const relationship = Array.from(rels.getElementsByTagName("Relationship")).find((node) => node.getAttribute("Id") === relationshipId);
   const target = relationship?.getAttribute("Target") ?? "";
   if (!target) throw new Error("The Excel workbook worksheet could not be resolved.");
-  const clean = target.replace(/^\//, "").replace(/^\.\//, "");
-  return clean.startsWith("xl/") ? clean : `xl/${clean}`;
+  const clean = target.replace(/^\//, "");
+  return normaliseZipPath(clean.startsWith("xl/") ? clean : `xl/${clean}`);
 }
 
 function sharedStrings(document: Document | null) {
@@ -88,12 +104,50 @@ function cellText(cell: Element, shared: string[]) {
   return raw;
 }
 
-function findHeaderIndex(matrix: string[][]) {
-  return matrix.findIndex((row) => {
+function worksheetMatrix(worksheet: Document, shared: string[]) {
+  return Array.from(worksheet.getElementsByTagName("row")).map((row) => {
+    const values: string[] = [];
+    for (const cell of Array.from(row.getElementsByTagName("c"))) {
+      const reference = cell.getAttribute("r") ?? "A1";
+      values[columnIndex(reference)] = cellText(cell, shared).trim();
+    }
+    return values;
+  }).filter((row) => row.some((value) => String(value ?? "").trim()));
+}
+
+export function findImportHeader(matrix: string[][]) {
+  let best: { index: number; score: number } | null = null;
+  matrix.forEach((row, index) => {
     const headers = row.map((value) => normaliseImportHeader(String(value ?? ""))).filter(Boolean);
-    const recognised = headers.filter((header) => RECOGNISED_HEADERS.has(header)).length;
-    return headers.length >= 2 && recognised >= 2;
+    const recognised = headers.filter((header) => RECOGNISED_HEADERS.has(header));
+    const hasName = recognised.some((header) => NAME_HEADERS.has(header));
+    if (headers.length < 2 || recognised.length < 2 || !hasName) return;
+    if (!best || recognised.length > best.score) best = { index, score: recognised.length };
   });
+  return best;
+}
+
+export function recordsFromImportMatrix(matrix: string[][]): CsvRecord[] {
+  const nonEmpty = matrix.filter((row) => row.some((value) => String(value ?? "").trim()));
+  if (nonEmpty.length < 2) throw new Error("The Excel worksheet must contain a Customer header row and at least one data row.");
+  const header = findImportHeader(nonEmpty);
+  if (!header) throw new Error("BDB OS could not find a recognised Customer header row in this worksheet.");
+
+  const rawHeaders = nonEmpty[header.index];
+  const lastHeaderColumn = rawHeaders.reduce((last, value, index) => String(value ?? "").trim() ? index : last, -1);
+  const headers = rawHeaders.slice(0, lastHeaderColumn + 1).map((value) => normaliseImportHeader(String(value ?? "")));
+  const namedHeaders = headers.filter(Boolean);
+  if (new Set(namedHeaders).size !== namedHeaders.length) throw new Error("The Excel worksheet contains duplicate column headers.");
+
+  return nonEmpty.slice(header.index + 1)
+    .filter((values) => values.some((value) => String(value ?? "").trim()))
+    .map((values) => {
+      const record: CsvRecord = {};
+      headers.forEach((headerName, index) => {
+        if (headerName) record[headerName] = String(values[index] ?? "").trim();
+      });
+      return record;
+    });
 }
 
 export async function parseXlsx(file: File): Promise<CsvRecord[]> {
@@ -104,41 +158,28 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
 
   const workbook = xml(decode(workbookBytes));
   const rels = xml(decode(relsBytes));
-  const sheets = Array.from(workbook.getElementsByTagName("sheet"));
-  const sheet = sheets.find((node) => node.getAttribute("state") !== "hidden") ?? sheets[0];
-  if (!sheet) throw new Error("The Excel workbook does not contain a worksheet.");
-  const relationshipId = sheet.getAttribute("r:id") ?? sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? "";
-  const worksheetPath = relationshipTarget(rels, relationshipId);
-  const worksheetBytes = await unzipEntry(buffer, worksheetPath);
-  if (!worksheetBytes) throw new Error("The Excel worksheet could not be read.");
-
   const sharedBytes = await unzipEntry(buffer, "xl/sharedStrings.xml");
   const shared = sharedStrings(sharedBytes ? xml(decode(sharedBytes)) : null);
-  const worksheet = xml(decode(worksheetBytes));
-  const matrix = Array.from(worksheet.getElementsByTagName("row")).map((row) => {
-    const values: string[] = [];
-    for (const cell of Array.from(row.getElementsByTagName("c"))) {
-      const reference = cell.getAttribute("r") ?? "A1";
-      values[columnIndex(reference)] = cellText(cell, shared).trim();
-    }
-    return values;
-  }).filter((row) => row.some((value) => String(value ?? "").trim()));
+  const sheets = Array.from(workbook.getElementsByTagName("sheet"));
+  if (!sheets.length) throw new Error("The Excel workbook does not contain a worksheet.");
 
-  if (matrix.length < 2) throw new Error("The Excel worksheet must contain a header row and at least one data row.");
-  const headerIndex = findHeaderIndex(matrix);
-  if (headerIndex < 0) throw new Error("BDB OS could not find a recognised Customer, Product or Service header row in this workbook.");
+  let best: { score: number; matrix: string[][] } | null = null;
+  for (const sheet of sheets) {
+    if (sheet.getAttribute("state") === "hidden" || sheet.getAttribute("state") === "veryHidden") continue;
+    const relationshipId = sheet.getAttribute("r:id")
+      ?? sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id")
+      ?? "";
+    if (!relationshipId) continue;
+    const worksheetPath = relationshipTarget(rels, relationshipId);
+    const worksheetBytes = await unzipEntry(buffer, worksheetPath);
+    if (!worksheetBytes) continue;
+    const matrix = worksheetMatrix(xml(decode(worksheetBytes)), shared);
+    const candidate = findImportHeader(matrix);
+    if (candidate && (!best || candidate.score > best.score)) best = { score: candidate.score, matrix };
+  }
 
-  const rawHeaders = matrix[headerIndex];
-  const lastHeaderColumn = rawHeaders.reduce((last, value, index) => String(value ?? "").trim() ? index : last, -1);
-  const headers = rawHeaders.slice(0, lastHeaderColumn + 1).map((value) => normaliseImportHeader(String(value ?? "")));
-  if (headers.some((header) => !header)) throw new Error("Every Excel column needs a header.");
-  if (new Set(headers).size !== headers.length) throw new Error("The Excel worksheet contains duplicate column headers.");
-
-  return matrix.slice(headerIndex + 1)
-    .filter((values) => values.some((value) => String(value ?? "").trim()))
-    .map((values) => {
-      const record: CsvRecord = {};
-      headers.forEach((header, index) => { record[header] = String(values[index] ?? "").trim(); });
-      return record;
-    });
+  if (!best) {
+    throw new Error("BDB OS could not find a visible worksheet with recognised Customer columns. Use common headings such as Name or First Name/Last Name plus Email, Phone or Address.");
+  }
+  return recordsFromImportMatrix(best.matrix);
 }
