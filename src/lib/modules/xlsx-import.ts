@@ -15,6 +15,7 @@ const NAME_HEADERS = new Set([
   "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
   "first_name", "firstname", "given_name", "forename", "last_name", "lastname", "surname", "family_name",
 ]);
+type ImportHeader = { index: number; score: number };
 
 function decode(bytes: Uint8Array) {
   return new TextDecoder("utf-8").decode(bytes);
@@ -115,16 +116,20 @@ function worksheetMatrix(worksheet: Document, shared: string[]) {
   }).filter((row) => row.some((value) => String(value ?? "").trim()));
 }
 
-export function findImportHeader(matrix: string[][]) {
-  let best: { index: number; score: number } | null = null;
-  matrix.forEach((row, index) => {
-    const headers = row.map((value) => normaliseImportHeader(String(value ?? ""))).filter(Boolean);
+export function findImportHeader(matrix: string[][]): ImportHeader | null {
+  let bestIndex = -1;
+  let bestScore = -1;
+  for (let index = 0; index < matrix.length; index += 1) {
+    const headers = matrix[index].map((value) => normaliseImportHeader(String(value ?? ""))).filter(Boolean);
     const recognised = headers.filter((header) => RECOGNISED_HEADERS.has(header));
     const hasName = recognised.some((header) => NAME_HEADERS.has(header));
-    if (headers.length < 2 || recognised.length < 2 || !hasName) return;
-    if (!best || recognised.length > best.score) best = { index, score: recognised.length };
-  });
-  return best;
+    if (headers.length < 2 || recognised.length < 2 || !hasName) continue;
+    if (recognised.length > bestScore) {
+      bestIndex = index;
+      bestScore = recognised.length;
+    }
+  }
+  return bestIndex >= 0 ? { index: bestIndex, score: bestScore } : null;
 }
 
 export function recordsFromImportMatrix(matrix: string[][]): CsvRecord[] {
@@ -163,7 +168,8 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
   const sheets = Array.from(workbook.getElementsByTagName("sheet"));
   if (!sheets.length) throw new Error("The Excel workbook does not contain a worksheet.");
 
-  let best: { score: number; matrix: string[][] } | null = null;
+  let bestScore = -1;
+  let bestMatrix: string[][] | null = null;
   for (const sheet of sheets) {
     if (sheet.getAttribute("state") === "hidden" || sheet.getAttribute("state") === "veryHidden") continue;
     const relationshipId = sheet.getAttribute("r:id")
@@ -175,11 +181,14 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
     if (!worksheetBytes) continue;
     const matrix = worksheetMatrix(xml(decode(worksheetBytes)), shared);
     const candidate = findImportHeader(matrix);
-    if (candidate && (!best || candidate.score > best.score)) best = { score: candidate.score, matrix };
+    if (candidate && candidate.score > bestScore) {
+      bestScore = candidate.score;
+      bestMatrix = matrix;
+    }
   }
 
-  if (!best) {
+  if (!bestMatrix) {
     throw new Error("BDB OS could not find a visible worksheet with recognised Customer columns. Use common headings such as Name or First Name/Last Name plus Email, Phone or Address.");
   }
-  return recordsFromImportMatrix(best.matrix);
+  return recordsFromImportMatrix(bestMatrix);
 }
