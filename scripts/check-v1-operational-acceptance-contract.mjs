@@ -27,10 +27,17 @@ assert.match(importer, /\/api\/customers/);
 assert.match(importer, /\/api\/products/);
 assert.match(importer, /\/api\/services/);
 assert.match(importer, /duplicate checks use current shared data/i);
+assert.match(importer, /first_name/);
+assert.match(importer, /last_name/);
+assert.match(importer, /await onImported\(\)/, "Standard imports with a register callback must await the canonical refresh before reporting completion.");
 assert.match(xlsxImporter, /sharedStrings\.xml/);
 assert.match(xlsxImporter, /normaliseImportHeader/);
+assert.match(xlsxImporter, /findImportHeader/);
+assert.match(xlsxImporter, /state.*hidden/);
+assert.match(xlsxImporter, /first_name/);
+assert.match(xlsxImporter, /last_name/);
 
-assert.match(customers, /StandardDataImport entity="customers"/);
+assert.match(customers, /<StandardDataImport[\s\S]*?entity="customers"[\s\S]*?onImported=\{\(\) => reloadCurrent\(true\)\}/);
 assert.match(customers, /Legacy Vanita JSON/);
 assert.match(customers, /accept="application\/json,\.json"/);
 assert.doesNotMatch(customers, />Import Customers<\/Button>/, "Customer page must not masquerade the legacy JSON picker as the standard Customer importer.");
@@ -40,4 +47,4 @@ assert.doesNotMatch(products, /Import catalogue/i, "Products must not expose the
 
 assert.match(services, /StandardDataImport entity="services"/);
 
-console.log("V1 closure requires customer-operational acceptance; Customer import supports CSV/XLSX up to the hardened 5,000-row boundary and Catalogue imports use canonical write paths.");
+console.log("V1 closure requires customer-operational acceptance; Customer import supports generic CSV/XLSX up to the hardened 5,000-row boundary, waits for the canonical register refresh, and Catalogue imports use canonical write paths.");
