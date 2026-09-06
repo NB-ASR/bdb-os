@@ -50,7 +50,7 @@ function csvCell(value: string) {
 }
 
 function templateExample(entity: ImportEntity) {
-  if (entity === "customers") return ["Jane Borg", "", "Vanita", "jane@example.com", "+356 20000000", "Valletta", "MT12345678", "VIP customer"];
+  if (entity === "customers") return ["Jane Borg", "", "Example Company", "jane@example.com", "+356 20000000", "Valletta", "MT12345678", "VIP customer"];
   if (entity === "products") return ["SKU-001", "Example Product", "", "", "Retail", "resale", "unit", "10.00", "20.00", "18", "2", ""];
   return ["SRV-001", "Example Service", "Beauty", "60", "0", "0", "35.00", "18", "customer", "", ""];
 }
@@ -75,18 +75,21 @@ async function fileHash(file: File) {
 }
 
 function customerPayload(row: CsvRecord) {
-  const name = importValue(row, ["name", "full_name", "customer", "customer_name", "contact_name", "client"]);
-  if (!name) throw new Error("Customer name is required.");
+  const explicitName = importValue(row, ["name", "full_name", "customer", "customer_name", "contact_name", "client", "client_name"]);
+  const firstName = importValue(row, ["first_name", "firstname", "given_name", "forename"]);
+  const lastName = importValue(row, ["last_name", "lastname", "surname", "family_name"]);
+  const name = explicitName || [firstName, lastName].filter(Boolean).join(" ");
+  if (!name) throw new Error("Customer name is required. Use Name or First Name/Last Name columns.");
   const email = importValue(row, ["email", "email_address"]);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Email address is invalid.");
-  const address = importValue(row, ["address", "postal_address"]);
+  const address = importValue(row, ["address", "postal_address", "address_line_1", "street_address"]);
   const city = importValue(row, ["city", "town", "locality"]);
   return {
     code: importValue(row, ["code", "customer_code", "client_code"]),
     name,
     company: importValue(row, ["company", "business", "organisation", "organization"]),
     email,
-    phone: importValue(row, ["phone", "telephone", "mobile", "mobile_number"]),
+    phone: importValue(row, ["phone", "phone_number", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no"]),
     address: [address, city].filter(Boolean).join(address && city ? ", " : ""),
     vatNumber: importValue(row, ["vat_number", "vat", "tax_number"]),
     preferences: importValue(row, ["preferences", "notes"]) ? { summary: importValue(row, ["preferences", "notes"]) } : {},
@@ -246,8 +249,11 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
 
     setStatus("");
     try {
-      const isXlsx = file.name.toLowerCase().endsWith(".xlsx");
+      const lowerName = file.name.toLowerCase();
+      const isXlsx = lowerName.endsWith(".xlsx");
+      const isCsv = lowerName.endsWith(".csv") || file.type === "text/csv";
       if (isXlsx && !acceptsExcel) throw new Error(`${label} import currently accepts CSV files.`);
+      if (!isXlsx && !isCsv) throw new Error(acceptsExcel ? `${label} import accepts CSV or standard .xlsx Excel files.` : `${label} import accepts CSV files.`);
       const rows = isXlsx ? await parseXlsx(file) : parseCsv(await file.text());
       if (rows.length > maxRows) throw new Error(`Import no more than ${maxRows.toLocaleString()} ${label} at once.`);
       const failures: RowFailure[] = [];
@@ -281,6 +287,16 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
     const failures: RowFailure[] = [...prepared.failures];
     try {
       const created = await importRows(entity, workspaceId, prepared, (failure) => failures.push(failure));
+      if (created > 0 && onImported) {
+        try {
+          await onImported();
+        } catch (refreshError) {
+          setPrepared(null);
+          setStatus(`${created} ${label} imported, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
+          return;
+        }
+      }
+
       setPrepared(null);
       if (failures.length) {
         const first = failures.slice(0, 5).map((failure) => `row ${failure.row}: ${failure.message}`).join(" · ");
@@ -288,10 +304,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
       } else {
         setStatus(`${created} ${label} imported successfully.`);
       }
-      if (created > 0) {
-        if (onImported) await onImported();
-        else window.location.reload();
-      }
+      if (created > 0 && !onImported) window.location.reload();
     } finally {
       setBusy(false);
     }
