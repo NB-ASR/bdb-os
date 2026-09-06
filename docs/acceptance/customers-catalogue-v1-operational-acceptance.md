@@ -7,14 +7,17 @@ This checklist is part of PR #65 and must be complete on the exact final candida
 | Visible action | Expected customer outcome | Automated proof | Acceptance |
 | --- | --- | --- | --- |
 | Add Customer | Creates one canonical Customer and opens the Customer profile | `authenticated-core.spec.ts` | Required |
-| Edit Customer | Saves through canonical Customer command with optimistic versioning | existing Customer command/closure tests | Required |
-| Archive / Restore | Changes lifecycle without deleting history | existing Customer command/closure tests | Required |
-| Search / filters | Server-bounded register returns matching Customer rows | Customer Pass 4 scale + page UI | Required |
+| Edit Customer | Saves through canonical Customer command with optimistic versioning | `authenticated-core.spec.ts` + Customer command/closure tests | Required |
+| Archive / Restore | Changes lifecycle without deleting history | `authenticated-core.spec.ts` + Customer command/closure tests | Required |
+| Search / filters | Server-bounded register returns matching Customer rows | `authenticated-core.spec.ts` + Customer Pass 4 scale | Required |
 | Load next 100 | Keyset continuation without replacing/duplicating the working set | Customer Pass 4 scale + page UI | Required |
-| Import Customers | Browser accepts CSV, previews rows, requires confirmation, creates canonical Customers | `authenticated-core.spec.ts` + CSV unit tests | Required |
+| Import Customers | Browser accepts CSV and standard `.xlsx`, previews rows, requires confirmation, creates canonical Customers and awaits the current register refresh | `authenticated-core.spec.ts` + CSV/XLSX unit tests | Required |
+| Customer Excel layout handling | Scans visible worksheets/preamble rows, accepts common full-name or split-name/contact headings, and rejects unrecognised layouts rather than guessing | sanitized XLSX browser fixture + matrix unit tests | Required |
 | Customer import Template | Downloads a usable `.csv` template | `authenticated-core.spec.ts` | Required |
 | Legacy Vanita JSON | Remains separately labelled and only accepts legacy JSON snapshot format | Customer static/database import contracts | Required |
 | Offline create/edit/archive/restore | Queues safely with stable retry identity | Customer Pass 2/Pass 4 queue tests | Required |
+
+Standard Customer import is vendor-neutral. Real customer workbooks may be used privately to validate representative structure, but customer PII must never be committed as an automated fixture. CI uses sanitized synthetic workbook data.
 
 ## Products
 
