@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { CUSTOMER_XLSX_BASE64 } from "../fixtures/customer-import-xlsx";
 
 const email = process.env.BDB_E2E_OWNER_EMAIL;
 const password = process.env.BDB_E2E_OWNER_PASSWORD;
@@ -22,6 +23,16 @@ async function uploadCsv(page: Page, csv: string) {
   });
 }
 
+async function uploadCustomerXlsx(page: Page) {
+  const input = page.locator('input[type="file"][accept*=".xlsx"]').first();
+  await expect(input).toBeAttached();
+  await input.setInputFiles({
+    name: "sanitized-customer-export.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.from(CUSTOMER_XLSX_BASE64, "base64"),
+  });
+}
+
 async function expectTemplateDownload(page: Page, expectedName: string) {
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Template" }).first().click();
@@ -29,11 +40,18 @@ async function expectTemplateDownload(page: Page, expectedName: string) {
   expect(download.suggestedFilename()).toBe(expectedName);
 }
 
-async function confirmImportAndWaitForRefresh(page: Page, buttonName: string) {
+async function confirmImportAndWaitForReload(page: Page, buttonName: string) {
   const reloadPromise = page.waitForEvent("load");
   await page.getByRole("button", { name: buttonName }).click();
   await reloadPromise;
   await page.waitForLoadState("networkidle");
+}
+
+async function confirmCustomerImportAndWaitForRegister(page: Page, buttonName: string) {
+  const importButton = page.getByRole("button", { name: "Import Customers" });
+  await page.getByRole("button", { name: buttonName }).click();
+  await expect(importButton).toBeEnabled({ timeout: 60_000 });
+  await expect(page.getByRole("status")).toContainText(/Customers imported successfully|need review/i);
 }
 
 async function waitForRecordRow(page: Page, text: string) {
@@ -65,7 +83,7 @@ test.describe("authenticated owner journey", () => {
     await expect(page.getByText(uniqueName).first()).toBeVisible();
   });
 
-  test("Customer CSV import and lifecycle are customer-operational", async ({ page }) => {
+  test("Customer CSV import refresh and lifecycle are customer-operational", async ({ page }) => {
     await signIn(page);
     await page.goto("/customers");
     await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
@@ -73,15 +91,17 @@ test.describe("authenticated owner journey", () => {
     await expectTemplateDownload(page, "bdb-os-customers-import-template.csv");
 
     const unique = Date.now();
-    const customerName = `Acceptance Customer ${unique}`;
+    const customerName = `000 Acceptance Customer ${unique}`;
     const updatedCompany = `Acceptance Company ${unique}`;
     await uploadCsv(page, `name,email,company\n${customerName},acceptance-${unique}@example.invalid,BDB OS Acceptance\n`);
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
     await expect(page.getByText(customerName)).toBeVisible();
-    await confirmImportAndWaitForRefresh(page, "Confirm 1 Customers");
+    await confirmCustomerImportAndWaitForRegister(page, "Confirm 1 Customers");
 
-    await page.getByLabel("Search Customers").fill(customerName);
+    // The imported row must already be in the current register before search changes.
     let row = await waitForRecordRow(page, customerName);
+    await page.getByLabel("Search Customers").fill(customerName);
+    row = await waitForRecordRow(page, customerName);
     await row.getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("Company").fill(updatedCompany);
     await page.getByRole("button", { name: "Save changes" }).click();
@@ -96,6 +116,23 @@ test.describe("authenticated owner journey", () => {
     await page.getByRole("button", { name: "Active", exact: true }).click();
     row = await waitForRecordRow(page, customerName);
     await expect(row).toContainText("Active");
+  });
+
+  test("Customer XLSX import handles common business export layouts", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/customers");
+    await uploadCustomerXlsx(page);
+
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
+    await expect(page.getByText("Ava Borg")).toBeVisible();
+    await expect(page.getByText("Liam Camilleri")).toBeVisible();
+    await confirmCustomerImportAndWaitForRegister(page, "Confirm 2 Customers");
+
+    await page.getByLabel("Search Customers").fill("Ava Borg");
+    const row = await waitForRecordRow(page, "Ava Borg");
+    await expect(row).toContainText("ava.borg@example.invalid");
+    await expect(row).toContainText("+356 70000001");
+    await expect(row).toContainText("1 Test Street, Valletta");
   });
 
   test("Product CSV import and lifecycle replace the old dead catalogue controls", async ({ page }) => {
@@ -113,7 +150,7 @@ test.describe("authenticated owner journey", () => {
     await uploadCsv(page, `sku,name,purpose,unit_cost,selling_price,vat_rate,reorder_level\n${sku},${productName},resale,10,20,18,2\n`);
     await expect(page.getByRole("heading", { name: "Review Products import" })).toBeVisible();
     await expect(page.getByText(productName)).toBeVisible();
-    await confirmImportAndWaitForRefresh(page, "Confirm 1 Products");
+    await confirmImportAndWaitForReload(page, "Confirm 1 Products");
 
     await page.getByLabel("Search products").fill(sku);
     let row = await waitForRecordRow(page, sku);
@@ -146,7 +183,7 @@ test.describe("authenticated owner journey", () => {
     await uploadCsv(page, `code,name,duration_minutes,price,vat_rate,booking_mode\n${code},${serviceName},45,30,18,customer\n`);
     await expect(page.getByRole("heading", { name: "Review Services import" })).toBeVisible();
     await expect(page.getByText(serviceName)).toBeVisible();
-    await confirmImportAndWaitForRefresh(page, "Confirm 1 Services");
+    await confirmImportAndWaitForReload(page, "Confirm 1 Services");
 
     await page.getByLabel("Search Services").fill(code);
     let row = await waitForRecordRow(page, code);
