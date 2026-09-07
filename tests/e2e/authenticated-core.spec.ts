@@ -209,8 +209,10 @@ test.describe("authenticated owner journey", () => {
     await page.goto("/accounts");
     await expect(page.getByRole("heading", { name: "Financial control without the clutter" })).toBeVisible();
     await page.locator('a[href="/accounts/sales"]').first().click();
-    await expect(page.getByRole("heading", { name: "Sales documents" })).toBeVisible();
+    await expect(page).toHaveURL(/\/accounts\/sales$/);
+    await expect(page.getByRole("heading", { name: "Sales documents", level: 1 })).toBeVisible();
     await page.goBack();
+    await expect(page).toHaveURL(/\/accounts$/);
     await expect(page.getByRole("heading", { name: "Financial control without the clutter" })).toBeVisible();
 
     const routes = [
