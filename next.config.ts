@@ -2,13 +2,30 @@ import type { NextConfig } from "next";
 
 const production = process.env.NODE_ENV === "production";
 
+function configuredSupabaseConnectOrigins() {
+  const configuredUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!configuredUrl) return [];
+
+  try {
+    const url = new URL(configuredUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return [];
+
+    const websocketProtocol = url.protocol === "https:" ? "wss:" : "ws:";
+    return [url.origin, `${websocketProtocol}//${url.host}`];
+  } catch {
+    return [];
+  }
+}
+
+const supabaseConnectOrigins = configuredSupabaseConnectOrigins();
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${production ? "" : " 'unsafe-eval'"} https://js.stripe.com https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https://*.supabase.co",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com",
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com${supabaseConnectOrigins.length ? ` ${supabaseConnectOrigins.join(" ")}` : ""}`,
   "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
