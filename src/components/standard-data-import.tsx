@@ -26,6 +26,7 @@ type RowFailure = { row: number; message: string };
 type PreviewRow = { row: number; label: string; secondary: string; payload: Record<string, unknown> };
 
 type PreparedImport = {
+  workspaceId: string;
   fileName: string;
   fileHash: string;
   rows: PreviewRow[];
@@ -89,7 +90,7 @@ function customerPayload(row: CsvRecord) {
     name,
     company: importValue(row, ["company", "business", "organisation", "organization"]),
     email,
-    phone: importValue(row, ["phone", "phone_number", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no"]),
+    phone: importValue(row, ["phone", "phone_number", "phone_numbers", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no"]),
     address: [address, city].filter(Boolean).join(address && city ? ", " : ""),
     vatNumber: importValue(row, ["vat_number", "vat", "tax_number"]),
     preferences: importValue(row, ["preferences", "notes"]) ? { summary: importValue(row, ["preferences", "notes"]) } : {},
@@ -110,6 +111,7 @@ function productPayload(row: CsvRecord) {
   const vatRate = numericImportValue(importValue(row, ["vat_rate", "vat", "vat_percent"]), 18);
   const reorderLevel = numericImportValue(importValue(row, ["reorder_level", "reorder_at", "minimum_stock"]), 0);
   if ([unitCost, sellingPrice, vatRate, reorderLevel].some((value) => typeof value === "number" && Number.isNaN(value))) throw new Error("One or more Product numeric values are invalid.");
+  if ([unitCost, sellingPrice, reorderLevel].some((value) => value !== null && value < 0)) throw new Error("Product cost, price and reorder level cannot be negative.");
   if (Number(vatRate) < 0 || Number(vatRate) > 100) throw new Error("VAT rate must be between 0 and 100.");
   return {
     sku,
@@ -138,6 +140,7 @@ function servicePayload(row: CsvRecord) {
   const price = numericImportValue(importValue(row, ["price", "selling_price"]), null);
   const vatRate = numericImportValue(importValue(row, ["vat_rate", "vat", "vat_percent"]), 18);
   if ([durationMinutes, preparationBufferMinutes, recoveryBufferMinutes, price, vatRate].some((value) => typeof value === "number" && Number.isNaN(value))) throw new Error("One or more Service numeric values are invalid.");
+  if (price !== null && price < 0) throw new Error("Service price cannot be negative.");
   if (!Number.isInteger(durationMinutes) || Number(durationMinutes) < 5 || Number(durationMinutes) > 1440) throw new Error("Duration must be 5–1440 whole minutes.");
   if (!Number.isInteger(preparationBufferMinutes) || Number(preparationBufferMinutes) < 0 || Number(preparationBufferMinutes) > 240) throw new Error("Preparation buffer must be 0–240 whole minutes.");
   if (!Number.isInteger(recoveryBufferMinutes) || Number(recoveryBufferMinutes) < 0 || Number(recoveryBufferMinutes) > 240) throw new Error("Recovery buffer must be 0–240 whole minutes.");
@@ -175,20 +178,22 @@ async function createRecord(entity: ImportEntity, workspaceId: string, id: strin
   const endpoint = entity === "customers" ? "/api/customers" : entity === "products" ? "/api/products" : "/api/services";
   let lastError = "Import failed.";
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    let response: Response;
     try {
-      const response = await fetch(endpoint, {
+      response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
         body: JSON.stringify({ workspaceId, action: "create", id, ...payload }),
       });
-      const result = await response.json().catch(() => ({}));
-      if (response.ok && result.ok) return;
-      lastError = typeof result.error === "string" ? result.error : `Import failed with status ${response.status}.`;
-      if (response.status >= 400 && response.status < 500) throw new Error(lastError);
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
       if (attempt === 1) throw new Error(lastError);
+      continue;
     }
+    const result = await response.json().catch(() => ({}));
+    if (response.ok && result.ok) return;
+    lastError = typeof result.error === "string" ? result.error : `Import failed with status ${response.status}.`;
+    if (response.status >= 400 && response.status < 500) throw new Error(lastError);
   }
   throw new Error(lastError);
 }
@@ -233,7 +238,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
   async function prepareFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || busy) return;
+    if (!file || busy || disabled) return;
     if (!workspaceId) {
       setStatus("An active workspace is required.");
       return;
@@ -248,6 +253,8 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
     }
 
     setStatus("");
+    setBusy(true);
+    setPrepared(null);
     try {
       const lowerName = file.name.toLowerCase();
       const isXlsx = lowerName.endsWith(".xlsx");
@@ -269,15 +276,22 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
       });
       if (!validRows.length) throw new Error(failures[0]?.message ?? "No valid rows were found in this import file.");
       const hash = isXlsx ? await fileHash(file) : await sha256Hex(await file.text());
-      setPrepared({ fileName: file.name, fileHash: hash, rows: validRows, failures });
+      setPrepared({ workspaceId, fileName: file.name, fileHash: hash, rows: validRows, failures });
     } catch (error) {
       setPrepared(null);
       setStatus(error instanceof Error ? error.message : `${label} import file could not be read.`);
+    } finally {
+      setBusy(false);
     }
   }
 
   async function confirmImport() {
-    if (!prepared || !workspaceId || busy) return;
+    if (!prepared || !workspaceId || busy || disabled) return;
+    if (prepared.workspaceId !== workspaceId) {
+      setPrepared(null);
+      setStatus("The workspace changed. Choose the file again to review it in the current workspace.");
+      return;
+    }
     if (!navigator.onLine) {
       setStatus(`${label} bulk import requires a connection so duplicate checks use current shared data.`);
       return;
@@ -320,7 +334,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
           accept={acceptsExcel ? ".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : ".csv,text/csv"}
           onChange={(event) => void prepareFile(event)}
         />
-        <Button variant="secondary" disabled={disabled || busy} onClick={() => inputRef.current?.click()}>
+        <Button variant="secondary" disabled={disabled || busy} onClick={() => inputRef.current?.click()} title="Bulk imports require an online workspace with permission to edit.">
           <FileUp size={17} /> {busy ? "Importing…" : `Import ${label}`}
         </Button>
         <Button type="button" variant="quiet" disabled={busy} onClick={() => downloadTemplate(entity)} title={`Download ${label} CSV template`}>
@@ -356,7 +370,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
             ) : null}
             <div className="dialog-actions">
               <Button type="button" variant="quiet" disabled={busy} onClick={() => setPrepared(null)}>Cancel</Button>
-              <Button type="button" disabled={busy} onClick={() => void confirmImport()}>{busy ? "Importing…" : `Confirm ${prepared.rows.length} ${label}`}</Button>
+              <Button type="button" disabled={busy || disabled} onClick={() => void confirmImport()}>{busy ? "Importing…" : `Confirm ${prepared.rows.length} ${label}`}</Button>
             </div>
           </div>
         ) : null}

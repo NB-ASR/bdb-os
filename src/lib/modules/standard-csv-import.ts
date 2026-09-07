@@ -82,9 +82,10 @@ export function parseCsv(text: string): CsvRecord[] {
   if (headers.some((header) => !header)) throw new Error("Every CSV column needs a header.");
   if (new Set(headers).size !== headers.length) throw new Error("The CSV contains duplicate column headers.");
 
-  return rows.slice(1).map((values) => Object.fromEntries(
-    headers.map((header, index) => [header, String(values[index] ?? "").trim()]),
-  ));
+  return rows.slice(1).map((values, index) => {
+    if (values.length > headers.length) throw new Error(`CSV row ${index + 2} has more values than column headers. Quote values containing the delimiter.`);
+    return Object.fromEntries(headers.map((header, column) => [header, String(values[column] ?? "").trim()]));
+  });
 }
 
 export function importValue(row: CsvRecord, aliases: readonly string[]) {
@@ -96,9 +97,16 @@ export function importValue(row: CsvRecord, aliases: readonly string[]) {
 }
 
 export function numericImportValue(value: string, fallback: number | null = null) {
-  const cleaned = value.trim().replace(/[^0-9+\-.,]/g, "").replace(/,(?=\d{1,2}$)/, ".").replace(/,/g, "");
-  if (!cleaned) return fallback;
-  const parsed = Number(cleaned);
+  if (!value.trim()) return fallback;
+  const source = value.trim().replace(/^[€£$]\s*/, "").replace(/\s*[€£$%]$/, "");
+  // Accept explicit decimal/grouping conventions, never discard unknown text.
+  let normalised: string;
+  if (/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(source)) normalised = source.replaceAll(",", "");
+  else if (/^[+-]?\d{1,3}(?:\.\d{3})+,\d+$/.test(source)) normalised = source.replaceAll(".", "").replace(",", ".");
+  else if (/^[+-]?\d{1,3}(?:[ \u00a0]\d{3})+(?:[.,]\d+)?$/.test(source)) normalised = source.replace(/[ \u00a0]/g, "").replace(",", ".");
+  else if (/^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/.test(source)) normalised = source.replace(",", ".");
+  else return Number.NaN;
+  const parsed = Number(normalised);
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 

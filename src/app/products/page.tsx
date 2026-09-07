@@ -569,7 +569,7 @@ export default function ProductsPage() {
         description="Define the reusable catalogue that Inventory, Purchasing, Sales and invoice lines reference."
         action={(
           <div className={styles.headerActions}>
-            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud"} />
+            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud"} onImported={refreshCurrent} />
             <Button onClick={openCreate} disabled={supportMode}>
               <PackagePlus size={17} /> Add product
             </Button>
@@ -743,9 +743,8 @@ export default function ProductsPage() {
             <div className={styles.formGrid}>
               <label className={styles.wide}>Product name<input required minLength={2} maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Hydra Medic Serum 60ml" /></label>
               <label>SKU / stock code<input required maxLength={64} value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} placeholder="e.g. RPHMS" /></label>
-              <label>Barcode<div className={styles.barcodeInput}><input maxLength={64} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Type barcode" /><Button type="button" variant="secondary" disabled><Barcode size={16} /> Scan</Button></div></label>
+              <label>Barcode<input maxLength={64} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Type barcode" /></label>
               <label>Brand<input maxLength={120} value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="Brand name" /></label>
-              <label>Supplier<select disabled defaultValue=""><option value="">Connected in Supplier terms</option></select></label>
               <label>Category<input maxLength={120} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="e.g. Skincare" /></label>
               <label>Item purpose<select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
               <label>Unit label<input required maxLength={24} value={form.unitLabel} onChange={(event) => setForm({ ...form, unitLabel: event.target.value })} placeholder="unit" /></label>

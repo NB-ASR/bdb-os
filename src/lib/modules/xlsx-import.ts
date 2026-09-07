@@ -3,6 +3,7 @@ import { normaliseImportHeader, type CsvRecord } from "@/lib/modules/standard-cs
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
+const MAX_ENTRY_BYTES = 30_000_000;
 const RECOGNISED_HEADERS = new Set([
   "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
   "first_name", "firstname", "given_name", "forename", "last_name", "lastname", "surname", "family_name",
@@ -53,6 +54,7 @@ async function unzipEntry(buffer: ArrayBuffer, entryName: string) {
     if (view.getUint32(cursor, true) !== CENTRAL_SIGNATURE) throw new Error("The Excel workbook directory is invalid.");
     const method = view.getUint16(cursor + 10, true);
     const compressedSize = view.getUint32(cursor + 20, true);
+    const uncompressedSize = view.getUint32(cursor + 24, true);
     const nameLength = view.getUint16(cursor + 28, true);
     const extraLength = view.getUint16(cursor + 30, true);
     const commentLength = view.getUint16(cursor + 32, true);
@@ -60,15 +62,37 @@ async function unzipEntry(buffer: ArrayBuffer, entryName: string) {
     const name = decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
 
     if (name === entryName) {
+      if (uncompressedSize > MAX_ENTRY_BYTES) throw new Error("The Excel workbook expands beyond the supported import size.");
       if (view.getUint32(localOffset, true) !== LOCAL_SIGNATURE) throw new Error("The Excel workbook entry is invalid.");
       const localNameLength = view.getUint16(localOffset + 26, true);
       const localExtraLength = view.getUint16(localOffset + 28, true);
       const dataStart = localOffset + 30 + localNameLength + localExtraLength;
       const compressed = bytes.slice(dataStart, dataStart + compressedSize);
+      if (compressed.length !== compressedSize || dataStart + compressedSize > buffer.byteLength) throw new Error("The Excel workbook entry is truncated.");
       if (method === 0) return compressed;
       if (method !== 8) throw new Error("This Excel compression format is not supported.");
       const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-      return new Uint8Array(await new Response(stream).arrayBuffer());
+      const reader = stream.getReader();
+      const chunks: Uint8Array[] = [];
+      let length = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          length += value.length;
+          if (length > MAX_ENTRY_BYTES) {
+            await reader.cancel();
+            throw new Error("The Excel workbook expands beyond the supported import size.");
+          }
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const output = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+      return output;
     }
     cursor += 46 + nameLength + extraLength + commentLength;
   }
