@@ -16,6 +16,7 @@ import {
   UserRoundPlus,
   UsersRound,
 } from "lucide-react";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   enqueueCustomerCommand,
@@ -217,6 +218,8 @@ export default function CustomersPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const requestSequence = useRef(0);
   const criteriaInitialised = useRef(false);
+  const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const [baseCustomers, setBaseCustomers] = useState<CustomerRow[]>([]);
   const [queuedCommands, setQueuedCommands] = useState<CustomerQueuedCommand[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -380,38 +383,50 @@ export default function CustomersPage() {
   }, [filter, loadRegister, loaded, mode, offline, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncing) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
     if (!navigator.onLine) {
       setOffline(true);
       setNotice("Customer changes remain queued offline. No command was discarded or given a new retry key.");
       return;
     }
 
+    syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
-      setQueuedCommands(readCustomerQueue(workspaceId));
-      if (result.completed) {
-        setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
-      }
-      if (result.rejected) {
-        setError(`${result.rejected.message} BDB OS confirmed that queued change was not applied; later queued changes were left untouched for review.`);
-      } else if (result.ambiguous) {
-        setError("BDB OS could not confirm the first queued Customer change. It remains queued with the same retry key so replay cannot duplicate an already-accepted command.");
-      }
-      await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : "Customers could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
+          setQueuedCommands(readCustomerQueue(workspaceId));
+          if (result.completed) {
+            setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
+          }
+          if (result.rejected) {
+            setError(`${result.rejected.message} BDB OS confirmed that queued change was not applied; later queued changes were left untouched for review.`);
+          } else if (result.ambiguous) {
+            setError("BDB OS could not confirm the first queued Customer change. It remains queued with the same retry key so replay cannot duplicate an already-accepted command.");
+          }
+          await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
+        } catch (syncError) {
+          setError(syncError instanceof Error ? syncError.message : "Customers could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
+      syncInFlight.current = false;
       setSyncing(false);
     }
-  }, [filter, loadRegister, query, syncing, workspaceId]);
+  }, [filter, loadRegister, query, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
     const handleOnline = () => {
       setOffline(false);
+      replayRequested.current = true;
       void syncPending();
     };
     const handleOffline = () => setOffline(true);
@@ -631,9 +646,15 @@ export default function CustomersPage() {
         description="One authoritative Customer identity connected to Appointments, Sales, invoices, Documents, Communications and history."
         action={(
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <StandardDataImport
+              entity="customers"
+              workspaceId={workspaceId}
+              disabled={supportMode || mode !== "cloud" || offline}
+              onImported={() => reloadCurrent(true)}
+            />
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importSnapshot(event)} />
-            <Button variant="secondary" disabled={supportMode || importing || mode !== "cloud"} onClick={() => importInputRef.current?.click()}>
-              <FileUp size={17} /> {importing ? "Importing…" : "Import Customers"}
+            <Button variant="quiet" disabled={supportMode || importing || mode !== "cloud" || offline} onClick={() => importInputRef.current?.click()} title="Import a legacy Vanita JSON snapshot">
+              <FileUp size={16} /> {importing ? "Importing legacy…" : "Legacy Vanita JSON"}
             </Button>
             <Button onClick={openCreate} disabled={supportMode}>
               <UserRoundPlus size={17} /> Add Customer
@@ -767,7 +788,7 @@ export default function CustomersPage() {
 
         {loadingPage ? <div className="card-pad"><p className="muted"><RefreshCw className="spin" size={15} style={{ display: "inline", marginRight: 6 }} />Loading Customer page…</p></div> : null}
         {!loadingPage && visibleCustomers.length === 0 ? (
-          <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a reviewed Vanita JSON snapshot.</p></div>
+          <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a standard Customer CSV or Excel file.</p></div>
         ) : null}
         {hasMore && !offline && mode === "cloud" ? (
           <div className="card-pad" style={{ display: "flex", justifyContent: "center" }}>

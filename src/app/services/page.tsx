@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Archive, CalendarDays, CircleDollarSign, Clock3, Plus, RefreshCw, Search, TriangleAlert, Undo2, Wrench } from "lucide-react";
 import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   discardServiceCommand,
@@ -200,6 +201,7 @@ export default function ServicesPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const initialRegisterLoaded = useRef(false);
   const supportMode = false;
   const pendingCount = pendingCommands.length;
@@ -310,18 +312,27 @@ export default function ServicesPage() {
   }, [fetchRegister, filter, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncInFlight.current) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
     syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushServiceQueue(workspaceId, () => setPendingCommands(readServiceQueue(workspaceId)));
-      setPendingCommands(readServiceQueue(workspaceId));
-      if (result.completed) setNotice(`${result.completed} queued Service change${result.completed === 1 ? "" : "s"} synced.`);
-      await refreshCurrent();
-    } catch (syncError) {
-      setPendingCommands(readServiceQueue(workspaceId));
-      setError(syncError instanceof Error ? syncError.message : "Services could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushServiceQueue(workspaceId, () => setPendingCommands(readServiceQueue(workspaceId)));
+          setPendingCommands(readServiceQueue(workspaceId));
+          if (result.completed) setNotice(`${result.completed} queued Service change${result.completed === 1 ? "" : "s"} synced.`);
+          await refreshCurrent();
+        } catch (syncError) {
+          setPendingCommands(readServiceQueue(workspaceId));
+          setError(syncError instanceof Error ? syncError.message : "Services could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
       syncInFlight.current = false;
       setSyncing(false);
@@ -329,7 +340,7 @@ export default function ServicesPage() {
   }, [refreshCurrent, workspaceId]);
 
   useEffect(() => {
-    if (mode === "cloud" && online && pendingCount > 0 && !syncInFlight.current) void syncPending();
+    if (mode === "cloud" && online && pendingCount > 0) void syncPending();
   }, [mode, online, pendingCount, syncPending]);
 
   const submitCommand = useCallback(async (action: ServiceCommandAction, payload: Record<string, unknown>) => {
@@ -410,7 +421,7 @@ export default function ServicesPage() {
   const metrics = summary ?? summaryFromRows(services);
 
   return <>
-    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
+    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><StandardDataImport entity="services" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || !online} onImported={refreshCurrent} /><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
     {supportMode ? <div className={styles.supportNotice}><Wrench size={18} /><div><strong>Read-only access</strong><span>Service catalogue changes remain blocked during this session.</span></div></div> : null}
     {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Service action needs attention</strong><p>{error}</p></div></div> : null}
     {notice ? <div className="review-callout"><RefreshCw size={19} /><div><strong>Service catalogue</strong><p>{notice}</p></div></div> : null}

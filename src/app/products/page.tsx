@@ -16,6 +16,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { CataloguePendingChanges } from "@/components/catalogue-pending-changes";
+import { StandardDataImport } from "@/components/standard-data-import";
 import { useBdb } from "@/lib/store";
 import {
   discardProductCommand,
@@ -264,6 +265,8 @@ export default function ProductsPage() {
   const [pendingCommands, setPendingCommands] = useState<ProductQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const initialRegisterLoaded = useRef(false);
   const supportMode = false;
   const pendingCount = pendingCommands.length;
@@ -387,27 +390,41 @@ export default function ProductsPage() {
   }, [fetchRegister, filter, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncing) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
+    syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
-      setPendingCommands(readProductQueue(workspaceId));
-      if (result.completed) {
-        setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
-      }
-      await refreshCurrent();
-    } catch (syncError) {
-      setPendingCommands(readProductQueue(workspaceId));
-      setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
+          setPendingCommands(readProductQueue(workspaceId));
+          if (result.completed) {
+            setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
+          }
+          await refreshCurrent();
+        } catch (syncError) {
+          setPendingCommands(readProductQueue(workspaceId));
+          setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
+      syncInFlight.current = false;
       setSyncing(false);
     }
-  }, [refreshCurrent, syncing, workspaceId]);
+  }, [refreshCurrent, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
-    const handleOnline = () => void syncPending();
+    const handleOnline = () => {
+      replayRequested.current = true;
+      void syncPending();
+    };
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [mode, syncPending]);
@@ -568,9 +585,7 @@ export default function ProductsPage() {
         description="Define the reusable catalogue that Inventory, Purchasing, Sales and invoice lines reference."
         action={(
           <div className={styles.headerActions}>
-            <Button variant="secondary" disabled title="Bulk catalogue import follows the controlled single-record workflow">
-              <Boxes size={17} /> Import catalogue
-            </Button>
+            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud"} onImported={refreshCurrent} />
             <Button onClick={openCreate} disabled={supportMode}>
               <PackagePlus size={17} /> Add product
             </Button>
@@ -744,9 +759,8 @@ export default function ProductsPage() {
             <div className={styles.formGrid}>
               <label className={styles.wide}>Product name<input required minLength={2} maxLength={160} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Hydra Medic Serum 60ml" /></label>
               <label>SKU / stock code<input required maxLength={64} value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} placeholder="e.g. RPHMS" /></label>
-              <label>Barcode<div className={styles.barcodeInput}><input maxLength={64} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Type barcode" /><Button type="button" variant="secondary" disabled><Barcode size={16} /> Scan</Button></div></label>
+              <label>Barcode<input maxLength={64} value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Type barcode" /></label>
               <label>Brand<input maxLength={120} value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="Brand name" /></label>
-              <label>Supplier<select disabled defaultValue=""><option value="">Connected in Supplier terms</option></select></label>
               <label>Category<input maxLength={120} value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="e.g. Skincare" /></label>
               <label>Item purpose<select value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as ProductPurpose })}><option value="resale">Resale stock</option><option value="supply">Business supply</option></select></label>
               <label>Unit label<input required maxLength={24} value={form.unitLabel} onChange={(event) => setForm({ ...form, unitLabel: event.target.value })} placeholder="unit" /></label>

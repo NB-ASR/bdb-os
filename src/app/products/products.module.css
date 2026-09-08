@@ -236,12 +236,6 @@
   grid-column: 1 / -1;
 }
 
-.barcodeInput {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
 .openingStockNote {
   display: flex;
   align-items: flex-start;
