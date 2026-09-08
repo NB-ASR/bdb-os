@@ -25,6 +25,20 @@ type StandardDataImportProps = {
 type RowFailure = { row: number; message: string };
 type PreviewRow = { row: number; label: string; secondary: string; payload: Record<string, unknown> };
 
+class ImportCommandError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+
+  get stopsImport() {
+    return this.status === 401 || this.status === 403;
+  }
+}
+
 type PreparedImport = {
   workspaceId: string;
   fileName: string;
@@ -193,9 +207,30 @@ async function createRecord(entity: ImportEntity, workspaceId: string, id: strin
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.ok) return;
     lastError = typeof result.error === "string" ? result.error : `Import failed with status ${response.status}.`;
-    if (response.status >= 400 && response.status < 500) throw new Error(lastError);
+    if (response.status >= 400 && response.status < 500) {
+      throw new ImportCommandError(lastError, response.status, String(result.code ?? "IMPORT_REJECTED"));
+    }
   }
   throw new Error(lastError);
+}
+
+async function verifyImportWorkspace(workspaceId: string) {
+  const response = await fetch("/api/workspace/context", { cache: "no-store" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ImportCommandError(
+      typeof result.error === "string" ? result.error : "The active workspace could not be verified.",
+      response.status,
+      String(result.code ?? "WORKSPACE_CONTEXT_FAILED"),
+    );
+  }
+  if (String(result.currentWorkspaceId ?? "") !== workspaceId) {
+    throw new ImportCommandError(
+      "The active workspace changed while this file was being reviewed. Choose the file again in the current workspace.",
+      409,
+      "WORKSPACE_CHANGED",
+    );
+  }
 }
 
 async function importRows(
@@ -206,8 +241,9 @@ async function importRows(
 ) {
   let nextIndex = 0;
   let created = 0;
+  let stopped: ImportCommandError | null = null;
   const worker = async () => {
-    while (nextIndex < prepared.rows.length) {
+    while (!stopped && nextIndex < prepared.rows.length) {
       const row = prepared.rows[nextIndex];
       nextIndex += 1;
       try {
@@ -217,12 +253,17 @@ async function importRows(
         await createRecord(entity, workspaceId, id, idempotencyKey, row.payload);
         created += 1;
       } catch (error) {
+        if (error instanceof ImportCommandError && error.stopsImport) {
+          stopped ??= error;
+          return;
+        }
+        if (stopped) return;
         onFailure({ row: row.row, message: error instanceof Error ? error.message : "Row could not be imported." });
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(IMPORT_CONCURRENCY, prepared.rows.length) }, () => worker()));
-  return created;
+  return { created, stopped };
 }
 
 export function StandardDataImport({ entity, workspaceId, disabled = false, onImported }: StandardDataImportProps) {
@@ -300,7 +341,28 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
     setBusy(true);
     const failures: RowFailure[] = [...prepared.failures];
     try {
-      const created = await importRows(entity, workspaceId, prepared, (failure) => failures.push(failure));
+      try {
+        await verifyImportWorkspace(workspaceId);
+      } catch (workspaceError) {
+        setPrepared(null);
+        setStatus(workspaceError instanceof Error ? workspaceError.message : "The active workspace could not be verified.");
+        return;
+      }
+
+      const { created, stopped } = await importRows(entity, workspaceId, prepared, (failure) => failures.push(failure));
+      if (stopped) {
+        if (created > 0 && onImported) {
+          try {
+            await onImported();
+          } catch {
+            // Keep the workspace-level failure as the actionable import result.
+          }
+        }
+        setPrepared(null);
+        const prefix = created > 0 ? `${created} ${label} imported before the workspace session became unavailable. ` : "";
+        setStatus(`${prefix}Import stopped because the active workspace is not available to this session. Refresh the page or sign in again before retrying.`);
+        return;
+      }
       if (created > 0 && onImported) {
         try {
           await onImported();

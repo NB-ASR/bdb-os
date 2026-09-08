@@ -184,6 +184,7 @@ export default function ServicesPage() {
   const { state, mode } = useBdb();
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [summary, setSummary] = useState<ServiceSummary | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<RegisterCursor | null>(null);
@@ -279,6 +280,7 @@ export default function ServicesPage() {
         rememberWorkspace(currentWorkspaceId);
         await fetchRegister(currentWorkspaceId, { query: "", filter: "all" });
         initialRegisterLoaded.current = true;
+        if (active) setWorkspaceReady(true);
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Services could not be loaded.";
         if (cached.length || queued.length) setNotice("Showing the last cached Service catalogue while cloud access is unavailable.");
@@ -421,7 +423,7 @@ export default function ServicesPage() {
   const metrics = summary ?? summaryFromRows(services);
 
   return <>
-    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><StandardDataImport entity="services" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || !online} onImported={refreshCurrent} /><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
+    <PageHeader eyebrow="Service catalogue" title="Services" description="Define reusable work that Calendar, Sales, customer history and future invoice lines can reference without duplicating Service data." action={<div className={styles.headerActions}><StandardDataImport entity="services" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || !online || !workspaceReady} onImported={refreshCurrent} /><Button variant="secondary" onClick={() => void syncPending()} disabled={mode !== "cloud" || !online || syncing || pendingCount === 0}><RefreshCw size={17} /> {syncing ? "Syncing…" : `Sync pending${pendingCount ? ` (${pendingCount})` : ""}`}</Button><Button onClick={openCreate} disabled={supportMode}><Plus size={17} /> Add Service</Button></div>} />
     {supportMode ? <div className={styles.supportNotice}><Wrench size={18} /><div><strong>Read-only access</strong><span>Service catalogue changes remain blocked during this session.</span></div></div> : null}
     {error ? <div className="review-callout"><TriangleAlert size={19} /><div><strong>Service action needs attention</strong><p>{error}</p></div></div> : null}
     {notice ? <div className="review-callout"><RefreshCw size={19} /><div><strong>Service catalogue</strong><p>{notice}</p></div></div> : null}

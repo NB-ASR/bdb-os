@@ -104,10 +104,14 @@ assert.match(standardImporter, /entity === "customers" \? "Customers"/, "Standar
 assert.match(standardImporter, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/, "Standard Customer import must expose standard XLSX files in the browser file picker.");
 assert.match(standardImporter, /\.csv,text\/csv/, "Standard Customer import must continue to expose CSV files in the browser file picker.");
 assert.match(standardImporter, /Review \$\{label\} import/, "Standard imports must require review before commit.");
+assert.match(standardImporter, /fetch\("\/api\/workspace\/context", \{ cache: "no-store" \}\)/, "Standard imports must revalidate authenticated workspace context immediately before commit.");
+assert.match(standardImporter, /WORKSPACE_CHANGED/, "Standard imports must reject a reviewed file when the active workspace changes.");
+assert.match(standardImporter, /this\.status === 401 \|\| this\.status === 403/, "Standard imports must stop fan-out after a workspace-level authorization rejection.");
 assert.match(standardImporter, /first_name/, "Standard Customer import must accept common split-name exports.");
 assert.match(standardImporter, /last_name/, "Standard Customer import must accept common split-name exports.");
 assert.match(xlsxImporter, /visible worksheet with recognised Customer columns/i, "XLSX import must search visible sheets instead of assuming the first sheet contains Customer data.");
 assert.match(page, /Legacy Vanita JSON/, "Vanita JSON migration must remain available but be labelled truthfully as a legacy path.");
+assert.match(page, /<StandardDataImport[\s\S]*?disabled=\{[^}]*!workspaceReady[^}]*\}/, "Customer imports must remain disabled until authenticated workspace context and the register are ready.");
 assert.doesNotMatch(page, />Import Customers<\/Button>/, "Customer page must not masquerade the legacy JSON picker as the generic importer.");
 assert.match(page, /Saved offline/);
 assert.match(page, /CUSTOMER_DUPLICATE_REVIEW/);

@@ -223,6 +223,7 @@ export default function CustomersPage() {
   const [baseCustomers, setBaseCustomers] = useState<CustomerRow[]>([]);
   const [queuedCommands, setQueuedCommands] = useState<CustomerQueuedCommand[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [offline, setOffline] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -344,6 +345,7 @@ export default function CustomersPage() {
         setWorkspaceId(currentWorkspaceId);
         rememberCustomerWorkspace(currentWorkspaceId);
         await loadRegister(currentWorkspaceId, { search: "", filter: "active", includeSummary: true });
+        if (active) setWorkspaceReady(true);
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Customers could not be loaded.";
         setOffline(true);
@@ -649,11 +651,11 @@ export default function CustomersPage() {
             <StandardDataImport
               entity="customers"
               workspaceId={workspaceId}
-              disabled={supportMode || mode !== "cloud" || offline}
+              disabled={supportMode || mode !== "cloud" || offline || !workspaceReady}
               onImported={() => reloadCurrent(true)}
             />
             <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importSnapshot(event)} />
-            <Button variant="quiet" disabled={supportMode || importing || mode !== "cloud" || offline} onClick={() => importInputRef.current?.click()} title="Import a legacy Vanita JSON snapshot">
+            <Button variant="quiet" disabled={supportMode || importing || mode !== "cloud" || offline || !workspaceReady} onClick={() => importInputRef.current?.click()} title="Import a legacy Vanita JSON snapshot">
               <FileUp size={16} /> {importing ? "Importing legacy…" : "Legacy Vanita JSON"}
             </Button>
             <Button onClick={openCreate} disabled={supportMode}>
