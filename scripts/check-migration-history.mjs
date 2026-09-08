@@ -93,6 +93,7 @@ const canonicalProductionHistory = [
 const pendingMigrations = [
   "20260830190000_catalogue_engine_pass1.sql",
   "20260831144000_catalogue_engine_scale_pass3.sql",
+  "20260908143000_customer_review_delete_pagination.sql",
 ];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));

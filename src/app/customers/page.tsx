@@ -43,7 +43,8 @@ import { extractVanitaClients } from "@/lib/modules/customer-import";
 import { Badge, Button, Card, Dialog, PageHeader, StatCard } from "@/components/ui";
 
 type CustomerStatus = "active" | "archived";
-type CustomerFilter = "active" | "archived" | "imported" | "all";
+type CustomerFilter = "active" | "archived" | "review" | "all";
+type CustomerReviewItem = { id: string; source_file: string; source_row: number; payload: Record<string, unknown>; issue_code: string; issue_message: string; created_at: string };
 
 type CustomerRow = {
   id: string;
@@ -91,7 +92,7 @@ type ImportResult = {
 type CustomerCursor = { name: string; id: string };
 type CustomerSummary = CachedCustomerSummary;
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
 const emptyForm: CustomerForm = {
   code: "",
   name: "",
@@ -199,7 +200,7 @@ function matchesCriteria(customer: CustomerRow, query: string, filter: CustomerF
   const matchesFilter = filter === "all"
     || (filter === "active" && customer.status === "active")
     || (filter === "archived" && customer.status === "archived")
-    || (filter === "imported" && Boolean(customer.legacy_source));
+    || (filter === "review" && (!customer.name.trim() || (!customer.email && !customer.phone)));
   return matchesQuery && matchesFilter;
 }
 
@@ -242,6 +243,15 @@ export default function CustomersPage() {
   const [notice, setNotice] = useState("");
   const [duplicateReview, setDuplicateReview] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [reviewItems, setReviewItems] = useState<CustomerReviewItem[]>([]);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pageStarts, setPageStarts] = useState<Array<CustomerCursor | null>>([null]);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerRow | null>(null);
+  const [deleteEmail, setDeleteEmail] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteCommandId, setDeleteCommandId] = useState("");
+  const [ownerRole, setOwnerRole] = useState("");
   const supportMode = false;
 
   const customers = useMemo(() => {
@@ -291,6 +301,12 @@ export default function CustomersPage() {
     setHasMore(Boolean(result.result?.page?.hasMore));
     const cursor = result.result?.page?.nextCursor as CustomerCursor | null | undefined;
     setNextCursor(cursor?.name && cursor?.id ? cursor : null);
+    if ((options.filter ?? "active") === "review") {
+      const reviewResponse = await fetch(`/api/customers/reviews?workspaceId=${encodeURIComponent(currentWorkspaceId)}`, { cache: "no-store" });
+      const reviewResult = await reviewResponse.json().catch(() => ({}));
+      if (!reviewResponse.ok || !reviewResult.ok) { setLoadingPage(false); throw new Error(reviewResult.error ?? "Customer reviews could not be loaded."); }
+      setReviewItems(reviewResult.result?.items ?? []);
+    } else setReviewItems([]);
 
     const cloudSummary = result.result?.summary as CustomerSummary | null | undefined;
     if (cloudSummary) {
@@ -343,6 +359,7 @@ export default function CustomersPage() {
         const currentWorkspaceId = String(context.currentWorkspaceId);
         if (!active) return;
         setWorkspaceId(currentWorkspaceId);
+        setOwnerRole(String(context.currentUser?.role ?? ""));
         rememberCustomerWorkspace(currentWorkspaceId);
         await loadRegister(currentWorkspaceId, { search: "", filter: "active", includeSummary: true });
         if (active) setWorkspaceReady(true);
@@ -375,6 +392,8 @@ export default function CustomersPage() {
       criteriaInitialised.current = true;
       return;
     }
+    setPageNumber(1);
+    setPageStarts([null]);
     const timer = window.setTimeout(() => {
       setError("");
       void loadRegister(workspaceId, { search: query, filter }).catch((loadError) => {
@@ -510,6 +529,12 @@ export default function CustomersPage() {
   const visibleCustomers = useMemo(() => customers
     .filter((customer) => matchesCriteria(customer, query, filter))
     .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)), [customers, filter, query]);
+  const visibleReviewItems = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return reviewItems;
+    return reviewItems.filter((item) => [item.source_file, item.issue_message, ...Object.values(item.payload)]
+      .join(" ").toLowerCase().includes(term));
+  }, [query, reviewItems]);
 
   const displayedSummary = mode === "demo" ? summaryFromRows(customers) : (summary ?? summaryFromRows(customers));
 
@@ -517,6 +542,7 @@ export default function CustomersPage() {
     setEditing(null);
     setForm(emptyForm);
     setDuplicateReview(false);
+    setReviewingId(null);
     setFormOpen(true);
   }
 
@@ -525,6 +551,30 @@ export default function CustomersPage() {
     setForm(formValues(customer));
     setDuplicateReview(false);
     setFormOpen(true);
+  }
+
+  function openReview(item: CustomerReviewItem) {
+    const value = (keys: string[]) => keys.map((key) => item.payload[key]).find((entry) => String(entry ?? "").trim()) ?? "";
+    const fullName = value(["name", "full_name", "customer_name", "client_name"])
+      || [value(["first_name", "firstname", "given_name"]), value(["last_name", "lastname", "surname", "family_name"])].filter(Boolean).join(" ");
+    setEditing(null);
+    setReviewingId(item.id);
+    setForm({
+      code: String(value(["code", "customer_code", "client_code"])), name: String(fullName),
+      company: String(value(["company", "business", "organisation", "organization"])), email: String(value(["email", "email_address"])),
+      phone: String(value(["phone", "phone_number", "mobile", "mobile_number"])), address: String(value(["address", "postal_address", "street_address"])),
+      vatNumber: String(value(["vatNumber", "vat_number", "vat", "tax_number"])), preferences: "",
+    });
+    setDuplicateReview(item.issue_code === "CUSTOMER_DUPLICATE_REVIEW");
+    setFormOpen(true);
+  }
+
+  async function resolveReview(reviewId: string, action: "resolve" | "dismiss") {
+    if (!workspaceId) return;
+    const response = await fetch("/api/customers/reviews", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ workspaceId, action, reviewId }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error ?? "Review item could not be updated.");
+    setReviewItems((current) => current.filter((item) => item.id !== reviewId));
   }
 
   async function persistCustomer(allowDuplicate: boolean) {
@@ -551,6 +601,10 @@ export default function CustomersPage() {
     setEditing(null);
     setForm(emptyForm);
     setDuplicateReview(false);
+    if (reviewingId) {
+      try { await resolveReview(reviewingId, "resolve"); setReviewingId(null); }
+      catch (reviewError) { setError(reviewError instanceof Error ? reviewError.message : "The review item could not be closed."); }
+    }
 
     if (isNewCustomer && mode === "cloud" && navigator.onLine && !result.pending) {
       router.push(`/customers/${id}`);
@@ -572,17 +626,40 @@ export default function CustomersPage() {
     setSaving(false);
   }
 
-  async function loadMoreCustomers() {
+  async function nextCustomerPage() {
     if (!workspaceId || workspaceId === "demo" || !nextCursor || loadingPage || offline) return;
+    const pageStart = nextCursor;
     setError("");
-    await loadRegister(workspaceId, {
-      append: true,
-      cursor: nextCursor,
-      search: query,
-      filter,
-    }).catch((loadError) => {
+    try {
+      await loadRegister(workspaceId, { cursor: pageStart, search: query, filter });
+    } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "More Customers could not be loaded.");
-    });
+      return;
+    }
+    setPageStarts((current) => [...current.slice(0, pageNumber), pageStart]);
+    setPageNumber((current) => current + 1);
+  }
+
+  async function previousCustomerPage() {
+    if (!workspaceId || pageNumber <= 1 || loadingPage) return;
+    const targetPage = pageNumber - 1;
+    try {
+      await loadRegister(workspaceId, { cursor: pageStarts[targetPage - 1], search: query, filter });
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "The previous Customer page could not be loaded.");
+      return;
+    }
+    setPageNumber(targetPage);
+  }
+
+  async function deleteCustomer() {
+    if (!workspaceId || !deleteTarget || saving) return;
+    setSaving(true); setError("");
+    const response = await fetch("/api/customers/delete", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": deleteCommandId || crypto.randomUUID() }, body: JSON.stringify({ workspaceId, customerId: deleteTarget.id, expectedVersion: deleteTarget.version, email: deleteEmail, password: deletePassword }) });
+    const result = await response.json().catch(() => ({}));
+    setSaving(false);
+    if (!response.ok || !result.ok) { setError(result.error ?? "Customer could not be deleted."); return; }
+    setDeleteTarget(null); setDeleteEmail(""); setDeletePassword(""); setDeleteCommandId(""); setNotice("Customer permanently deleted."); await reloadCurrent(true);
   }
 
   async function importSnapshot(event: ChangeEvent<HTMLInputElement>) {
@@ -669,7 +746,7 @@ export default function CustomersPage() {
         <UsersRound size={19} />
         <div>
           <strong>Bounded Customer register</strong>
-          <p>Cloud search and filters use 100-row keyset pages. Offline mode keeps a bounded working set while pending commands retain stable retry keys.</p>
+          <p>Cloud search and filters use 50-row pages. Offline mode keeps a bounded working set while pending commands retain stable retry keys.</p>
         </div>
       </div>
 
@@ -729,9 +806,9 @@ export default function CustomersPage() {
             />
           </label>
           <div className="filter-tabs" role="group" aria-label="Filter Customers">
-            {(["active", "archived", "imported", "all"] as CustomerFilter[]).map((item) => (
+            {(["active", "archived", "review", "all"] as CustomerFilter[]).map((item) => (
               <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>
-                {item === "active" ? "Active" : item === "archived" ? "Archived" : item === "imported" ? "Imported" : "All"}
+                {item === "active" ? "Active" : item === "archived" ? "Archived" : item === "review" ? "Review" : "All"}
               </button>
             ))}
           </div>
@@ -752,6 +829,16 @@ export default function CustomersPage() {
               </tr>
             </thead>
             <tbody>
+              {filter === "review" ? visibleReviewItems.map((item) => (
+                <tr key={item.id}>
+                  <td><span className="cell-stack"><strong>{String(item.payload.name || item.payload.full_name || "Missing name")}</strong><span>{item.source_file} · row {item.source_row}</span></span></td>
+                  <td><Badge tone="gold">Import review</Badge></td>
+                  <td>{String(item.payload.email || item.payload.phone || item.payload.mobile || "No contact detail")}</td>
+                  <td colSpan={2}>{item.issue_message}</td>
+                  <td><Badge tone="gold">Needs review</Badge></td>
+                  <td><div className="table-actions"><Button type="button" variant="quiet" onClick={() => openReview(item)}>Review</Button><Button type="button" variant="quiet" onClick={() => void resolveReview(item.id, "dismiss").catch((reviewError) => setError(reviewError.message))}>Dismiss</Button></div></td>
+                </tr>
+              )) : null}
               {visibleCustomers.map((customer) => (
                 <tr key={customer.id}>
                   <td>
@@ -780,6 +867,7 @@ export default function CustomersPage() {
                       <Button type="button" variant="quiet" disabled={supportMode || customer.pending || saving} onClick={() => void changeStatus(customer)}>
                         {customer.status === "active" ? <><Archive size={15} /> Archive</> : <><Undo2 size={15} /> Restore</>}
                       </Button>
+                      {customer.status === "archived" && ownerRole === "owner" ? <Button type="button" variant="quiet" disabled={customer.pending || saving || offline} onClick={() => { setError(""); setDeleteTarget(customer); setDeleteEmail(""); setDeletePassword(""); setDeleteCommandId(crypto.randomUUID()); }}>Delete</Button> : null}
                     </div>
                   </td>
                 </tr>
@@ -789,14 +877,14 @@ export default function CustomersPage() {
         </div>
 
         {loadingPage ? <div className="card-pad"><p className="muted"><RefreshCw className="spin" size={15} style={{ display: "inline", marginRight: 6 }} />Loading Customer page…</p></div> : null}
-        {!loadingPage && visibleCustomers.length === 0 ? (
+        {!loadingPage && visibleCustomers.length === 0 && reviewItems.length === 0 ? (
           <div className="card-pad"><h2>No Customers match</h2><p className="muted">Create a Customer, change the filter or import a standard Customer CSV or Excel file.</p></div>
         ) : null}
-        {hasMore && !offline && mode === "cloud" ? (
-          <div className="card-pad" style={{ display: "flex", justifyContent: "center" }}>
-            <Button type="button" variant="secondary" disabled={loadingPage} onClick={() => void loadMoreCustomers()}>
-              {loadingPage ? "Loading…" : `Load next ${PAGE_SIZE}`}
-            </Button>
+        {!offline && mode === "cloud" ? (
+          <div className="card-pad" style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12 }}>
+            <Button type="button" variant="secondary" disabled={loadingPage || pageNumber === 1} onClick={() => void previousCustomerPage()}>Previous</Button>
+            <span>Page {pageNumber}</span>
+            <Button type="button" variant="secondary" disabled={loadingPage || !hasMore} onClick={() => void nextCustomerPage()}>Next</Button>
           </div>
         ) : null}
       </Card>
@@ -804,7 +892,7 @@ export default function CustomersPage() {
       <Dialog
         open={formOpen}
         onClose={() => { if (!saving) { setFormOpen(false); setDuplicateReview(false); } }}
-        title={editing ? "Edit Customer" : "Add Customer"}
+        title={editing ? "Edit Customer" : reviewingId ? "Review imported Customer" : "Add Customer"}
         description="Email is optional. Exact email or phone matches require an explicit duplicate decision. Operational notes are added from Customer 360."
       >
         <form onSubmit={(event) => void saveCustomer(event)}>
@@ -835,6 +923,15 @@ export default function CustomersPage() {
             <Button type="submit" disabled={saving}>{saving ? "Saving…" : editing ? "Save changes" : "Create Customer"}</Button>
           </div>
         </form>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => { if (!saving) { setDeleteTarget(null); setDeletePassword(""); setDeleteCommandId(""); } }} title="Permanently delete Customer" description="This cannot be undone. Customers with linked business history cannot be deleted and must remain archived.">
+        {error ? <div className="review-callout"><TriangleAlert size={18} /><div><strong>Deletion blocked</strong><p>{error}</p></div></div> : null}
+        <div className="form-grid">
+          <div className="field field-full"><label htmlFor="delete-owner-email">Signed-in owner email</label><input id="delete-owner-email" type="email" autoComplete="username" value={deleteEmail} onChange={(event) => setDeleteEmail(event.target.value)} /></div>
+          <div className="field field-full"><label htmlFor="delete-owner-password">Current password</label><input id="delete-owner-password" type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} /></div>
+        </div>
+        <div className="dialog-actions"><Button type="button" variant="quiet" disabled={saving} onClick={() => { setDeleteTarget(null); setDeleteCommandId(""); }}>Cancel</Button><Button type="button" disabled={saving || !deleteEmail.trim() || !deletePassword} onClick={() => void deleteCustomer()}>{saving ? "Verifying…" : "Permanently delete"}</Button></div>
       </Dialog>
     </>
   );

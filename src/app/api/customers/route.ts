@@ -10,9 +10,9 @@ import {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACTIONS = new Set(["create", "update", "archive", "restore"]);
-const CUSTOMER_FILTERS = new Set(["active", "archived", "imported", "all"]);
-const DEFAULT_PAGE_SIZE = 100;
-const MAX_PAGE_SIZE = 100;
+const CUSTOMER_FILTERS = new Set(["active", "archived", "review", "all"]);
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 50;
 
 type CustomerCommandBody = {
   workspaceId?: unknown;

@@ -22,7 +22,7 @@ type StandardDataImportProps = {
   onImported?: () => unknown | Promise<unknown>;
 };
 
-type RowFailure = { row: number; message: string };
+type RowFailure = { row: number; message: string; code?: string; payload?: Record<string, unknown> };
 type PreviewRow = { row: number; label: string; secondary: string; payload: Record<string, unknown> };
 
 class ImportCommandError extends Error {
@@ -97,6 +97,8 @@ function customerPayload(row: CsvRecord) {
   if (!name) throw new Error("Customer name is required. Use Name or First Name/Last Name columns.");
   const email = importValue(row, ["email", "email_address"]);
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Email address is invalid.");
+  const phone = importValue(row, ["phone", "phone_number", "phone_numbers", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no"]);
+  if (!email && !phone) throw new Error("Customer requires at least one contact detail: email or phone.");
   const address = importValue(row, ["address", "postal_address", "address_line_1", "street_address"]);
   const city = importValue(row, ["city", "town", "locality"]);
   return {
@@ -104,7 +106,7 @@ function customerPayload(row: CsvRecord) {
     name,
     company: importValue(row, ["company", "business", "organisation", "organization"]),
     email,
-    phone: importValue(row, ["phone", "phone_number", "phone_numbers", "phone_no", "telephone", "mobile", "mobile_number", "mobile_no"]),
+    phone,
     address: [address, city].filter(Boolean).join(address && city ? ", " : ""),
     vatNumber: importValue(row, ["vat_number", "vat", "tax_number"]),
     preferences: importValue(row, ["preferences", "notes"]) ? { summary: importValue(row, ["preferences", "notes"]) } : {},
@@ -258,12 +260,33 @@ async function importRows(
           return;
         }
         if (stopped) return;
-        onFailure({ row: row.row, message: error instanceof Error ? error.message : "Row could not be imported." });
+        onFailure({ row: row.row, message: error instanceof Error ? error.message : "Row could not be imported.", code: error instanceof ImportCommandError ? error.code : "IMPORT_FAILED", payload: row.payload });
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(IMPORT_CONCURRENCY, prepared.rows.length) }, () => worker()));
   return { created, stopped };
+}
+
+async function stageCustomerReviews(workspaceId: string, prepared: PreparedImport, failures: RowFailure[]) {
+  if (!failures.length) return;
+  const items = await Promise.all(failures.map(async (failure) => ({
+    id: await stableImportUuid(`${workspaceId}:customer-review:${prepared.fileHash}:${failure.row}`),
+    importKey: `${prepared.fileHash}:${failure.row}`,
+    sourceFile: prepared.fileName,
+    sourceRow: failure.row,
+    payload: failure.payload ?? {},
+    issueCode: failure.code ?? "INVALID_CUSTOMER_ROW",
+    issueMessage: failure.message,
+  })));
+  for (let offset = 0; offset < items.length; offset += 200) {
+    const response = await fetch("/api/customers/reviews", {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `review:${prepared.fileHash}:${offset}` },
+      body: JSON.stringify({ workspaceId, action: "stage", items: items.slice(offset, offset + 200) }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error ?? "Rows needing review could not be saved.");
+  }
 }
 
 export function StandardDataImport({ entity, workspaceId, disabled = false, onImported }: StandardDataImportProps) {
@@ -312,10 +335,10 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
           const preview = previewFor(entity, payload);
           validRows.push({ row: index + 2, payload, ...preview });
         } catch (error) {
-          failures.push({ row: index + 2, message: error instanceof Error ? error.message : "Row is invalid." });
+          failures.push({ row: index + 2, message: error instanceof Error ? error.message : "Row is invalid.", code: "INVALID_CUSTOMER_ROW", payload: entity === "customers" ? row : undefined });
         }
       });
-      if (!validRows.length) throw new Error(failures[0]?.message ?? "No valid rows were found in this import file.");
+      if (!validRows.length && entity !== "customers") throw new Error(failures[0]?.message ?? "No valid rows were found in this import file.");
       const hash = isXlsx ? await fileHash(file) : await sha256Hex(await file.text());
       setPrepared({ workspaceId, fileName: file.name, fileHash: hash, rows: validRows, failures });
     } catch (error) {
@@ -363,6 +386,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
         setStatus(`${prefix}Import stopped because the active workspace is not available to this session. Refresh the page or sign in again before retrying.`);
         return;
       }
+      if (entity === "customers" && failures.length) await stageCustomerReviews(workspaceId, prepared, failures);
       if (created > 0 && onImported) {
         try {
           await onImported();
@@ -381,6 +405,9 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
         setStatus(`${created} ${label} imported successfully.`);
       }
       if (created > 0 && !onImported) window.location.reload();
+    } catch (importError) {
+      setPrepared(null);
+      setStatus(importError instanceof Error ? importError.message : `${label} import could not be completed.`);
     } finally {
       setBusy(false);
     }
@@ -432,7 +459,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
             ) : null}
             <div className="dialog-actions">
               <Button type="button" variant="quiet" disabled={busy} onClick={() => setPrepared(null)}>Cancel</Button>
-              <Button type="button" disabled={busy || disabled} onClick={() => void confirmImport()}>{busy ? "Importing…" : `Confirm ${prepared.rows.length} ${label}`}</Button>
+              <Button type="button" disabled={busy || disabled} onClick={() => void confirmImport()}>{busy ? "Importing…" : prepared.rows.length ? `Confirm ${prepared.rows.length} ${label}` : `Save ${prepared.failures.length} for review`}</Button>
             </div>
           </div>
         ) : null}
