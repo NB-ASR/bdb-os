@@ -250,6 +250,7 @@ export default function ProductsPage() {
   const { state, mode } = useBdb();
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<RegisterCursor | null>(null);
@@ -353,6 +354,7 @@ export default function ProductsPage() {
         rememberWorkspace(currentWorkspaceId);
         await fetchRegister(currentWorkspaceId, { query: "", filter: "all" });
         initialRegisterLoaded.current = true;
+        if (active) setWorkspaceReady(true);
       } catch (initialError) {
         const message = initialError instanceof Error ? initialError.message : "Products could not be loaded.";
         if (cached.length || queued.length) {
@@ -585,7 +587,7 @@ export default function ProductsPage() {
         description="Define the reusable catalogue that Inventory, Purchasing, Sales and invoice lines reference."
         action={(
           <div className={styles.headerActions}>
-            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud"} onImported={refreshCurrent} />
+            <StandardDataImport entity="products" workspaceId={workspaceId} disabled={supportMode || mode !== "cloud" || !workspaceReady} onImported={refreshCurrent} />
             <Button onClick={openCreate} disabled={supportMode}>
               <PackagePlus size={17} /> Add product
             </Button>

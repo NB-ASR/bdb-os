@@ -230,6 +230,62 @@ test.describe("authenticated owner journey", () => {
     await expect(row).toContainText("Active");
   });
 
+  test("Customer import revalidates the active workspace before commit", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/customers");
+    await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
+
+    let postAttempts = 0;
+    await page.route("**/api/customers", async (route) => {
+      if (route.request().method() === "POST") postAttempts += 1;
+      await route.continue();
+    });
+    await uploadCsv(page, "name,email\nWorkspace Guard,workspace-guard@example.invalid\n");
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
+
+    await page.route("**/api/workspace/context", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ currentWorkspaceId: "76000000-0000-4000-8000-000000000099" }),
+      });
+    });
+    await page.getByRole("button", { name: "Confirm 1 Customers" }).click();
+
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
+    await expect(page.getByRole("status")).toContainText("active workspace changed");
+    expect(postAttempts).toBe(0);
+  });
+
+  test("Customer import stops after a workspace-level rejection", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/customers");
+    await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
+
+    let postAttempts = 0;
+    await page.route("**/api/customers", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      postAttempts += 1;
+      await route.fulfill({
+        status: 403,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, code: "WORKSPACE_FORBIDDEN", error: "This workspace is not available." }),
+      });
+    });
+    const rows = Array.from({ length: 40 }, (_, index) => {
+      const suffix = String(index + 1).padStart(2, "0");
+      return `Workspace Guard ${suffix},workspace-guard-${suffix}@example.invalid`;
+    });
+    await uploadCsv(page, `name,email\n${rows.join("\n")}\n`);
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
+    await page.getByRole("button", { name: "Confirm 40 Customers" }).click();
+
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
+    await expect(page.getByRole("status")).toContainText("Import stopped because the active workspace is not available");
+    expect(postAttempts).toBeGreaterThan(0);
+    expect(postAttempts).toBeLessThanOrEqual(8);
+  });
+
   for (const register of registers) {
     test(`${register.label} import validates, retries lost replies and preserves duplicate errors`, async ({ page }) => {
       test.setTimeout(120_000);
