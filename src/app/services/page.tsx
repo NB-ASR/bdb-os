@@ -201,6 +201,7 @@ export default function ServicesPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const initialRegisterLoaded = useRef(false);
   const supportMode = false;
   const pendingCount = pendingCommands.length;
@@ -311,18 +312,27 @@ export default function ServicesPage() {
   }, [fetchRegister, filter, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncInFlight.current) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
     syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushServiceQueue(workspaceId, () => setPendingCommands(readServiceQueue(workspaceId)));
-      setPendingCommands(readServiceQueue(workspaceId));
-      if (result.completed) setNotice(`${result.completed} queued Service change${result.completed === 1 ? "" : "s"} synced.`);
-      await refreshCurrent();
-    } catch (syncError) {
-      setPendingCommands(readServiceQueue(workspaceId));
-      setError(syncError instanceof Error ? syncError.message : "Services could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushServiceQueue(workspaceId, () => setPendingCommands(readServiceQueue(workspaceId)));
+          setPendingCommands(readServiceQueue(workspaceId));
+          if (result.completed) setNotice(`${result.completed} queued Service change${result.completed === 1 ? "" : "s"} synced.`);
+          await refreshCurrent();
+        } catch (syncError) {
+          setPendingCommands(readServiceQueue(workspaceId));
+          setError(syncError instanceof Error ? syncError.message : "Services could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
       syncInFlight.current = false;
       setSyncing(false);
@@ -330,7 +340,7 @@ export default function ServicesPage() {
   }, [refreshCurrent, workspaceId]);
 
   useEffect(() => {
-    if (mode === "cloud" && online && pendingCount > 0 && !syncInFlight.current) void syncPending();
+    if (mode === "cloud" && online && pendingCount > 0) void syncPending();
   }, [mode, online, pendingCount, syncPending]);
 
   const submitCommand = useCallback(async (action: ServiceCommandAction, payload: Record<string, unknown>) => {

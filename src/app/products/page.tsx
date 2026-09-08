@@ -265,6 +265,8 @@ export default function ProductsPage() {
   const [pendingCommands, setPendingCommands] = useState<ProductQueuedCommand[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const initialRegisterLoaded = useRef(false);
   const supportMode = false;
   const pendingCount = pendingCommands.length;
@@ -388,27 +390,41 @@ export default function ProductsPage() {
   }, [fetchRegister, filter, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncing) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
+    syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
-      setPendingCommands(readProductQueue(workspaceId));
-      if (result.completed) {
-        setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
-      }
-      await refreshCurrent();
-    } catch (syncError) {
-      setPendingCommands(readProductQueue(workspaceId));
-      setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushProductQueue(workspaceId, () => setPendingCommands(readProductQueue(workspaceId)));
+          setPendingCommands(readProductQueue(workspaceId));
+          if (result.completed) {
+            setNotice(`${result.completed} queued product change${result.completed === 1 ? "" : "s"} synced.`);
+          }
+          await refreshCurrent();
+        } catch (syncError) {
+          setPendingCommands(readProductQueue(workspaceId));
+          setError(syncError instanceof Error ? syncError.message : "Products could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
+      syncInFlight.current = false;
       setSyncing(false);
     }
-  }, [refreshCurrent, syncing, workspaceId]);
+  }, [refreshCurrent, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
-    const handleOnline = () => void syncPending();
+    const handleOnline = () => {
+      replayRequested.current = true;
+      void syncPending();
+    };
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [mode, syncPending]);

@@ -218,6 +218,8 @@ export default function CustomersPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const requestSequence = useRef(0);
   const criteriaInitialised = useRef(false);
+  const syncInFlight = useRef(false);
+  const replayRequested = useRef(false);
   const [baseCustomers, setBaseCustomers] = useState<CustomerRow[]>([]);
   const [queuedCommands, setQueuedCommands] = useState<CustomerQueuedCommand[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -381,38 +383,50 @@ export default function CustomersPage() {
   }, [filter, loadRegister, loaded, mode, offline, query, workspaceId]);
 
   const syncPending = useCallback(async () => {
-    if (!workspaceId || workspaceId === "demo" || syncing) return;
+    if (!workspaceId || workspaceId === "demo") return;
+    if (syncInFlight.current) {
+      replayRequested.current = true;
+      return;
+    }
     if (!navigator.onLine) {
       setOffline(true);
       setNotice("Customer changes remain queued offline. No command was discarded or given a new retry key.");
       return;
     }
 
+    syncInFlight.current = true;
     setSyncing(true);
-    setError("");
     try {
-      const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
-      setQueuedCommands(readCustomerQueue(workspaceId));
-      if (result.completed) {
-        setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
-      }
-      if (result.rejected) {
-        setError(`${result.rejected.message} BDB OS confirmed that queued change was not applied; later queued changes were left untouched for review.`);
-      } else if (result.ambiguous) {
-        setError("BDB OS could not confirm the first queued Customer change. It remains queued with the same retry key so replay cannot duplicate an already-accepted command.");
-      }
-      await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
-    } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : "Customers could not be refreshed.");
+      do {
+        replayRequested.current = false;
+        setError("");
+        try {
+          const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
+          setQueuedCommands(readCustomerQueue(workspaceId));
+          if (result.completed) {
+            setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
+          }
+          if (result.rejected) {
+            setError(`${result.rejected.message} BDB OS confirmed that queued change was not applied; later queued changes were left untouched for review.`);
+          } else if (result.ambiguous) {
+            setError("BDB OS could not confirm the first queued Customer change. It remains queued with the same retry key so replay cannot duplicate an already-accepted command.");
+          }
+          await loadRegister(workspaceId, { search: query, filter, includeSummary: true });
+        } catch (syncError) {
+          setError(syncError instanceof Error ? syncError.message : "Customers could not be refreshed.");
+        }
+      } while (replayRequested.current && navigator.onLine);
     } finally {
+      syncInFlight.current = false;
       setSyncing(false);
     }
-  }, [filter, loadRegister, query, syncing, workspaceId]);
+  }, [filter, loadRegister, query, workspaceId]);
 
   useEffect(() => {
     if (mode !== "cloud") return;
     const handleOnline = () => {
       setOffline(false);
+      replayRequested.current = true;
       void syncPending();
     };
     const handleOffline = () => setOffline(true);
