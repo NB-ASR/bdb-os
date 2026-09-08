@@ -49,7 +49,7 @@ grant select on table public.customer_import_review_items to authenticated;
 
 create policy "Customer review workspace read"
 on public.customer_import_review_items for select to authenticated
-using (private.actor_has_workspace_permission(workspace_id, auth.uid(), 'read'));
+using (private.actor_has_workspace_permission(workspace_id, auth.uid(), 'customers', 'view'));
 
 create or replace function public.list_customer_register_page(
   p_workspace_id uuid,
