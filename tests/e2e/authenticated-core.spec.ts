@@ -365,7 +365,7 @@ test.describe("authenticated owner journey", () => {
       if (register.entity === "customers") {
         await page.getByRole("button", { name: "Review", exact: true }).first().click();
         await expect(page.getByText("Import review", { exact: true }).first()).toBeVisible();
-        await page.locator("tbody tr").filter({ hasText: "duplicate" }).first().getByRole("button", { name: "Review", exact: true }).click();
+        await page.locator("tbody tr").filter({ hasText: /duplicate/i }).first().getByRole("button", { name: "Review", exact: true }).click();
         await expect(page.getByText("Possible duplicate Customer", { exact: false })).toBeVisible();
       }
     });
