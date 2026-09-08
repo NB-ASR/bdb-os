@@ -136,7 +136,7 @@ begin
     join public.profiles profile on profile.id = membership.user_id
     where membership.workspace_id = p_workspace_id and membership.user_id = p_actor_user_id
       and membership.role = 'owner' and membership.status = 'active'
-      and workspace.status in ('trial', 'active') and profile.status = 'active'
+      and workspace.status in ('trial', 'active') and profile.is_active is true
   ) then raise exception 'Only the workspace owner can delete Customers'; end if;
   if nullif(trim(coalesce(p_idempotency_key, '')), '') is null or char_length(trim(p_idempotency_key)) > 128 then
     raise exception 'Customer deletion retry key is invalid';

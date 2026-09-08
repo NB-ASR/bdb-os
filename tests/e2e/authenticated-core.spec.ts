@@ -364,7 +364,7 @@ test.describe("authenticated owner journey", () => {
       expect(await persistedRows(page, register.entity, workspaceId, `Different ${token}`)).toHaveLength(0);
       if (register.entity === "customers") {
         await page.getByRole("button", { name: "Review", exact: true }).first().click();
-        await expect(page.getByText("Import review", { exact: true })).toBeVisible();
+        await expect(page.getByText("Import review", { exact: true }).first()).toBeVisible();
         await page.getByRole("button", { name: "Review", exact: true }).nth(1).click();
         await expect(page.getByText("Possible duplicate Customer", { exact: false })).toBeVisible();
       }
@@ -390,15 +390,18 @@ test.describe("authenticated owner journey", () => {
       await expect(page.getByRole("button", { name: register.next, exact: true })).toBeEnabled();
       const firstPage = await rows.allTextContents();
       await page.getByRole("button", { name: register.next, exact: true }).click();
-      await expect(rows).toHaveCount(register.entity === "customers" ? 50 : 101);
-      const allRows = await rows.allTextContents();
       if (register.entity === "customers") {
-        expect(allRows).not.toEqual(firstPage);
         await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+        await expect(rows).toHaveCount(50);
+        const allRows = await rows.allTextContents();
+        expect(allRows).not.toEqual(firstPage);
         await page.getByRole("button", { name: "Previous", exact: true }).click();
+        await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
         await expect(rows).toHaveCount(50);
         expect(await rows.allTextContents()).toEqual(firstPage);
       } else {
+        await expect(rows).toHaveCount(101);
+        const allRows = await rows.allTextContents();
         expect(allRows.slice(0, 100)).toEqual(firstPage);
         expect(new Set(allRows).size).toBe(101);
         await expect(page.getByRole("button", { name: register.next, exact: true })).toHaveCount(0);
