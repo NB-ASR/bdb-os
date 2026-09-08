@@ -399,6 +399,9 @@ test.describe("authenticated owner journey", () => {
     await upload(CUSTOMER_XLSX_CASES.unknown);
     await expect(page.getByRole("status")).toContainText("could not find a visible worksheet with recognised Customer columns");
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
+    await upload(CUSTOMER_XLSX_CASES.ambiguous);
+    await expect(page.getByRole("status")).toContainText("multiple equally likely Customer worksheets");
+    await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await upload(CUSTOMER_XLSX_CASES.oversized);
     await expect(page.getByRole("status")).toContainText("expands beyond the supported import size");
     expect(writes).toBe(0);

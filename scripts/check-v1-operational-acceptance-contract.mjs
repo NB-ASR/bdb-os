@@ -36,6 +36,7 @@ assert.match(xlsxImporter, /findImportHeader/);
 assert.match(xlsxImporter, /state.*hidden/);
 assert.match(xlsxImporter, /first_name/);
 assert.match(xlsxImporter, /last_name/);
+assert.match(xlsxImporter, /multiple equally likely Customer worksheets/, "Ambiguous visible Customer worksheets must be rejected instead of selecting one silently.");
 
 assert.match(customers, /<StandardDataImport[\s\S]*?entity="customers"[\s\S]*?onImported=\{\(\) => reloadCurrent\(true\)\}/);
 assert.match(customers, /Legacy Vanita JSON/);

@@ -16,7 +16,7 @@ const NAME_HEADERS = new Set([
   "name", "full_name", "customer", "customer_name", "client", "client_name", "contact_name",
   "first_name", "firstname", "given_name", "forename", "last_name", "lastname", "surname", "family_name",
 ]);
-type ImportHeader = { index: number; score: number };
+type ImportHeader = { index: number; score: number; equallyLikely: number };
 
 function decode(bytes: Uint8Array) {
   return new TextDecoder("utf-8").decode(bytes);
@@ -143,6 +143,7 @@ function worksheetMatrix(worksheet: Document, shared: string[]) {
 export function findImportHeader(matrix: string[][]): ImportHeader | null {
   let bestIndex = -1;
   let bestScore = -1;
+  let equallyLikely = 0;
   for (let index = 0; index < matrix.length; index += 1) {
     const headers = matrix[index].map((value) => normaliseImportHeader(String(value ?? ""))).filter(Boolean);
     const recognised = headers.filter((header) => RECOGNISED_HEADERS.has(header));
@@ -151,9 +152,12 @@ export function findImportHeader(matrix: string[][]): ImportHeader | null {
     if (recognised.length > bestScore) {
       bestIndex = index;
       bestScore = recognised.length;
+      equallyLikely = 1;
+    } else if (recognised.length === bestScore) {
+      equallyLikely += 1;
     }
   }
-  return bestIndex >= 0 ? { index: bestIndex, score: bestScore } : null;
+  return bestIndex >= 0 ? { index: bestIndex, score: bestScore, equallyLikely } : null;
 }
 
 export function recordsFromImportMatrix(matrix: string[][]): CsvRecord[] {
@@ -161,6 +165,7 @@ export function recordsFromImportMatrix(matrix: string[][]): CsvRecord[] {
   if (nonEmpty.length < 2) throw new Error("The Excel worksheet must contain a Customer header row and at least one data row.");
   const header = findImportHeader(nonEmpty);
   if (!header) throw new Error("BDB OS could not find a recognised Customer header row in this worksheet.");
+  if (header.equallyLikely > 1) throw new Error("The Excel worksheet contains multiple equally likely Customer header rows. Keep one Customer table per worksheet.");
 
   const rawHeaders = nonEmpty[header.index];
   const lastHeaderColumn = rawHeaders.reduce((last, value, index) => String(value ?? "").trim() ? index : last, -1);
@@ -192,8 +197,7 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
   const sheets = Array.from(workbook.getElementsByTagName("sheet"));
   if (!sheets.length) throw new Error("The Excel workbook does not contain a worksheet.");
 
-  let bestScore = -1;
-  let bestMatrix: string[][] | null = null;
+  const candidates: Array<{ matrix: string[][]; header: ImportHeader; sheetName: string }> = [];
   for (const sheet of sheets) {
     if (sheet.getAttribute("state") === "hidden" || sheet.getAttribute("state") === "veryHidden") continue;
     const relationshipId = sheet.getAttribute("r:id")
@@ -205,14 +209,17 @@ export async function parseXlsx(file: File): Promise<CsvRecord[]> {
     if (!worksheetBytes) continue;
     const matrix = worksheetMatrix(xml(decode(worksheetBytes)), shared);
     const candidate = findImportHeader(matrix);
-    if (candidate && candidate.score > bestScore) {
-      bestScore = candidate.score;
-      bestMatrix = matrix;
-    }
+    if (candidate) candidates.push({ matrix, header: candidate, sheetName: sheet.getAttribute("name") ?? "unnamed worksheet" });
   }
 
-  if (!bestMatrix) {
+  if (!candidates.length) {
     throw new Error("BDB OS could not find a visible worksheet with recognised Customer columns. Use common headings such as Name or First Name/Last Name plus Email, Phone or Address.");
   }
-  return recordsFromImportMatrix(bestMatrix);
+  const bestScore = Math.max(...candidates.map((candidate) => candidate.header.score));
+  const bestCandidates = candidates.filter((candidate) => candidate.header.score === bestScore);
+  if (bestCandidates.length > 1) {
+    const names = bestCandidates.map((candidate) => candidate.sheetName).join(", ");
+    throw new Error(`The Excel workbook has multiple equally likely Customer worksheets (${names}). Keep one Customer table or hide the worksheets that should not be imported.`);
+  }
+  return recordsFromImportMatrix(bestCandidates[0].matrix);
 }
