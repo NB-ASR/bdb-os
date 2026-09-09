@@ -42,8 +42,8 @@ assert.match(xlsxImporter, /last_name/);
 assert.match(xlsxImporter, /multiple equally likely Customer worksheets/, "Ambiguous visible Customer worksheets must be rejected instead of selecting one silently.");
 
 assert.match(customers, /<StandardDataImport[\s\S]*?entity="customers"[\s\S]*?onImported=\{\(\) => reloadCurrent\(true\)\}/);
-assert.match(customers, /Legacy Vanita JSON/);
-assert.match(customers, /accept="application\/json,\.json"/);
+assert.doesNotMatch(customers, /Legacy Vanita JSON/, "The retired Vanita migration must not remain customer-facing.");
+assert.doesNotMatch(customers, /accept="application\/json,\.json"/, "The Customers screen must not retain a hidden legacy JSON picker.");
 assert.match(customers, /<StandardDataImport[\s\S]*?disabled=\{[^}]*!workspaceReady[^}]*\}/, "Customer imports must wait for authenticated workspace readiness.");
 assert.doesNotMatch(customers, />Import Customers<\/Button>/, "Customer page must not masquerade the legacy JSON picker as the standard Customer importer.");
 

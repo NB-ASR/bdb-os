@@ -113,7 +113,8 @@ assert.match(standardImporter, /this\.status === 401 \|\| this\.status === 403/,
 assert.match(standardImporter, /first_name/, "Standard Customer import must accept common split-name exports.");
 assert.match(standardImporter, /last_name/, "Standard Customer import must accept common split-name exports.");
 assert.match(xlsxImporter, /visible worksheet with recognised Customer columns/i, "XLSX import must search visible sheets instead of assuming the first sheet contains Customer data.");
-assert.match(page, /Legacy Vanita JSON/, "Vanita JSON migration must remain available but be labelled truthfully as a legacy path.");
+assert.doesNotMatch(page, /Legacy Vanita JSON/, "The retired Vanita migration must not remain customer-facing.");
+assert.doesNotMatch(page, /accept="application\/json,\.json"/, "The Customers screen must not retain a hidden legacy JSON picker.");
 assert.match(page, /<StandardDataImport[\s\S]*?disabled=\{[^}]*!workspaceReady[^}]*\}/, "Customer imports must remain disabled until authenticated workspace context and the register are ready.");
 assert.doesNotMatch(page, />Import Customers<\/Button>/, "Customer page must not masquerade the legacy JSON picker as the generic importer.");
 assert.match(page, /Saved offline/);

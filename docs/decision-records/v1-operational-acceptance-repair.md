@@ -25,7 +25,7 @@ These conditions were visible to a normal business user but were not caught by t
 - Require preview/review before records are created.
 - Use the existing hardened canonical Customer command for standard rows.
 - Await the existing Customer register refresh before reporting a standard import as complete.
-- Keep legacy Vanita JSON migration available as a separately labelled legacy path with its existing provenance/receipt semantics.
+- Remove the legacy Vanita JSON migration from the customer-facing screen while retaining its protected server-side compatibility and provenance records.
 - Do not create fake Vanita provenance for standard CSV/XLSX imports.
 
 ### Products

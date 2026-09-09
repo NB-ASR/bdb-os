@@ -14,10 +14,11 @@ This checklist is part of PR #65 and must be complete on the exact final candida
 | Import Customers | Browser accepts CSV and standard `.xlsx`, previews rows, requires confirmation, creates canonical Customers and awaits the current register refresh | `authenticated-core.spec.ts` + CSV unit/static contracts | Required |
 | Customer Excel layout handling | Scans visible worksheets/preamble rows, accepts common full-name or split-name/contact headings, and rejects unrecognised layouts rather than guessing | sanitized XLSX browser fixture + parser static contract | Required |
 | Customer import Template | Downloads a usable `.csv` template | `authenticated-core.spec.ts` | Required |
-| Legacy Vanita JSON | Remains separately labelled and only accepts legacy JSON snapshot format | Customer static/database import contracts | Required |
 | Offline create/edit/archive/restore | Queues safely with stable retry identity | Customer Pass 2/Pass 4 queue tests | Required |
 
 Standard Customer import is vendor-neutral. Real customer workbooks may be used privately to validate representative structure, but customer PII must never be committed as an automated fixture. CI uses sanitized synthetic workbook data.
+
+The historical Vanita JSON migration is retained only as protected server-side compatibility code and provenance. It is no longer exposed as a customer-facing import action.
 
 ## Products
 
