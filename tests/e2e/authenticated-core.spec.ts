@@ -60,7 +60,7 @@ async function waitForRecordRow(page: Page, text: string) {
 }
 
 const registers = [
-  { entity: "customers", label: "Customers", singular: "Customer", search: "Search Customers", active: "Active", next: "Load next 100", keyHeading: "email" },
+  { entity: "customers", label: "Customers", singular: "Customer", search: "Search Customers", active: "Active", next: "Next", keyHeading: "email" },
   { entity: "products", label: "Products", singular: "Product", search: "Search products", active: "All active", next: "Load more", keyHeading: "sku" },
   { entity: "services", label: "Services", singular: "Service", search: "Search Services", active: "All", next: "Load more", keyHeading: "code" },
 ] as const;
@@ -108,6 +108,27 @@ test.describe("authenticated owner journey", () => {
 
     await expect(page).toHaveURL(/\/customers\//);
     await expect(page.getByText(uniqueName).first()).toBeVisible();
+  });
+
+  test("only a reauthenticated owner can permanently delete an unreferenced archived Customer", async ({ page }) => {
+    await signIn(page);
+    const workspaceId = await currentWorkspace(page);
+    const id = crypto.randomUUID();
+    const name = `Delete Guard ${Date.now()}`;
+    const createResponse = await page.request.post("/api/customers", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { workspaceId, action: "create", id, name, email: `delete-${Date.now()}@example.invalid` } });
+    expect(createResponse.ok()).toBeTruthy();
+    const archiveResponse = await page.request.post("/api/customers", { headers: { "Idempotency-Key": crypto.randomUUID() }, data: { workspaceId, action: "archive", id, expectedVersion: 1 } });
+    expect(archiveResponse.ok()).toBeTruthy();
+    await page.goto("/customers");
+    await page.getByRole("button", { name: "Archived", exact: true }).click();
+    await page.getByLabel("Search Customers").fill(name);
+    const row = await waitForRecordRow(page, name);
+    await row.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByLabel("Signed-in owner email").fill(email!);
+    await page.getByLabel("Current password").fill(password!);
+    await page.getByRole("button", { name: "Permanently delete", exact: true }).click();
+    await expect(page.getByText("Customer permanently deleted.")).toBeVisible();
+    await expect(row).toHaveCount(0);
   });
 
   test("Customer CSV import refresh and lifecycle are customer-operational", async ({ page }) => {
@@ -341,6 +362,12 @@ test.describe("authenticated owner journey", () => {
       await expect(page.getByRole("status")).toContainText("0 imported · 1 need review");
       expect(attempts).toHaveLength(4); // A definite rejection is not automatically retried.
       expect(await persistedRows(page, register.entity, workspaceId, `Different ${token}`)).toHaveLength(0);
+      if (register.entity === "customers") {
+        await page.getByRole("button", { name: "Review", exact: true }).first().click();
+        await expect(page.getByText("Import review", { exact: true }).first()).toBeVisible();
+        await page.locator("tbody tr").filter({ hasText: `Different ${token}` }).getByRole("button", { name: "Review", exact: true }).click();
+        await expect(page.getByText("Possible duplicate Customer", { exact: false })).toBeVisible();
+      }
     });
 
     test(`${register.label} pagination retains the first page without duplicates`, async ({ page }) => {
@@ -358,15 +385,27 @@ test.describe("authenticated owner journey", () => {
       await confirmImportAndWaitForRegister(page, `Confirm 101 ${register.label}`);
       await page.getByLabel(register.search).fill(prefix);
       const rows = page.locator("tbody tr");
-      await expect(rows).toHaveCount(100, { timeout: 15_000 });
+      const firstPageSize = register.entity === "customers" ? 50 : 100;
+      await expect(rows).toHaveCount(firstPageSize, { timeout: 15_000 });
       await expect(page.getByRole("button", { name: register.next, exact: true })).toBeEnabled();
       const firstPage = await rows.allTextContents();
       await page.getByRole("button", { name: register.next, exact: true }).click();
-      await expect(rows).toHaveCount(101);
-      const allRows = await rows.allTextContents();
-      expect(allRows.slice(0, 100)).toEqual(firstPage);
-      expect(new Set(allRows).size).toBe(101);
-      await expect(page.getByRole("button", { name: register.next, exact: true })).toHaveCount(0);
+      if (register.entity === "customers") {
+        await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+        await expect(rows).toHaveCount(50);
+        const allRows = await rows.allTextContents();
+        expect(allRows).not.toEqual(firstPage);
+        await page.getByRole("button", { name: "Previous", exact: true }).click();
+        await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+        await expect(rows).toHaveCount(50);
+        expect(await rows.allTextContents()).toEqual(firstPage);
+      } else {
+        await expect(rows).toHaveCount(101);
+        const allRows = await rows.allTextContents();
+        expect(allRows.slice(0, 100)).toEqual(firstPage);
+        expect(new Set(allRows).size).toBe(101);
+        await expect(page.getByRole("button", { name: register.next, exact: true })).toHaveCount(0);
+      }
     });
 
     test(`${register.label} manual creation and offline lifecycle replay persist canonically`, async ({ page, context }) => {

@@ -39,8 +39,8 @@ select
   'P4C-'||lpad(g::text,6,'0'),
   case when g=12345 then 'Needle-Pass4 Customer' else 'Pass 4 Customer '||lpad(g::text,6,'0') end,
   case when g%2=0 then 'Company '||lpad(g::text,6,'0') else '' end,
-  'customer-'||g||'@pass4.invalid',
-  '+356 77'||lpad(g::text,6,'0'),
+  case when g%401=0 then null else 'customer-'||g||'@pass4.invalid' end,
+  case when g%401=0 then null else '+356 77'||lpad(g::text,6,'0') end,
   'Pass 4 address '||g,
   case when g%10=0 then 'archived' else 'active' end,
   case when g%5=0 then 'pass4_scale' else null end,
@@ -75,17 +75,17 @@ begin
     raise exception 'Customer summary mismatch: active %, archived %, imported %, companies %', active_value, archived_value, imported_value, company_value;
   end if;
 
-  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active')) <> 101 then
-    raise exception 'Customer active register did not return the bounded 100-row page plus continuation sentinel';
+  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active')) <> 51 then
+    raise exception 'Customer active register did not return the bounded 50-row page plus continuation sentinel';
   end if;
-  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'imported')) <> 101 then
-    raise exception 'Customer imported register did not remain bounded';
+  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'review')) <> 51 then
+    raise exception 'Customer review register did not remain bounded';
   end if;
 
   create temporary table customer_pass4_first on commit drop as
-    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active') limit 100;
+    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active') limit 50;
   select count(*) into first_count from customer_pass4_first;
-  if first_count <> 100 then raise exception 'First Customer keyset page contained % rows', first_count; end if;
+  if first_count <> 50 then raise exception 'First Customer keyset page contained % rows', first_count; end if;
 
   select name,id into cursor_name,cursor_id
   from customer_pass4_first
@@ -93,9 +93,9 @@ begin
   limit 1;
 
   create temporary table customer_pass4_second on commit drop as
-    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,cursor_name,cursor_id,null,'active') limit 100;
+    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,cursor_name,cursor_id,null,'active') limit 50;
   select count(*) into second_count from customer_pass4_second;
-  if second_count <> 100 then raise exception 'Second Customer keyset page contained % rows', second_count; end if;
+  if second_count <> 50 then raise exception 'Second Customer keyset page contained % rows', second_count; end if;
 
   select count(*) into overlap_count
   from customer_pass4_first first_page

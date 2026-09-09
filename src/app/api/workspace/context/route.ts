@@ -45,6 +45,8 @@ export async function GET() {
       .eq("id", userId)
       .maybeSingle();
     if (profileLookupError) throw profileLookupError;
+    const { data: membership } = current ? await admin.from("workspace_memberships").select("role").eq("workspace_id", current.workspace_id).eq("user_id", userId).eq("status", "active").maybeSingle() : { data: null };
+    const { data: authUser } = await admin.auth.admin.getUserById(userId);
 
     if (current && !profile?.active_workspace_id) {
       const { error: profileError } = await admin
@@ -89,6 +91,8 @@ export async function GET() {
       currentUser: {
         id: userId,
         fullName: String(profile?.full_name ?? "").trim(),
+        email: String(authUser.user?.email ?? ""),
+        role: String(membership?.role ?? ""),
       },
       features,
       branding: {

@@ -65,8 +65,8 @@ select ok(
   'Customer register uses name/id keyset continuation'
 );
 select ok(
-  position('least(greatest(coalesce(p_limit, 100), 1), 100) + 1' in lower(pg_get_functiondef('public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure))) > 0,
-  'Customer register cannot request more than 100 display rows plus one continuation sentinel'
+  position('least(greatest(coalesce(p_limit, 50), 1), 50) + 1' in lower(pg_get_functiondef('public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure))) > 0,
+  'Customer register cannot request more than 50 display rows plus one continuation sentinel'
 );
 select ok(
   position('search_text like' in lower(pg_get_functiondef('public.list_customer_register_page(uuid,integer,text,uuid,text,text)'::regprocedure))) > 0,

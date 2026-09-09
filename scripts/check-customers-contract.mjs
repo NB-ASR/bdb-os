@@ -24,6 +24,9 @@ const xlsxImporter = await readFile("src/lib/modules/xlsx-import.ts", "utf8");
 const page = await readFile("src/app/customers/page.tsx", "utf8");
 const profilePage = await readFile("src/app/customers/[customerId]/page.tsx", "utf8");
 const databaseTest = await readFile("supabase/tests/customer_foundation.sql", "utf8");
+const reviewMigration = await readFile("supabase/migrations/20260908143000_customer_review_delete_pagination.sql", "utf8");
+const deleteApi = await readFile("src/app/api/customers/delete/route.ts", "utf8");
+const reviewApi = await readFile("src/app/api/customers/reviews/route.ts", "utf8");
 
 for (const statement of [
   "alter table public.customers",
@@ -67,8 +70,8 @@ assert.match(api, /p_vat_number: values\.vatNumber/, "Customer API must explicit
 assert.match(api, /p_notes: null/, "Normal Customer lifecycle API must not mutate legacy Customer notes.");
 assert.doesNotMatch(api, /body\.notes/, "Normal Customer lifecycle API must not accept the legacy notes field.");
 assert.doesNotMatch(api, /\.from\("customers"\)\.insert/);
-assert.match(api, /DEFAULT_PAGE_SIZE = 100/);
-assert.match(api, /MAX_PAGE_SIZE = 100/);
+assert.match(api, /DEFAULT_PAGE_SIZE = 50/);
+assert.match(api, /MAX_PAGE_SIZE = 50/);
 assert.match(api, /list_customer_register_page/, "Customer GET must use the bounded database register.");
 assert.match(api, /customer_register_summary/, "Customer totals must be loaded separately from page rows.");
 assert.match(api, /afterName/);
@@ -124,8 +127,10 @@ assert.match(page, /vatNumber: form\.vatNumber/, "Customer create and edit comma
 assert.match(page, /notes: customer\.notes/, "Optimistic Customer edits must preserve any legacy imported context.");
 assert.doesNotMatch(page, /customer-notes/, "Customer directory must not expose a second mutable notes field.");
 assert.match(page, /router\.push\(`\/customers\/\$\{id\}`\)/, "A confirmed new Customer must land on its Customer profile.");
-assert.match(page, /PAGE_SIZE = 100/);
-assert.match(page, /Load next \$\{PAGE_SIZE\}/, "Customer register must expose bounded keyset continuation.");
+assert.match(page, /PAGE_SIZE = 50/);
+assert.match(page, />Previous</);
+assert.match(page, />Next</);
+assert.match(page, /Page \{pageNumber\}/, "Customer register must expose 50-row page navigation.");
 assert.match(page, /mergeCustomerCache/, "Cloud pages must feed a bounded offline working set.");
 assert.match(page, /CustomerSubmitError/);
 assert.match(page, /commandError\.confirmedRejected/, "Only confirmed server rejections may be removed as failed Customer commands.");
@@ -133,6 +138,18 @@ assert.match(page, /same retry key/, "Ambiguous outcomes must keep the original 
 assert.doesNotMatch(page, /Discard local changes/, "Customer UI must not offer blanket discard for ambiguous commands.");
 assert.doesNotMatch(page, /writeCustomerQueue/, "Customer UI must not directly clear the durable queue.");
 assert.doesNotMatch(page, /addCustomer/);
+assert.match(page, /"review"/);
+assert.match(page, /Permanently delete Customer/);
+assert.match(deleteApi, /context\.role !== "owner"/);
+assert.match(deleteApi, /signInWithPassword/);
+assert.match(deleteApi, /IDEMPOTENCY_KEY_REQUIRED/);
+assert.match(deleteApi, /p_idempotency_key: context\.idempotencyKey/);
+assert.match(reviewApi, /stage_customer_import_reviews/);
+assert.match(reviewMigration, /customer_import_review_items/);
+assert.match(reviewMigration, /delete_archived_customer/);
+assert.match(reviewMigration, /customer_delete_receipts/);
+assert.match(reviewMigration, /membership\.role = 'owner'/);
+assert.match(reviewMigration, /foreign_key_violation/);
 
 assert.match(profilePage, /vat_number: string \| null/, "Customer 360 must type the canonical VAT identity.");
 assert.match(profilePage, /customer\.vat_number/, "Customer 360 must display the canonical VAT identity.");
