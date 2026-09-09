@@ -182,7 +182,7 @@ jobs:
         run: |
           # Playwright downloads Chromium itself; the runner's Google Chrome apt
           # source is unrelated and can be temporarily inconsistent during sync.
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          grep -rl 'dl\.google\.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
           npx playwright install --with-deps chromium
 
       - name: Build application
@@ -242,7 +242,7 @@ jobs:
       - name: Install Chromium
         shell: bash
         run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          grep -rl 'dl\.google\.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
           npx playwright install --with-deps chromium
 
       - name: Authenticated owner journeys
