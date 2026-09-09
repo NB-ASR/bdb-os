@@ -135,7 +135,7 @@ test.describe("authenticated owner journey", () => {
     await signIn(page);
     await page.goto("/customers");
     await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Legacy Vanita JSON" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Legacy Vanita JSON" })).toHaveCount(0);
     await expectTemplateDownload(page, "bdb-os-customers-import-template.csv");
 
     const unique = Date.now();
@@ -500,23 +500,6 @@ test.describe("authenticated owner journey", () => {
     await upload(CUSTOMER_XLSX_CASES.oversized);
     await expect(page.getByRole("status")).toContainText("expands beyond the supported import size");
     expect(writes).toBe(0);
-  });
-
-  test("Legacy Vanita JSON remains a separate working migration with repeat protection", async ({ page }) => {
-    await signIn(page);
-    await page.goto("/customers");
-    await expect(page.getByRole("button", { name: "Legacy Vanita JSON" })).toBeEnabled();
-    const token = Date.now();
-    const name = `Legacy Acceptance ${token}`;
-    const input = page.locator('input[type="file"][accept*=".json"]');
-    const file = { name: "sanitized-legacy.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ clients: [{ id: `acceptance-${token}`, name, email: `legacy-${token}@example.invalid` }] })) };
-    await input.setInputFiles(file);
-    await expect(page.getByText(/1 created · 0 linked · 0 already imported · 0 errors/)).toBeVisible();
-    await page.getByLabel("Search Customers").fill(name);
-    await waitForRecordRow(page, name);
-    await input.setInputFiles(file);
-    await expect(page.getByText(/0 created · 0 linked · 1 already imported · 0 errors/)).toBeVisible();
-    expect(await persistedRows(page, "customers", await currentWorkspace(page), name)).toHaveLength(1);
   });
 
   test("Accounts journeys stay in the consolidated workspaces", async ({ page }) => {

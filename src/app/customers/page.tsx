@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Archive,
   Building2,
@@ -39,7 +39,6 @@ import {
   writeCustomerSummary,
   type CachedCustomerSummary,
 } from "@/lib/modules/customer-cache";
-import { extractVanitaClients } from "@/lib/modules/customer-import";
 import { Badge, Button, Card, Dialog, PageHeader, StatCard } from "@/components/ui";
 
 type CustomerStatus = "active" | "archived";
@@ -77,16 +76,6 @@ type CustomerForm = {
   address: string;
   vatNumber: string;
   preferences: string;
-};
-
-type ImportResult = {
-  batchId: string;
-  receivedCount: number;
-  createdCount: number;
-  linkedCount: number;
-  skippedCount: number;
-  errorCount: number;
-  exceptions: Array<{ index: number; message: string }>;
 };
 
 type CustomerCursor = { name: string; id: string };
@@ -216,7 +205,6 @@ function summaryFromRows(customers: readonly CustomerRow[]): CustomerSummary {
 export default function CustomersPage() {
   const { mode } = useBdb();
   const router = useRouter();
-  const importInputRef = useRef<HTMLInputElement>(null);
   const requestSequence = useRef(0);
   const criteriaInitialised = useRef(false);
   const syncInFlight = useRef(false);
@@ -235,14 +223,12 @@ export default function CustomersPage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadingPage, setLoadingPage] = useState(false);
-  const [importing, setImporting] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<CustomerCursor | null>(null);
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [duplicateReview, setDuplicateReview] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [reviewItems, setReviewItems] = useState<CustomerReviewItem[]>([]);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -662,57 +648,6 @@ export default function CustomersPage() {
     setDeleteTarget(null); setDeleteEmail(""); setDeletePassword(""); setDeleteCommandId(""); setNotice("Customer permanently deleted."); await reloadCurrent(true);
   }
 
-  async function importSnapshot(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || importing || supportMode) return;
-    if (mode !== "cloud" || !workspaceId) {
-      setError("Vanita Customer import requires an active cloud workspace.");
-      return;
-    }
-    if (!navigator.onLine) {
-      setError("Vanita Customer import is online-only because duplicate and migration receipts must be checked atomically.");
-      return;
-    }
-    if (file.size > 5_000_000) {
-      setError("Choose a Vanita JSON snapshot smaller than 5 MB.");
-      return;
-    }
-
-    setImporting(true);
-    setError("");
-    setNotice("");
-    setImportResult(null);
-    try {
-      const parsed = JSON.parse(await file.text()) as unknown;
-      const clients = extractVanitaClients(parsed);
-      const batchId = crypto.randomUUID();
-      const response = await fetch("/api/customers/import", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": batchId,
-        },
-        body: JSON.stringify({
-          workspaceId,
-          batchId,
-          sourceSnapshotId: `${file.name}:${file.lastModified}:${clients.length}`,
-          clients,
-        }),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error ?? "Vanita Customers could not be imported.");
-      const importSummary = result.result as ImportResult;
-      setImportResult(importSummary);
-      setNotice(`${importSummary.createdCount} created · ${importSummary.linkedCount} linked · ${importSummary.skippedCount} already imported · ${importSummary.errorCount} errors.`);
-      await reloadCurrent(true);
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "Vanita Customers could not be imported.");
-    } finally {
-      setImporting(false);
-    }
-  }
-
   if (!loaded) {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading Customers…</main>;
   }
@@ -731,10 +666,6 @@ export default function CustomersPage() {
               disabled={supportMode || mode !== "cloud" || offline || !workspaceReady}
               onImported={() => reloadCurrent(true)}
             />
-            <input ref={importInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importSnapshot(event)} />
-            <Button variant="quiet" disabled={supportMode || importing || mode !== "cloud" || offline || !workspaceReady} onClick={() => importInputRef.current?.click()} title="Import a legacy Vanita JSON snapshot">
-              <FileUp size={16} /> {importing ? "Importing legacy…" : "Legacy Vanita JSON"}
-            </Button>
             <Button onClick={openCreate} disabled={supportMode}>
               <UserRoundPlus size={17} /> Add Customer
             </Button>
@@ -758,14 +689,6 @@ export default function CustomersPage() {
       ) : null}
 
       {notice ? <div className="settings-note" style={{ marginBottom: 18 }}><strong>Customers updated</strong><p>{notice}</p></div> : null}
-
-      {importResult?.exceptions?.length ? (
-        <div className="settings-note" style={{ marginBottom: 18 }}>
-          <strong>{importResult.errorCount} import exception{importResult.errorCount === 1 ? "" : "s"}</strong>
-          <p>The batch completed without partial rows for failed records. Review the source indexes below and correct the snapshot before retrying.</p>
-          <ul>{importResult.exceptions.slice(0, 10).map((item) => <li key={`${item.index}-${item.message}`}>Record {item.index}: {item.message}</li>)}</ul>
-        </div>
-      ) : null}
 
       {pendingCount > 0 ? (
         <div className="settings-note" style={{ marginBottom: 18 }}>
