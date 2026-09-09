@@ -107,6 +107,9 @@ jobs:
         shell: bash
         run: |
           npm install --no-save --package-lock=false @playwright/test@1.55.0
+          # Playwright downloads Chromium itself; avoid an unrelated runner apt
+          # source whose mirror can be inconsistent while package indexes sync.
+          grep -rl 'dl\.google\.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
           npx playwright install --with-deps chromium
 
       - name: Build exact candidate

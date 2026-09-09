@@ -178,7 +178,12 @@ jobs:
         run: npm install --no-save --package-lock=false @playwright/test@1.55.0
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          # Playwright downloads Chromium itself; the runner's Google Chrome apt
+          # source is unrelated and can be temporarily inconsistent during sync.
+          grep -rl 'dl\.google\.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          npx playwright install --with-deps chromium
 
       - name: Build application
         run: npm run build
@@ -235,7 +240,10 @@ jobs:
         run: npm install --no-save --package-lock=false @playwright/test@1.55.0
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        shell: bash
+        run: |
+          grep -rl 'dl\.google\.com/linux/chrome' /etc/apt/sources.list.d 2>/dev/null | xargs -r sudo rm -f
+          npx playwright install --with-deps chromium
 
       - name: Authenticated owner journeys
         env:
