@@ -179,7 +179,8 @@ begin
     then raise exception 'Commercially active workspaces cannot be marked for development resets'; end if;
     insert into public.founder_development_workspaces(target_workspace_id,enabled_by,reason,enabled_at)
     values(target_workspace_id,target_actor_user_id,btrim(target_reason),target_occurred_at)
-    on conflict(target_workspace_id) do update set enabled_by=excluded.enabled_by,reason=excluded.reason,enabled_at=excluded.enabled_at;
+    on conflict on constraint founder_development_workspaces_pkey
+    do update set enabled_by=excluded.enabled_by,reason=excluded.reason,enabled_at=excluded.enabled_at;
   else
     delete from public.founder_development_workspaces where founder_development_workspaces.target_workspace_id=$1;
   end if;
