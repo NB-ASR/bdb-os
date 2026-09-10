@@ -238,7 +238,7 @@ export async function GET() {
     const admin = createAdminClient();
     if (!admin) throw new Error("NOT_CONFIGURED");
     return Response.json(
-      { ...(await dashboard(admin)), actorUserId: identity.userId },
+      { ...(await dashboard(admin)), actorUserId: identity.userId, actorRole: identity.role },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

@@ -31,6 +31,7 @@ import {
   type FounderAccount,
 } from "@/components/founder-account-workspaces";
 import { FounderClientUsage } from "@/components/founder-client-usage";
+import { FounderDevelopmentTools } from "@/components/founder-development-tools";
 
 type Plan = { id: string; code: string; name: string; description: string; is_active: boolean };
 type Feature = { key: string; name: string; description: string; category: string; route: string | null };
@@ -114,6 +115,7 @@ type Dashboard = {
   memberships: Membership[];
   accounts: FounderAccount[];
   actorUserId: string;
+  actorRole: "founder" | "support";
   groups: Group[];
   groupLinks: GroupLink[];
   audit: Audit[];
@@ -128,7 +130,7 @@ type BrandingState = {
   updatedAt: string | null;
 };
 type Tab = "clients" | "accounts" | "groups" | "plans" | "audit";
-type ClientSection = "profile" | "users" | "modules" | "usage" | "billing" | "branding" | "danger";
+type ClientSection = "profile" | "users" | "modules" | "usage" | "billing" | "branding" | "development" | "danger";
 
 type WorkspaceDeletionPreview = {
   can_delete: boolean;
@@ -144,6 +146,7 @@ const clientSections: Array<{ key: ClientSection; label: string }> = [
   { key: "usage", label: "Usage" },
   { key: "billing", label: "Billing" },
   { key: "branding", label: "Branding" },
+  { key: "development", label: "Development Tools" },
   { key: "danger", label: "Danger Zone" },
 ];
 
@@ -633,7 +636,7 @@ export default function AdminPage() {
                 </div>
 
                 <div className="admin-client-tabs" role="tablist" aria-label={`Manage ${activeWorkspace.name}`}>
-                  {clientSections.map((section) => (
+                  {clientSections.filter((section) => section.key !== "development" || data.actorRole === "founder").map((section) => (
                     <button key={section.key} type="button" role="tab" aria-selected={clientSection === section.key} className={clientSection === section.key ? "active" : ""} onClick={() => openClientSection(section.key)}>{section.label}</button>
                   ))}
                 </div>
@@ -803,6 +806,10 @@ export default function AdminPage() {
                       </article>
                     </div>
                   </section>
+                )}
+
+                {clientSection === "development" && data.actorRole === "founder" && (
+                  <FounderDevelopmentTools key={activeWorkspace.id} workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} />
                 )}
 
                 {clientSection === "danger" && (

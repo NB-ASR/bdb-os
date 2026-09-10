@@ -94,6 +94,7 @@ const pendingMigrations = [
   "20260830190000_catalogue_engine_pass1.sql",
   "20260831144000_catalogue_engine_scale_pass3.sql",
   "20260908143000_customer_review_delete_pagination.sql",
+  "20260910120000_founder_development_tools.sql",
 ];
 const registeredMigrationFiles = migrationFiles.filter((name) => !pendingMigrations.includes(name));
 const actualPendingMigrations = migrationFiles.filter((name) => pendingMigrations.includes(name));
