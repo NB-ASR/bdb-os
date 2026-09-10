@@ -13,20 +13,22 @@ const pass1Migration = await readFile("supabase/migrations/20260823195500_custom
 const archiveGuardMigration = await readFile("supabase/migrations/20260823202000_customer_archived_sale_guard_pass1.sql", "utf8");
 const pass2Migration = await readFile("supabase/migrations/20260823203500_customer_scale_offline_pass2.sql", "utf8");
 const pass4Migration = await readFile("supabase/migrations/20260823224000_customer_engine_closure_pass4.sql", "utf8");
+const reviewMigration = await readFile("supabase/migrations/20260908143000_customer_review_delete_pagination.sql", "utf8");
+const registerMigration = await readFile("supabase/migrations/20260910230000_customer_register_reliability_navigation.sql", "utf8");
 const api = await readFile("src/app/api/customers/route.ts", "utf8");
 const documentIdentityApi = await readFile("src/app/api/customers/document-identity/route.ts", "utf8");
 const importApi = await readFile("src/app/api/customers/import/route.ts", "utf8");
+const deleteApi = await readFile("src/app/api/customers/delete/route.ts", "utf8");
+const reviewApi = await readFile("src/app/api/customers/reviews/route.ts", "utf8");
 const queue = await readFile("src/lib/modules/customer-queue.ts", "utf8");
 const cache = await readFile("src/lib/modules/customer-cache.ts", "utf8");
+const registerCache = await readFile("src/lib/modules/customer-register-cache.ts", "utf8");
 const importer = await readFile("src/lib/modules/customer-import.ts", "utf8");
 const standardImporter = await readFile("src/components/standard-data-import.tsx", "utf8");
 const xlsxImporter = await readFile("src/lib/modules/xlsx-import.ts", "utf8");
 const page = await readFile("src/app/customers/page.tsx", "utf8");
 const profilePage = await readFile("src/app/customers/[customerId]/page.tsx", "utf8");
 const databaseTest = await readFile("supabase/tests/customer_foundation.sql", "utf8");
-const reviewMigration = await readFile("supabase/migrations/20260908143000_customer_review_delete_pagination.sql", "utf8");
-const deleteApi = await readFile("src/app/api/customers/delete/route.ts", "utf8");
-const reviewApi = await readFile("src/app/api/customers/reviews/route.ts", "utf8");
 
 for (const statement of [
   "alter table public.customers",
@@ -72,10 +74,11 @@ assert.doesNotMatch(api, /body\.notes/, "Normal Customer lifecycle API must not 
 assert.doesNotMatch(api, /\.from\("customers"\)\.insert/);
 assert.match(api, /DEFAULT_PAGE_SIZE = 50/);
 assert.match(api, /MAX_PAGE_SIZE = 50/);
-assert.match(api, /list_customer_register_page/, "Customer GET must use the bounded database register.");
-assert.match(api, /customer_register_summary/, "Customer totals must be loaded separately from page rows.");
-assert.match(api, /afterName/);
-assert.match(api, /afterId/);
+assert.match(api, /read_customer_register_page/, "Customer GET must use the authorized composed register read model.");
+assert.match(api, /p_page: page/, "Customer GET must request an explicit page rather than requiring cursor traversal.");
+assert.match(api, /p_include_summary: includeSummary/, "Customer summary must remain optional during criteria/page navigation.");
+assert.doesNotMatch(api, /afterName|afterId/, "The direct-page Customer route must not retain browser cursor bookkeeping.");
+assert.doesNotMatch(api, /customer_register_summary/, "The Customer route must not invoke the old row-RLS summary path.");
 assert.match(documentIdentityApi, /execute_customer_command/, "Business Document VAT updates must use the hardened Customer command boundary.");
 assert.doesNotMatch(documentIdentityApi, /admin\.rpc\("apply_customer_command"/i, "Business Document VAT updates must not use the retired Customer RPC.");
 assert.match(documentIdentityApi, /p_notes: null/, "Business Document VAT updates must preserve legacy Customer context rather than rewriting it.");
@@ -97,12 +100,18 @@ assert.match(cache, /CUSTOMER_CACHE_LIMIT = 300/);
 assert.match(cache, /bdb-customers-cache-v2/);
 assert.match(cache, /mergeCustomerCache/);
 assert.match(cache, /readCustomerSummary/);
+assert.match(registerCache, /bdb-customer-register-pages-v1/);
+assert.match(registerCache, /MAX_PAGES_PER_WORKSPACE = 20/);
+assert.match(registerCache, /workspaceId === workspaceId/);
+assert.match(registerCache, /entry\.filter === filter/);
+assert.match(registerCache, /entry\.search === normalisedSearch/);
+assert.match(registerCache, /entry\.page === page/);
 assert.match(importer, /record\.clients/);
 assert.match(importer, /data\.clients/);
 
 assert.match(page, /Email is optional/);
 assert.match(page, /<StandardDataImport[\s\S]*?entity="customers"/, "Customer directory must expose the standard customer-ready CSV/XLSX importer.");
-assert.match(page, /onImported=\{\(\) => reloadCurrent\(true\)\}/, "Standard Customer import must await the existing bounded register refresh.");
+assert.match(page, /onImported=\{\(\) => reloadCurrent\(true\)\}/, "Standard Customer import must await register refresh.");
 assert.match(standardImporter, /entity === "customers" \? "Customers"/, "Standard importer must present Customers as a first-class business import.");
 assert.match(standardImporter, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/, "Standard Customer import must expose standard XLSX files in the browser file picker.");
 assert.match(standardImporter, /\.csv,text\/csv/, "Standard Customer import must continue to expose CSV files in the browser file picker.");
@@ -129,10 +138,20 @@ assert.match(page, /notes: customer\.notes/, "Optimistic Customer edits must pre
 assert.doesNotMatch(page, /customer-notes/, "Customer directory must not expose a second mutable notes field.");
 assert.match(page, /router\.push\(`\/customers\/\$\{id\}`\)/, "A confirmed new Customer must land on its Customer profile.");
 assert.match(page, /PAGE_SIZE = 50/);
-assert.match(page, />Previous</);
-assert.match(page, />Next</);
-assert.match(page, /Page \{pageNumber\}/, "Customer register must expose 50-row page navigation.");
-assert.match(page, /mergeCustomerCache/, "Cloud pages must feed a bounded offline working set.");
+assert.match(page, /pagerTokens/);
+assert.match(page, /aria-label="First Customer page"/);
+assert.match(page, /aria-label="Previous Customer page"/);
+assert.match(page, /aria-label="Next Customer page"/);
+assert.match(page, /aria-label="Last Customer page"/);
+assert.match(page, /aria-current=\{token === pageMeta\.number \? "page" : undefined\}/);
+assert.match(page, /pageMeta\.totalFiltered/, "Customer register must present the filtered total returned by the server.");
+assert.match(page, /readCustomerRegisterPage/, "Exact cloud pages must be reusable offline when cached.");
+assert.match(page, /That Customer page is not cached on this device/, "Uncached offline pages must fail clearly rather than claiming completeness.");
+assert.match(page, /if \(filter === "review"\) return false/, "Persisted Customer data-quality flags must not place Customer records in Import Review.");
+assert.match(page, /Incomplete details/, "Persisted Customers needing data-quality attention must remain Customers with a clear indicator.");
+assert.match(page, /rowKind: "import_review"/, "The register UI must keep import exceptions explicitly typed.");
+assert.match(page, /Review contains unresolved import exceptions only/, "The user-facing Review meaning must be explicit.");
+assert.match(page, /mergeCustomerCache/, "Cloud pages must continue feeding the bounded Customer working set.");
 assert.match(page, /CustomerSubmitError/);
 assert.match(page, /commandError\.confirmedRejected/, "Only confirmed server rejections may be removed as failed Customer commands.");
 assert.match(page, /same retry key/, "Ambiguous outcomes must keep the original idempotency key.");
@@ -151,6 +170,23 @@ assert.match(reviewMigration, /delete_archived_customer/);
 assert.match(reviewMigration, /customer_delete_receipts/);
 assert.match(reviewMigration, /membership\.role = 'owner'/);
 assert.match(reviewMigration, /foreign_key_violation/);
+
+assert.match(registerMigration, /create or replace function public\.read_customer_register_page/i);
+assert.match(registerMigration, /stable[\s\S]*security definer/i, "The composed register must bypass row-by-row RLS only behind an explicit permission boundary.");
+assert.match(registerMigration, /if not private\.has_workspace_permission\(p_workspace_id, 'customers', 'view'\)/i, "The composed register must authorize the requested workspace before reading rows.");
+assert.match(registerMigration, /customer\.workspace_id = p_workspace_id/i, "Every Customer register branch must remain workspace-scoped.");
+assert.match(registerMigration, /review\.workspace_id = p_workspace_id/i, "Every import-review register branch must remain workspace-scoped.");
+assert.match(registerMigration, /review\.status = 'pending'/i, "Review must mean unresolved import exceptions only.");
+assert.match(registerMigration, /'rowKind', 'customer'/i);
+assert.match(registerMigration, /'rowKind', 'import_review'/i);
+assert.match(registerMigration, /p_filter = 'review'/i);
+assert.match(registerMigration, /p_filter in \('active', 'archived'\)/i);
+assert.match(registerMigration, /limit v_limit offset v_offset/i, "Direct pages must remain bounded to the validated 50-row limit.");
+assert.match(registerMigration, /v_page := least\(v_page, v_total_pages\)/i, "Page requests must clamp after concurrent result-set shrinkage.");
+assert.match(registerMigration, /customer_import_review_items_workspace_pending_created_idx/i);
+assert.match(registerMigration, /p_include_summary/i);
+assert.match(registerMigration, /'reviewCount'/i);
+assert.doesNotMatch(registerMigration, /(insert into|update|delete from) public\.(customers|invoices|payments|credit_notes|delivery_notes|payment_allocations)/i, "The Customer register read model must never mutate canonical or financial records.");
 
 assert.match(profilePage, /vat_number: string \| null/, "Customer 360 must type the canonical VAT identity.");
 assert.match(profilePage, /customer\.vat_number/, "Customer 360 must display the canonical VAT identity.");
@@ -186,7 +222,7 @@ assert.match(pass2Migration, /create or replace function public\.list_customer_r
 assert.match(pass2Migration, /\(customer\.name, customer\.id\) > \(p_after_name, p_after_id\)/i);
 assert.match(pass2Migration, /limit least\(greatest\(coalesce\(p_limit, 100\), 1\), 100\) \+ 1/i);
 assert.match(pass2Migration, /customer\.search_text like '%' \|\| lower\(trim\(p_search\)\) \|\| '%'/i);
-assert.match(pass2Migration, /security invoker/i, "Paged Customer reads must retain the caller's RLS boundary.");
+assert.match(pass2Migration, /security invoker/i, "The historical keyset function remains pinned as migration history; the replacement has its own explicit authorization contract.");
 assert.match(pass2Migration, /customer_register_summary/i);
 
 assert.match(pass4Migration, /create table public\.customer_command_claims/i, "Pass 4 must bind Customer retry keys to request identity.");
@@ -209,4 +245,4 @@ assert.match(databaseTest, /final 64 UUID bits/i);
 assert.match(databaseTest, /covering indexes/i);
 assert.match(databaseTest, /sales_active_customer_guard/i, "Database tests must pin the archived-Customer Sale guard.");
 
-console.log("Customer foundation, scale, bounded offline state, archive guards, hardened replay and customer-ready CSV/XLSX import contracts are internally consistent.");
+console.log("Customer foundation, direct-page register, import-review semantics, exact offline pages, archive guards, hardened replay and customer-ready CSV/XLSX import contracts are internally consistent.");
