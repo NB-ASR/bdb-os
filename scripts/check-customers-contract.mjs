@@ -28,6 +28,7 @@ const standardImporter = await readFile("src/components/standard-data-import.tsx
 const xlsxImporter = await readFile("src/lib/modules/xlsx-import.ts", "utf8");
 const page = await readFile("src/app/customers/page.tsx", "utf8");
 const profilePage = await readFile("src/app/customers/[customerId]/page.tsx", "utf8");
+const serviceWorker = await readFile("public/sw.js", "utf8");
 const databaseTest = await readFile("supabase/tests/customer_foundation.sql", "utf8");
 
 for (const statement of [
@@ -106,12 +107,13 @@ assert.match(registerCache, /workspaceId === workspaceId/);
 assert.match(registerCache, /entry\.filter === filter/);
 assert.match(registerCache, /entry\.search === normalisedSearch/);
 assert.match(registerCache, /entry\.page === page/);
+assert.match(registerCache, /invalidateCustomerRegisterPages/, "Confirmed Customer mutations must be able to invalidate stale register pages.");
 assert.match(importer, /record\.clients/);
 assert.match(importer, /data\.clients/);
 
 assert.match(page, /Email is optional/);
 assert.match(page, /<StandardDataImport[\s\S]*?entity="customers"/, "Customer directory must expose the standard customer-ready CSV/XLSX importer.");
-assert.match(page, /onImported=\{\(\) => reloadCurrent\(true\)\}/, "Standard Customer import must await register refresh.");
+assert.match(page, /onImported=\{\(\) => \{[\s\S]*?invalidateCustomerRegisterPages\(workspaceId\)[\s\S]*?reloadCurrent\(true\)/, "Standard Customer import must invalidate stale pages before awaiting register refresh.");
 assert.match(standardImporter, /entity === "customers" \? "Customers"/, "Standard importer must present Customers as a first-class business import.");
 assert.match(standardImporter, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/, "Standard Customer import must expose standard XLSX files in the browser file picker.");
 assert.match(standardImporter, /\.csv,text\/csv/, "Standard Customer import must continue to expose CSV files in the browser file picker.");
@@ -152,6 +154,11 @@ assert.match(page, /Incomplete details/, "Persisted Customers needing data-quali
 assert.match(page, /rowKind: "import_review"/, "The register UI must keep import exceptions explicitly typed.");
 assert.match(page, /Review contains unresolved import exceptions only/, "The user-facing Review meaning must be explicit.");
 assert.match(page, /mergeCustomerCache/, "Cloud pages must continue feeding the bounded Customer working set.");
+assert.match(page, /applyConfirmedCommand/, "Confirmed Customer commands must reconcile the local working set before refresh.");
+assert.match(page, /invalidateCustomerRegisterPages\(workspaceId\)/, "Confirmed Customer mutations must invalidate stale exact register pages.");
+assert.match(page, /The Customer change was saved, but the register could not refresh/, "A post-success refresh failure must not turn a confirmed Customer command into an ambiguous command.");
+assert.match(serviceWorker, /APP_SHELL_CACHE/, "Offline navigation must have a dedicated application shell cache.");
+assert.match(serviceWorker, /url\.pathname === "\/customers"/, "The Customer register shell must be cached for true offline reload.");
 assert.match(page, /CustomerSubmitError/);
 assert.match(page, /commandError\.confirmedRejected/, "Only confirmed server rejections may be removed as failed Customer commands.");
 assert.match(page, /same retry key/, "Ambiguous outcomes must keep the original idempotency key.");
