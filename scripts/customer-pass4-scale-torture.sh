@@ -175,8 +175,8 @@ SQL
 ACTIVE_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
 ARCHIVED_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
 SEARCH_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 50;")"
-ACTIVE_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
-ARCHIVED_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
+ACTIVE_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; set enable_bitmapscan=off; set enable_sort=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
+ARCHIVED_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; set enable_bitmapscan=off; set enable_sort=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
 
 assert_execution_under() {
   local label="$1"
@@ -194,20 +194,21 @@ assert_execution_under() {
 # Deep OFFSET pages can legitimately use a sequential scan when PostgreSQL
 # estimates that visiting most rows in a 25k workspace is cheaper than walking
 # an index. Gate the real default-planner latency, then separately prove the
-# workspace/status/name index remains a viable path. This avoids treating a
-# planner cost choice as a performance regression while still protecting both
-# latency and index availability.
+# order-preserving workspace/status/name index remains an executable path by
+# disabling alternative sequential, bitmap and explicit-sort plans for this
+# diagnostic only. This avoids treating a normal planner cost choice as a
+# performance regression while still protecting both latency and index health.
 assert_execution_under "Customer deepest active page query" "${ACTIVE_PLAN}" 500
 assert_execution_under "Customer deepest archived page query" "${ARCHIVED_PLAN}" 500
 assert_execution_under "Customer substring search query" "${SEARCH_PLAN}" 500
 
 if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ACTIVE_INDEX_PLAN}"; then
-  echo "Customer active workspace/status/name index is not a viable indexed path:" >&2
+  echo "Customer active workspace/status/name index is not a viable order-preserving path:" >&2
   echo "${ACTIVE_INDEX_PLAN}" >&2
   exit 1
 fi
 if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ARCHIVED_INDEX_PLAN}"; then
-  echo "Customer archived workspace/status/name index is not a viable indexed path:" >&2
+  echo "Customer archived workspace/status/name index is not a viable order-preserving path:" >&2
   echo "${ARCHIVED_INDEX_PLAN}" >&2
   exit 1
 fi
