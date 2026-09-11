@@ -82,6 +82,8 @@ declare
   page_value integer;
   page_count integer;
   row_kind text;
+  started_at timestamptz;
+  elapsed_ms numeric;
 begin
   select public.read_customer_register_page('${WORKSPACE}'::uuid,1,50,null,'active',true) into result;
   total_value := (result #>> '{page,totalFiltered}')::bigint;
@@ -97,7 +99,12 @@ begin
     raise exception 'Customer composed register summary mismatch: %', result->'summary';
   end if;
 
+  started_at := clock_timestamp();
   select public.read_customer_register_page('${WORKSPACE}'::uuid,450,50,null,'active',false) into result;
+  elapsed_ms := extract(epoch from (clock_timestamp() - started_at)) * 1000;
+  if elapsed_ms > 1000 then
+    raise exception 'Customer deepest active page exceeded 1000ms at 25k scale: % ms', round(elapsed_ms, 2);
+  end if;
   if (result #>> '{page,number}')::integer <> 450
      or jsonb_array_length(result->'items') <> 50
      or (result #>> '{page,totalPages}')::integer <> 450 then
@@ -148,7 +155,12 @@ begin
     raise exception 'Customer All filtered search mismatch: %', result;
   end if;
 
+  started_at := clock_timestamp();
   select public.read_customer_register_page('${WORKSPACE}'::uuid,509,50,null,'all',false) into result;
+  elapsed_ms := extract(epoch from (clock_timestamp() - started_at)) * 1000;
+  if elapsed_ms > 1000 then
+    raise exception 'Mixed All last page exceeded 1000ms at 25k scale: % ms', round(elapsed_ms, 2);
+  end if;
   if (result #>> '{page,totalFiltered}')::bigint <> 25410
      or (result #>> '{page,totalPages}')::integer <> 509
      or jsonb_array_length(result->'items') <> 10 then
@@ -160,20 +172,43 @@ end
 reset role;
 SQL
 
-ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
-ARCHIVED_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
-SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 50;")"
+ACTIVE_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
+ARCHIVED_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
+SEARCH_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 50;")"
+ACTIVE_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
+ARCHIVED_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
 
-# Direct page navigation uses OFFSET only after workspace/status/search constraints.
-# The 25k fixture proves the deepest V1 pages continue to traverse indexed paths.
-if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ACTIVE_PLAN}"; then
-  echo "Customer deepest active page did not use an indexed workspace/name path:" >&2
-  echo "${ACTIVE_PLAN}" >&2
+assert_execution_under() {
+  local label="$1"
+  local plan="$2"
+  local max_ms="$3"
+  local elapsed
+  elapsed="$(sed -n 's/.*Execution Time: \([0-9.]*\) ms/\1/p' <<<"${plan}" | tail -n 1)"
+  if [[ -z "${elapsed}" ]] || ! awk -v elapsed="${elapsed}" -v max="${max_ms}" 'BEGIN { exit !(elapsed <= max) }'; then
+    echo "${label} exceeded ${max_ms}ms or did not report execution time (actual: ${elapsed:-missing}ms):" >&2
+    echo "${plan}" >&2
+    exit 1
+  fi
+}
+
+# Deep OFFSET pages can legitimately use a sequential scan when PostgreSQL
+# estimates that visiting most rows in a 25k workspace is cheaper than walking
+# an index. Gate the real default-planner latency, then separately prove the
+# workspace/status/name index remains a viable path. This avoids treating a
+# planner cost choice as a performance regression while still protecting both
+# latency and index availability.
+assert_execution_under "Customer deepest active page query" "${ACTIVE_PLAN}" 500
+assert_execution_under "Customer deepest archived page query" "${ARCHIVED_PLAN}" 500
+assert_execution_under "Customer substring search query" "${SEARCH_PLAN}" 500
+
+if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ACTIVE_INDEX_PLAN}"; then
+  echo "Customer active workspace/status/name index is not a viable indexed path:" >&2
+  echo "${ACTIVE_INDEX_PLAN}" >&2
   exit 1
 fi
-if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ARCHIVED_PLAN}"; then
-  echo "Customer deepest archived page did not use the status/name index:" >&2
-  echo "${ARCHIVED_PLAN}" >&2
+if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ARCHIVED_INDEX_PLAN}"; then
+  echo "Customer archived workspace/status/name index is not a viable indexed path:" >&2
+  echo "${ARCHIVED_INDEX_PLAN}" >&2
   exit 1
 fi
 if ! grep -q 'customers_search_text_trgm_idx' <<<"${SEARCH_PLAN}"; then
@@ -184,4 +219,6 @@ fi
 
 echo "Customer register torture: 25,000 Customers + 410 unresolved import reviews"
 echo "Direct first/deep/last pages, page clamping, Review semantics, All composition and filtered search passed"
-echo "Customer register indexed page/query-plan torture passed"
+echo "Deep direct pages remained below 1000ms through the register function and below 500ms at the underlying default-planner query"
+echo "Customer workspace/status/name and trigram index paths remain available"
+echo "Customer register scale/query-plan torture passed"
