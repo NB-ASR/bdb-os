@@ -296,7 +296,7 @@ export default function CustomersPage() {
   const pendingCount = queuedCommands.length;
   const ambiguousCount = queuedCommands.filter((command) => command.lastFailureKind === "ambiguous").length;
 
-  const useCachedRegisterPage = useCallback((
+  const loadCachedRegisterPage = useCallback((
     currentWorkspaceId: string,
     targetFilter: CustomerFilter,
     targetSearch: string,
@@ -330,7 +330,7 @@ export default function CustomersPage() {
 
     setLoadingPage(true);
     if (!navigator.onLine) {
-      const found = useCachedRegisterPage(currentWorkspaceId, targetFilter, targetSearch, targetPage);
+      const found = loadCachedRegisterPage(currentWorkspaceId, targetFilter, targetSearch, targetPage);
       setLoadingPage(false);
       if (!found) throw new Error("That Customer page is not cached on this device. Reconnect to load it.");
       return true;
@@ -349,7 +349,7 @@ export default function CustomersPage() {
     try {
       response = await fetch(`/api/customers?${params.toString()}`, { cache: "no-store" });
     } catch (networkError) {
-      const found = useCachedRegisterPage(currentWorkspaceId, targetFilter, targetSearch, targetPage);
+      const found = loadCachedRegisterPage(currentWorkspaceId, targetFilter, targetSearch, targetPage);
       setLoadingPage(false);
       if (found) return true;
       throw networkError;
@@ -380,7 +380,7 @@ export default function CustomersPage() {
     setOffline(false);
     setLoadingPage(false);
     return true;
-  }, [useCachedRegisterPage]);
+  }, [loadCachedRegisterPage]);
 
   const reloadCurrent = useCallback(async (includeSummary = false) => {
     if (!workspaceId || workspaceId === "demo") return false;
@@ -412,7 +412,7 @@ export default function CustomersPage() {
         }
         if (!navigator.onLine) {
           setOffline(true);
-          const exactPage = fallbackWorkspace ? useCachedRegisterPage(fallbackWorkspace, "active", "", 1) : false;
+          const exactPage = fallbackWorkspace ? loadCachedRegisterPage(fallbackWorkspace, "active", "", 1) : false;
           if (exactPage) {
             setNotice("Showing the last cached Active Customer page. Cached pages remain usable offline; uncached pages require a connection.");
           } else if (cachedCustomers.length || queued.length) {
@@ -457,7 +457,7 @@ export default function CustomersPage() {
     }
     void initialise();
     return () => { active = false; };
-  }, [loadRegister, mode, useCachedRegisterPage]);
+  }, [loadCachedRegisterPage, loadRegister, mode]);
 
   useEffect(() => {
     if (mode === "demo" && loaded) {
