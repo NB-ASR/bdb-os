@@ -91,10 +91,13 @@ test("Payment lifecycle has a detail workspace backed by existing command action
   assert.match(detailPage, /runtime\.dispatch\("payment-reverse"/);
 });
 
-test("service worker caches Accounts route shells but never financial API responses", async () => {
+test("service worker caches offline application route shells but never API responses", async () => {
   const worker = await source("public/sw.js");
   assert.match(worker, /request\.mode !== "navigate"/);
-  assert.match(worker, /url\.pathname === "\/accounts" \|\| url\.pathname\.startsWith\("\/accounts\/"\)/);
-  assert.match(worker, /ACCOUNTS_SHELL_CACHE/);
+  assert.match(worker, /url\.pathname === "\/accounts"/);
+  assert.match(worker, /url\.pathname\.startsWith\("\/accounts\/"\)/);
+  assert.match(worker, /url\.pathname === "\/customers"/);
+  assert.match(worker, /url\.pathname\.startsWith\("\/customers\/"\)/);
+  assert.match(worker, /APP_SHELL_CACHE/);
   assert.doesNotMatch(worker, /cache\.put\([^\n]*\/api\//);
 });
