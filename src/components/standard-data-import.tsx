@@ -404,7 +404,13 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
           failed = failures.length;
           setSummary({ imported: created, needsReview: 0, failed });
           setPrepared(null);
-          if (created > 0 && onImported) await onImported().catch(() => undefined);
+          if (created > 0 && onImported) {
+            try {
+              await onImported();
+            } catch {
+              // Keep the review-staging failure as the actionable import result.
+            }
+          }
           setStatus(reviewError instanceof Error ? reviewError.message : "Rows needing review could not be saved.");
           return;
         }
