@@ -193,22 +193,22 @@ assert_execution_under() {
 
 # Deep OFFSET pages can legitimately use a sequential scan when PostgreSQL
 # estimates that visiting most rows in a 25k workspace is cheaper than walking
-# an index. Gate the real default-planner latency, then separately prove the
-# order-preserving workspace/status/name index remains an executable path by
-# disabling alternative sequential, bitmap and explicit-sort plans for this
-# diagnostic only. This avoids treating a normal planner cost choice as a
-# performance regression while still protecting both latency and index health.
+# an index. Gate the real default-planner latency, then separately prove an
+# order-preserving workspace/name cursor index remains executable by disabling
+# alternative sequential, bitmap and explicit-sort plans for this diagnostic
+# only. Both the generic workspace/name cursor and the status-specific cursor
+# are valid ordered access paths; planner cost may legitimately choose either.
 assert_execution_under "Customer deepest active page query" "${ACTIVE_PLAN}" 500
 assert_execution_under "Customer deepest archived page query" "${ARCHIVED_PLAN}" 500
 assert_execution_under "Customer substring search query" "${SEARCH_PLAN}" 500
 
-if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ACTIVE_INDEX_PLAN}"; then
-  echo "Customer active workspace/status/name index is not a viable order-preserving path:" >&2
+if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ACTIVE_INDEX_PLAN}"; then
+  echo "Customer active register has no viable order-preserving workspace/name cursor path:" >&2
   echo "${ACTIVE_INDEX_PLAN}" >&2
   exit 1
 fi
-if ! grep -q 'customers_workspace_status_name_cursor_idx' <<<"${ARCHIVED_INDEX_PLAN}"; then
-  echo "Customer archived workspace/status/name index is not a viable order-preserving path:" >&2
+if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ARCHIVED_INDEX_PLAN}"; then
+  echo "Customer archived register has no viable order-preserving workspace/name cursor path:" >&2
   echo "${ARCHIVED_INDEX_PLAN}" >&2
   exit 1
 fi
@@ -221,5 +221,5 @@ fi
 echo "Customer register torture: 25,000 Customers + 410 unresolved import reviews"
 echo "Direct first/deep/last pages, page clamping, Review semantics, All composition and filtered search passed"
 echo "Deep direct pages remained below 1000ms through the register function and below 500ms at the underlying default-planner query"
-echo "Customer workspace/status/name and trigram index paths remain available"
+echo "Customer workspace/name cursor and trigram index paths remain available"
 echo "Customer register scale/query-plan torture passed"
