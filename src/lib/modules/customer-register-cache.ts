@@ -83,3 +83,10 @@ export function writeCustomerRegisterPage<T>(
   const otherPages = current.filter((entry) => entry.workspaceId !== workspaceId);
   writeAll([next, ...workspacePages].slice(0, MAX_PAGES_PER_WORKSPACE).concat(otherPages));
 }
+
+export function invalidateCustomerRegisterPages(workspaceId: string) {
+  const current = readAll<unknown>();
+  const next = current.filter((entry) => entry.workspaceId !== workspaceId);
+  if (next.length === current.length) return;
+  writeAll(next);
+}
