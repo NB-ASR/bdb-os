@@ -40,6 +40,7 @@ import {
   type CachedCustomerSummary,
 } from "@/lib/modules/customer-cache";
 import {
+  invalidateCustomerRegisterPages,
   readCustomerRegisterPage,
   writeCustomerRegisterPage,
   type CustomerRegisterPageMeta,
@@ -194,6 +195,17 @@ function applyCommand(customers: readonly CustomerRow[], command: CustomerQueued
       pending: true,
     };
   });
+}
+
+function applyConfirmedCommand(customers: readonly CustomerRow[], command: CustomerQueuedCommand): CustomerRow[] {
+  const customerId = String(command.payload.id);
+  return applyCommand(customers, command).map((customer) => (
+    customer.id === customerId ? { ...customer, pending: false } : customer
+  ));
+}
+
+function applyConfirmedCommands(customers: readonly CustomerRow[], commands: readonly CustomerQueuedCommand[]) {
+  return commands.reduce<CustomerRow[]>((current, command) => applyConfirmedCommand(current, command), [...customers]);
 }
 
 function dedupeCustomers(customers: readonly CustomerRow[]) {
@@ -500,9 +512,17 @@ export default function CustomersPage() {
         replayRequested.current = false;
         setError("");
         try {
+          const queuedBeforeFlush = readCustomerQueue(workspaceId);
           const result = await flushCustomerQueue(workspaceId, () => setQueuedCommands(readCustomerQueue(workspaceId)));
           setQueuedCommands(readCustomerQueue(workspaceId));
           if (result.completed) {
+            const completedCommands = queuedBeforeFlush.slice(0, result.completed);
+            setBaseCustomers((current) => applyConfirmedCommands(current, completedCommands));
+            writeCustomerCache(
+              workspaceId,
+              applyConfirmedCommands(readCustomerCache<CustomerRow>(workspaceId), completedCommands),
+            );
+            invalidateCustomerRegisterPages(workspaceId);
             setNotice(`${result.completed} queued Customer change${result.completed === 1 ? "" : "s"} synced with the original retry keys.`);
           }
           if (result.rejected) {
@@ -579,11 +599,6 @@ export default function CustomersPage() {
 
     try {
       await submitCustomerCommand(command);
-      removeCustomerCommand(workspaceId, command.id);
-      setQueuedCommands(readCustomerQueue(workspaceId));
-      await loadRegister(workspaceId, { page: pageMeta.number, search: query, filter, includeSummary: true });
-      setNotice(action === "create" ? "Customer created." : action === "update" ? "Customer updated." : action === "archive" ? "Customer archived." : "Customer restored.");
-      return { ok: true, pending: false };
     } catch (commandError) {
       const message = commandError instanceof Error ? commandError.message : "Customer change could not be saved.";
       const code = commandError instanceof CustomerSubmitError ? commandError.code : "";
@@ -602,6 +617,27 @@ export default function CustomersPage() {
       setError(`${message} BDB OS did not receive a confirmed outcome, so the change remains queued with the same retry key.`);
       return { ok: true, pending: true, code };
     }
+
+    removeCustomerCommand(workspaceId, command.id);
+    setQueuedCommands(readCustomerQueue(workspaceId));
+    setBaseCustomers((current) => applyConfirmedCommand(current, command));
+    writeCustomerCache(workspaceId, applyConfirmedCommand(readCustomerCache<CustomerRow>(workspaceId), command));
+    invalidateCustomerRegisterPages(workspaceId);
+
+    const successNotice = action === "create"
+      ? "Customer created."
+      : action === "update"
+        ? "Customer updated."
+        : action === "archive"
+          ? "Customer archived."
+          : "Customer restored.";
+    setNotice(successNotice);
+    try {
+      await loadRegister(workspaceId, { page: pageMeta.number, search: query, filter, includeSummary: true });
+    } catch (refreshError) {
+      setError(`The Customer change was saved, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
+    }
+    return { ok: true, pending: false };
   }, [filter, loadRegister, mode, pageMeta.number, query, workspaceId]);
 
   const customerById = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
@@ -676,7 +712,12 @@ export default function CustomersPage() {
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error ?? "Review item could not be updated.");
-    await loadRegister(workspaceId, { page: pageMeta.number, search: query, filter, includeSummary: true });
+    invalidateCustomerRegisterPages(workspaceId);
+    try {
+      await loadRegister(workspaceId, { page: pageMeta.number, search: query, filter, includeSummary: true });
+    } catch (refreshError) {
+      throw new Error(`The import review was ${action === "resolve" ? "resolved" : "dismissed"}, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
+    }
   }
 
   async function persistCustomer(allowDuplicate: boolean) {
@@ -765,12 +806,24 @@ export default function CustomersPage() {
       setError(result.error ?? "Customer could not be deleted.");
       return;
     }
+    const deletedId = deleteTarget.id;
+    invalidateCustomerRegisterPages(workspaceId);
+    setBaseCustomers((current) => current.filter((customer) => customer.id !== deletedId));
+    setRegisterItems((current) => current.filter((item) => item.rowKind !== "customer" || item.id !== deletedId));
+    writeCustomerCache(
+      workspaceId,
+      readCustomerCache<CustomerRow>(workspaceId).filter((customer) => customer.id !== deletedId),
+    );
     setDeleteTarget(null);
     setDeleteEmail("");
     setDeletePassword("");
     setDeleteCommandId("");
     setNotice("Customer permanently deleted.");
-    await reloadCurrent(true);
+    try {
+      await reloadCurrent(true);
+    } catch (refreshError) {
+      setError(`The Customer was permanently deleted, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
+    }
   }
 
   if (!loaded) {
@@ -789,7 +842,10 @@ export default function CustomersPage() {
               entity="customers"
               workspaceId={workspaceId}
               disabled={supportMode || mode !== "cloud" || offline || !workspaceReady}
-              onImported={() => reloadCurrent(true)}
+              onImported={() => {
+                if (workspaceId && workspaceId !== "demo") invalidateCustomerRegisterPages(workspaceId);
+                return reloadCurrent(true);
+              }}
             />
             <Button onClick={openCreate} disabled={supportMode}>
               <UserRoundPlus size={17} /> Add Customer
