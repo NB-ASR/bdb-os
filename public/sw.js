@@ -9,14 +9,36 @@ function isCacheableStaticAsset(requestUrl) {
   return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
 }
 
+function isOfflineShellPath(pathname) {
+  return pathname === "/accounts"
+    || pathname.startsWith("/accounts/")
+    || pathname === "/customers"
+    || pathname.startsWith("/customers/");
+}
+
 function isOfflineShellNavigation(request) {
   if (request.method !== "GET" || request.mode !== "navigate") return false;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
-  return url.pathname === "/accounts"
-    || url.pathname.startsWith("/accounts/")
-    || url.pathname === "/customers"
-    || url.pathname.startsWith("/customers/");
+  return isOfflineShellPath(url.pathname);
+}
+
+async function cacheOfflineShell(path) {
+  if (typeof path !== "string") return;
+  const url = new URL(path, self.location.origin);
+  if (url.origin !== self.location.origin || !isOfflineShellPath(url.pathname)) return;
+
+  const request = new Request(url.href, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "text/html" },
+  });
+  const response = await fetch(request);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || response.redirected || !contentType.includes("text/html")) return;
+
+  const cache = await caches.open(APP_SHELL_CACHE);
+  await cache.put(request, response.clone());
 }
 
 function safeNotificationUrl(value) {
@@ -41,6 +63,11 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== APP_SHELL_CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CACHE_OFFLINE_SHELL") return;
+  event.waitUntil(cacheOfflineShell(event.data.path));
 });
 
 self.addEventListener("fetch", (event) => {
