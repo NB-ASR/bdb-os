@@ -24,6 +24,7 @@ type StandardDataImportProps = {
 
 type RowFailure = { row: number; message: string; code?: string; payload?: Record<string, unknown> };
 type PreviewRow = { row: number; label: string; secondary: string; payload: Record<string, unknown> };
+type ImportSummary = { imported: number; needsReview: number; failed: number };
 
 class ImportCommandError extends Error {
   constructor(
@@ -281,7 +282,8 @@ async function stageCustomerReviews(workspaceId: string, prepared: PreparedImpor
   })));
   for (let offset = 0; offset < items.length; offset += 200) {
     const response = await fetch("/api/customers/reviews", {
-      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": `review:${prepared.fileHash}:${offset}` },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": `review:${prepared.fileHash}:${offset}` },
       body: JSON.stringify({ workspaceId, action: "stage", items: items.slice(offset, offset + 200) }),
     });
     const result = await response.json().catch(() => ({}));
@@ -293,6 +295,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [prepared, setPrepared] = useState<PreparedImport | null>(null);
   const label = entityLabel(entity);
   const previewRows = useMemo(() => prepared?.rows.slice(0, 8) ?? [], [prepared]);
@@ -317,6 +320,7 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
     }
 
     setStatus("");
+    setSummary(null);
     setBusy(true);
     setPrepared(null);
     try {
@@ -362,6 +366,8 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
     }
 
     setBusy(true);
+    setStatus("");
+    setSummary(null);
     const failures: RowFailure[] = [...prepared.failures];
     try {
       try {
@@ -381,29 +387,50 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
             // Keep the workspace-level failure as the actionable import result.
           }
         }
+        const failed = Math.max(0, prepared.rows.length - created) + prepared.failures.length;
+        setSummary({ imported: created, needsReview: 0, failed });
         setPrepared(null);
-        const prefix = created > 0 ? `${created} ${label} imported before the workspace session became unavailable. ` : "";
-        setStatus(`${prefix}Import stopped because the active workspace is not available to this session. Refresh the page or sign in again before retrying.`);
+        setStatus("Import stopped because the active workspace is not available to this session. Refresh the page or sign in again before retrying.");
         return;
       }
-      if (entity === "customers" && failures.length) await stageCustomerReviews(workspaceId, prepared, failures);
+
+      let needsReview = 0;
+      let failed = 0;
+      if (entity === "customers" && failures.length) {
+        try {
+          await stageCustomerReviews(workspaceId, prepared, failures);
+          needsReview = failures.length;
+        } catch (reviewError) {
+          failed = failures.length;
+          setSummary({ imported: created, needsReview: 0, failed });
+          setPrepared(null);
+          if (created > 0 && onImported) {
+            try {
+              await onImported();
+            } catch {
+              // Keep the review-staging failure as the actionable import result.
+            }
+          }
+          setStatus(reviewError instanceof Error ? reviewError.message : "Rows needing review could not be saved.");
+          return;
+        }
+      } else if (entity !== "customers") {
+        failed = failures.length;
+      }
+
+      setSummary({ imported: created, needsReview, failed });
       if (created > 0 && onImported) {
         try {
           await onImported();
         } catch (refreshError) {
           setPrepared(null);
-          setStatus(`${created} ${label} imported, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
+          setStatus(`Import completed, but the register could not refresh: ${refreshError instanceof Error ? refreshError.message : "refresh failed"}.`);
           return;
         }
       }
 
       setPrepared(null);
-      if (failures.length) {
-        const first = failures.slice(0, 5).map((failure) => `row ${failure.row}: ${failure.message}`).join(" · ");
-        setStatus(`${created} imported · ${failures.length} need review. ${first}`);
-      } else {
-        setStatus(`${created} ${label} imported successfully.`);
-      }
+      setStatus("");
       if (created > 0 && !onImported) window.location.reload();
     } catch (importError) {
       setPrepared(null);
@@ -429,7 +456,12 @@ export function StandardDataImport({ entity, workspaceId, disabled = false, onIm
         <Button type="button" variant="quiet" disabled={busy} onClick={() => downloadTemplate(entity)} title={`Download ${label} CSV template`}>
           <Download size={16} /> Template
         </Button>
-        {status ? <span role="status" style={{ maxWidth: 460, fontSize: 12, opacity: 0.82 }}>{status}</span> : null}
+        {summary ? (
+          <span role="status" style={{ fontSize: 12, opacity: 0.86 }}>
+            <strong>Imported {summary.imported}</strong> · Needs review {summary.needsReview} · Failed {summary.failed}
+          </span>
+        ) : null}
+        {status ? <span role="alert" style={{ maxWidth: 460, fontSize: 12, opacity: 0.82 }}>{status}</span> : null}
       </div>
 
       <Dialog

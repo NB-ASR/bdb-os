@@ -36,13 +36,6 @@ function uuid(value: unknown, field: string) {
   return result;
 }
 
-function optionalUuid(value: unknown, field: string) {
-  const result = String(value ?? "").trim();
-  if (!result) return null;
-  if (!UUID_PATTERN.test(result)) throw new CommandError("INVALID_CUSTOMER_INPUT", `${field} is invalid.`);
-  return result;
-}
-
 function text(value: unknown, field: string, minimum: number, maximum: number) {
   const result = String(value ?? "").trim();
   if (result.length < minimum || result.length > maximum) {
@@ -89,6 +82,15 @@ function pageSize(value: string | null) {
     throw new CommandError("INVALID_CUSTOMER_PAGE", "Customer page size is invalid.");
   }
   return Math.min(result, MAX_PAGE_SIZE);
+}
+
+function pageNumber(value: string | null) {
+  if (!value) return 1;
+  const result = Number(value);
+  if (!Number.isInteger(result) || result < 1 || result > 100_000) {
+    throw new CommandError("INVALID_CUSTOMER_PAGE", "Customer page is invalid.");
+  }
+  return result;
 }
 
 function customerFilter(value: string | null) {
@@ -141,13 +143,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const workspaceId = uuid(url.searchParams.get("workspaceId"), "Workspace");
     const limit = pageSize(url.searchParams.get("limit"));
+    const page = pageNumber(url.searchParams.get("page"));
     const filter = customerFilter(url.searchParams.get("filter"));
     const search = searchText(url.searchParams.get("search"));
-    const afterName = optionalText(url.searchParams.get("afterName"), 160);
-    const afterId = optionalUuid(url.searchParams.get("afterId"), "Customer cursor");
-    if (Boolean(afterName) !== Boolean(afterId)) {
-      throw new CommandError("INVALID_CUSTOMER_CURSOR", "Customer cursor is incomplete.");
-    }
+    const includeSummary = url.searchParams.get("summary") === "1";
 
     const supabase = await createClient();
     if (!supabase) throw new CommandError("NOT_CONFIGURED", "Cloud services are not configured.", 503);
@@ -155,44 +154,37 @@ export async function GET(request: Request) {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) throw new CommandError("UNAUTHENTICATED", "Sign in again to continue.", 401);
 
-    const { data, error } = await supabase.rpc("list_customer_register_page", {
+    const { data, error } = await supabase.rpc("read_customer_register_page", {
       p_workspace_id: workspaceId,
+      p_page: page,
       p_limit: limit,
-      p_after_name: afterName,
-      p_after_id: afterId,
       p_search: search,
       p_filter: filter,
+      p_include_summary: includeSummary,
     });
-    if (error) throw error;
-
-    const rows = (data ?? []) as Array<Record<string, unknown>>;
-    const customers = rows.slice(0, limit);
-    const hasMore = rows.length > limit;
-    const tail = customers.at(-1);
-    const nextCursor = hasMore && tail
-      ? { name: String(tail.name ?? ""), id: String(tail.id ?? "") }
-      : null;
-
-    let summary: Record<string, number> | null = null;
-    if (url.searchParams.get("summary") === "1") {
-      const { data: summaryRows, error: summaryError } = await supabase.rpc("customer_register_summary", {
-        p_workspace_id: workspaceId,
-      });
-      if (summaryError) throw summaryError;
-      const value = Array.isArray(summaryRows) ? summaryRows[0] : summaryRows;
-      summary = value ? {
-        activeCount: Number(value.active_count ?? 0),
-        archivedCount: Number(value.archived_count ?? 0),
-        importedCount: Number(value.imported_count ?? 0),
-        companyCount: Number(value.company_count ?? 0),
-      } : { activeCount: 0, archivedCount: 0, importedCount: 0, companyCount: 0 };
+    if (error) {
+      if (error.code === "42501" || error.message.toLowerCase().includes("access denied")) {
+        throw new CommandError("CUSTOMER_FORBIDDEN", "You do not have permission to view Customers.", 403);
+      }
+      throw error;
     }
+
+    const register = data && typeof data === "object" && !Array.isArray(data)
+      ? data as Record<string, unknown>
+      : {};
 
     return {
       workspaceId,
-      customers,
-      page: { limit, hasMore, nextCursor },
-      summary,
+      items: Array.isArray(register.items) ? register.items : [],
+      page: register.page ?? {
+        number: 1,
+        limit,
+        totalFiltered: 0,
+        totalPages: 1,
+        hasPrevious: false,
+        hasNext: false,
+      },
+      summary: register.summary ?? null,
     };
   });
 }

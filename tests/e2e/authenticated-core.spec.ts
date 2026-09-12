@@ -5,6 +5,8 @@ const email = process.env.BDB_E2E_OWNER_EMAIL;
 const password = process.env.BDB_E2E_OWNER_PASSWORD;
 const workspaceName = process.env.BDB_E2E_WORKSPACE_NAME;
 
+type PersistedRow = { id: string; name: string; status: string; barcode?: string };
+
 async function signIn(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Work email").fill(email ?? "");
@@ -43,14 +45,14 @@ async function expectTemplateDownload(page: Page, expectedName: string) {
 async function confirmImportAndWaitForRegister(page: Page, buttonName: string) {
   await page.getByRole("button", { name: buttonName }).click();
   await expect(page.getByRole("heading", { name: /^Review .* import$/ })).toHaveCount(0, { timeout: 60_000 });
-  await expect(page.getByRole("status")).toContainText(/imported successfully|need review/i);
+  await expect(page.getByRole("status")).toContainText(/Imported \d+ · Needs review \d+ · Failed \d+/i);
 }
 
 async function confirmCustomerImportAndWaitForRegister(page: Page, buttonName: string) {
   const importButton = page.getByRole("button", { name: "Import Customers" });
   await page.getByRole("button", { name: buttonName }).click();
   await expect(importButton).toBeEnabled({ timeout: 60_000 });
-  await expect(page.getByRole("status")).toContainText(/Customers imported successfully|need review/i);
+  await expect(page.getByRole("status")).toContainText(/Imported \d+ · Needs review \d+ · Failed \d+/i);
 }
 
 async function waitForRecordRow(page: Page, text: string) {
@@ -76,7 +78,7 @@ async function currentWorkspace(page: Page) {
 async function persistedRows(page: Page, entity: string, workspaceId: string, search: string, archived = false) {
   const params = new URLSearchParams({ workspaceId });
   if (entity === "customers") {
-    params.set("limit", "100"); params.set("search", search); params.set("filter", archived ? "archived" : "active");
+    params.set("limit", "50"); params.set("search", search); params.set("filter", archived ? "archived" : "active");
   } else {
     params.set("pageSize", "100"); params.set("query", search); params.set("status", archived ? "archived" : "active");
   }
@@ -84,7 +86,11 @@ async function persistedRows(page: Page, entity: string, workspaceId: string, se
   expect(response.ok()).toBeTruthy();
   const result = await response.json();
   expect(result.ok).toBe(true);
-  return result.result[entity] as Array<{ id: string; name: string; status: string; barcode?: string }>;
+  if (entity === "customers") {
+    const items = (result.result?.items ?? []) as Array<{ rowKind?: string; customer?: PersistedRow }>;
+    return items.flatMap((item) => item.rowKind === "customer" && item.customer ? [item.customer] : []);
+  }
+  return result.result[entity] as PersistedRow[];
 }
 
 test.describe("authenticated owner journey", () => {
@@ -131,6 +137,31 @@ test.describe("authenticated owner journey", () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("Customer register reloads from its cached shell and cached page while offline", async ({ page, context }) => {
+    test.setTimeout(90_000);
+    await signIn(page);
+    await page.goto("/customers");
+    await expect(page.getByRole("heading", { name: "Customers", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
+    await page.evaluate(async () => {
+      if (!("serviceWorker" in navigator)) throw new Error("Service workers are unavailable in this browser.");
+      await navigator.serviceWorker.ready;
+    });
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Customers", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Import Customers" })).toBeEnabled();
+
+    try {
+      await context.setOffline(true);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("heading", { name: "Customers", exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Showing the last cached Active Customer page|Showing the bounded offline Customer working set/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Import Customers" })).toBeDisabled();
+    } finally {
+      await context.setOffline(false);
+    }
+  });
+
   test("Customer CSV import refresh and lifecycle are customer-operational", async ({ page }) => {
     await signIn(page);
     await page.goto("/customers");
@@ -172,8 +203,8 @@ test.describe("authenticated owner journey", () => {
     await uploadCustomerXlsx(page);
 
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toBeVisible();
-    await expect(page.getByText("Ava Borg")).toBeVisible();
-    await expect(page.getByText("Liam Camilleri")).toBeVisible();
+    await expect(page.getByText("Ava Borg").first()).toBeVisible();
+    await expect(page.getByText("Liam Camilleri").first()).toBeVisible();
     await confirmCustomerImportAndWaitForRegister(page, "Confirm 2 Customers");
 
     await page.getByLabel("Search Customers").fill("Ava Borg");
@@ -274,7 +305,7 @@ test.describe("authenticated owner journey", () => {
     await page.getByRole("button", { name: "Confirm 1 Customers" }).click();
 
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
-    await expect(page.getByRole("status")).toContainText("active workspace changed");
+    await expect(page.getByRole("alert").filter({ hasText: "active workspace changed" })).toBeVisible();
     expect(postAttempts).toBe(0);
   });
 
@@ -302,7 +333,8 @@ test.describe("authenticated owner journey", () => {
     await page.getByRole("button", { name: "Confirm 40 Customers" }).click();
 
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
-    await expect(page.getByRole("status")).toContainText("Import stopped because the active workspace is not available");
+    await expect(page.getByRole("status")).toContainText("Imported 0 · Needs review 0 · Failed 40");
+    await expect(page.getByRole("alert").filter({ hasText: "Import stopped because the active workspace is not available" })).toBeVisible();
     expect(postAttempts).toBeGreaterThan(0);
     expect(postAttempts).toBeLessThanOrEqual(8);
   });
@@ -341,7 +373,11 @@ test.describe("authenticated owner journey", () => {
       expect(attempts).toHaveLength(0);
       expect(await persistedRows(page, register.entity, workspaceId, name)).toHaveLength(0);
       await confirmImportAndWaitForRegister(page, `Confirm 1 ${register.label}`);
-      await expect(page.getByRole("status")).toContainText("1 imported · 1 need review");
+      await expect(page.getByRole("status")).toContainText(
+        register.entity === "customers"
+          ? "Imported 1 · Needs review 1 · Failed 0"
+          : "Imported 1 · Needs review 0 · Failed 1",
+      );
       expect(attempts).toHaveLength(2);
       expect(attempts[1]).toEqual(attempts[0]);
       expect(attempts[0].key).toBeTruthy();
@@ -359,7 +395,11 @@ test.describe("authenticated owner journey", () => {
 
       await uploadCsv(page, `name,${register.keyHeading}${numeric}\nDifferent ${token},${key}${validValue}\n`);
       await confirmImportAndWaitForRegister(page, `Confirm 1 ${register.label}`);
-      await expect(page.getByRole("status")).toContainText("0 imported · 1 need review");
+      await expect(page.getByRole("status")).toContainText(
+        register.entity === "customers"
+          ? "Imported 0 · Needs review 1 · Failed 0"
+          : "Imported 0 · Needs review 0 · Failed 1",
+      );
       expect(attempts).toHaveLength(4); // A definite rejection is not automatically retried.
       expect(await persistedRows(page, register.entity, workspaceId, `Different ${token}`)).toHaveLength(0);
       if (register.entity === "customers") {
@@ -387,19 +427,24 @@ test.describe("authenticated owner journey", () => {
       const rows = page.locator("tbody tr");
       const firstPageSize = register.entity === "customers" ? 50 : 100;
       await expect(rows).toHaveCount(firstPageSize, { timeout: 15_000 });
-      await expect(page.getByRole("button", { name: register.next, exact: true })).toBeEnabled();
       const firstPage = await rows.allTextContents();
-      await page.getByRole("button", { name: register.next, exact: true }).click();
       if (register.entity === "customers") {
-        await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+        const nextPage = page.getByRole("button", { name: "Next Customer page", exact: true });
+        await expect(nextPage).toBeEnabled();
+        await nextPage.click();
+        await expect(page.getByRole("button", { name: "Customer page 2", exact: true })).toHaveAttribute("aria-current", "page");
         await expect(rows).toHaveCount(50);
-        const allRows = await rows.allTextContents();
-        expect(allRows).not.toEqual(firstPage);
-        await page.getByRole("button", { name: "Previous", exact: true }).click();
-        await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+        const secondPage = await rows.allTextContents();
+        expect(secondPage).not.toEqual(firstPage);
+        const previousPage = page.getByRole("button", { name: "Previous Customer page", exact: true });
+        await expect(previousPage).toBeEnabled();
+        await previousPage.click();
+        await expect(page.getByRole("button", { name: "Customer page 1", exact: true })).toHaveAttribute("aria-current", "page");
         await expect(rows).toHaveCount(50);
         expect(await rows.allTextContents()).toEqual(firstPage);
       } else {
+        await expect(page.getByRole("button", { name: register.next, exact: true })).toBeEnabled();
+        await page.getByRole("button", { name: register.next, exact: true }).click();
         await expect(rows).toHaveCount(101);
         const allRows = await rows.allTextContents();
         expect(allRows.slice(0, 100)).toEqual(firstPage);
@@ -481,7 +526,7 @@ test.describe("authenticated owner journey", () => {
     const input = page.locator('input[type="file"][accept*=".xlsx"]');
     const upload = (buffer: string) => input.setInputFiles({ name: "synthetic-customer-case.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(buffer, "base64") });
     await upload(CUSTOMER_XLSX_CASES.fullName);
-    await expect(page.getByText("Maya Test")).toBeVisible();
+    await expect(page.getByText("Maya Test").first()).toBeVisible();
     await expect(page.getByText("Hidden Person")).toHaveCount(0);
     await confirmImportAndWaitForRegister(page, "Confirm 1 Customers");
     await page.getByLabel("Search Customers").fill("Maya Test");
@@ -492,13 +537,13 @@ test.describe("authenticated owner journey", () => {
     let writes = 0;
     page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/customers") writes += 1; });
     await upload(CUSTOMER_XLSX_CASES.unknown);
-    await expect(page.getByRole("status")).toContainText("could not find a visible worksheet with recognised Customer columns");
+    await expect(page.getByRole("alert").filter({ hasText: "could not find a visible worksheet with recognised Customer columns" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await upload(CUSTOMER_XLSX_CASES.ambiguous);
-    await expect(page.getByRole("status")).toContainText("multiple equally likely Customer worksheets");
+    await expect(page.getByRole("alert").filter({ hasText: "multiple equally likely Customer worksheets" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await upload(CUSTOMER_XLSX_CASES.oversized);
-    await expect(page.getByRole("status")).toContainText("expands beyond the supported import size");
+    await expect(page.getByRole("alert").filter({ hasText: "expands beyond the supported import size" })).toBeVisible();
     expect(writes).toBe(0);
   });
 

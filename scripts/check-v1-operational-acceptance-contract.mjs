@@ -41,7 +41,7 @@ assert.match(xlsxImporter, /first_name/);
 assert.match(xlsxImporter, /last_name/);
 assert.match(xlsxImporter, /multiple equally likely Customer worksheets/, "Ambiguous visible Customer worksheets must be rejected instead of selecting one silently.");
 
-assert.match(customers, /<StandardDataImport[\s\S]*?entity="customers"[\s\S]*?onImported=\{\(\) => reloadCurrent\(true\)\}/);
+assert.match(customers, /<StandardDataImport[\s\S]*?entity="customers"[\s\S]*?onImported=\{\(\) => \{[\s\S]*?invalidateCustomerRegisterPages\(workspaceId\)[\s\S]*?reloadCurrent\(true\)/, "Customer imports must invalidate exact register pages before the awaited canonical refresh.");
 assert.doesNotMatch(customers, /Legacy Vanita JSON/, "The retired Vanita migration must not remain customer-facing.");
 assert.doesNotMatch(customers, /accept="application\/json,\.json"/, "The Customers screen must not retain a hidden legacy JSON picker.");
 assert.match(customers, /<StandardDataImport[\s\S]*?disabled=\{[^}]*!workspaceReady[^}]*\}/, "Customer imports must wait for authenticated workspace readiness.");
@@ -54,4 +54,4 @@ assert.doesNotMatch(products, /Import catalogue/i, "Products must not expose the
 assert.match(services, /StandardDataImport entity="services"/);
 assert.match(services, /<StandardDataImport[^>]*disabled=\{[^}]*!workspaceReady[^}]*\}/, "Service imports must wait for authenticated workspace readiness.");
 
-console.log("V1 closure requires customer-operational acceptance; Customer import supports generic CSV/XLSX up to the hardened 5,000-row boundary, waits for the canonical register refresh, and Catalogue imports use canonical write paths.");
+console.log("V1 closure requires customer-operational acceptance; Customer import supports generic CSV/XLSX up to the hardened 5,000-row boundary, invalidates stale register pages before the canonical refresh, and Catalogue imports use canonical write paths.");
