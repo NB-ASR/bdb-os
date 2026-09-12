@@ -9,24 +9,24 @@ function isCacheableStaticAsset(requestUrl) {
   return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
 }
 
-function isOfflineShellPath(pathname) {
-  return pathname === "/accounts"
-    || pathname.startsWith("/accounts/")
-    || pathname === "/customers"
-    || pathname.startsWith("/customers/");
+function isOfflineShellUrl(url) {
+  return url.pathname === "/accounts"
+    || url.pathname.startsWith("/accounts/")
+    || url.pathname === "/customers"
+    || url.pathname.startsWith("/customers/");
 }
 
 function isOfflineShellNavigation(request) {
   if (request.method !== "GET" || request.mode !== "navigate") return false;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return false;
-  return isOfflineShellPath(url.pathname);
+  return isOfflineShellUrl(url);
 }
 
 async function cacheOfflineShell(path) {
   if (typeof path !== "string") return;
   const url = new URL(path, self.location.origin);
-  if (url.origin !== self.location.origin || !isOfflineShellPath(url.pathname)) return;
+  if (url.origin !== self.location.origin || !isOfflineShellUrl(url)) return;
 
   const request = new Request(url.href, {
     method: "GET",
