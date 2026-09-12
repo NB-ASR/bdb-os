@@ -305,7 +305,7 @@ test.describe("authenticated owner journey", () => {
     await page.getByRole("button", { name: "Confirm 1 Customers" }).click();
 
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
-    await expect(page.getByRole("alert")).toContainText("active workspace changed");
+    await expect(page.getByRole("alert").filter({ hasText: "active workspace changed" })).toBeVisible();
     expect(postAttempts).toBe(0);
   });
 
@@ -334,7 +334,7 @@ test.describe("authenticated owner journey", () => {
 
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await expect(page.getByRole("status")).toContainText("Imported 0 · Needs review 0 · Failed 40");
-    await expect(page.getByRole("alert")).toContainText("Import stopped because the active workspace is not available");
+    await expect(page.getByRole("alert").filter({ hasText: "Import stopped because the active workspace is not available" })).toBeVisible();
     expect(postAttempts).toBeGreaterThan(0);
     expect(postAttempts).toBeLessThanOrEqual(8);
   });
@@ -537,13 +537,13 @@ test.describe("authenticated owner journey", () => {
     let writes = 0;
     page.on("request", (request) => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/customers") writes += 1; });
     await upload(CUSTOMER_XLSX_CASES.unknown);
-    await expect(page.getByRole("alert")).toContainText("could not find a visible worksheet with recognised Customer columns");
+    await expect(page.getByRole("alert").filter({ hasText: "could not find a visible worksheet with recognised Customer columns" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await upload(CUSTOMER_XLSX_CASES.ambiguous);
-    await expect(page.getByRole("alert")).toContainText("multiple equally likely Customer worksheets");
+    await expect(page.getByRole("alert").filter({ hasText: "multiple equally likely Customer worksheets" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Review Customers import" })).toHaveCount(0);
     await upload(CUSTOMER_XLSX_CASES.oversized);
-    await expect(page.getByRole("alert")).toContainText("expands beyond the supported import size");
+    await expect(page.getByRole("alert").filter({ hasText: "expands beyond the supported import size" })).toBeVisible();
     expect(writes).toBe(0);
   });
 
