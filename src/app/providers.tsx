@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { BdbProvider } from "@/lib/store";
+import { BdbProvider, useBdb } from "@/lib/store";
 import { ThemeRuntime } from "@/components/theme-runtime";
 
 function isOfflineShellPath(pathname: string) {
@@ -11,6 +11,29 @@ function isOfflineShellPath(pathname: string) {
     || pathname.startsWith("/accounts/")
     || pathname === "/customers"
     || pathname.startsWith("/customers/");
+}
+
+function isCustomerOfflinePath(pathname: string) {
+  return pathname === "/customers" || pathname.startsWith("/customers/");
+}
+
+function RoutedShell({ children, offlineCapable }: { children: ReactNode; offlineCapable: boolean }) {
+  const { syncStatus } = useBdb();
+  const [online, setOnline] = useState(true);
+
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+
+  if (offlineCapable && (!online || syncStatus === "offline")) return children;
+  return <AppShell>{children}</AppShell>;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -27,6 +50,7 @@ export function Providers({ children }: { children: ReactNode }) {
     pathname.startsWith("/no-workspace") ||
     pathname.startsWith("/workspace-suspended") ||
     pathname.startsWith("/feature-unavailable");
+  const customerOfflineCapable = isCustomerOfflinePath(pathname);
 
   useEffect(() => {
     if (!isOfflineShellPath(pathname) || !("serviceWorker" in navigator)) return;
@@ -55,9 +79,9 @@ export function Providers({ children }: { children: ReactNode }) {
   if (isStandalone) return children;
 
   return (
-    <BdbProvider>
+    <BdbProvider allowOfflineShell={customerOfflineCapable}>
       <ThemeRuntime />
-      <AppShell>{children}</AppShell>
+      <RoutedShell offlineCapable={customerOfflineCapable}>{children}</RoutedShell>
     </BdbProvider>
   );
 }
