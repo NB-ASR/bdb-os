@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { BdbProvider, useBdb } from "@/lib/store";
+import { BdbProvider } from "@/lib/store";
 import { ThemeRuntime } from "@/components/theme-runtime";
 
 function isOfflineShellPath(pathname: string) {
@@ -15,25 +15,6 @@ function isOfflineShellPath(pathname: string) {
 
 function isCustomerOfflinePath(pathname: string) {
   return pathname === "/customers" || pathname.startsWith("/customers/");
-}
-
-function RoutedShell({ children, offlineCapable }: { children: ReactNode; offlineCapable: boolean }) {
-  const { syncStatus } = useBdb();
-  const [online, setOnline] = useState(true);
-
-  useEffect(() => {
-    const update = () => setOnline(navigator.onLine);
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
-
-  if (offlineCapable && (!online || syncStatus === "offline")) return children;
-  return <AppShell>{children}</AppShell>;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -81,7 +62,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <BdbProvider allowOfflineShell={customerOfflineCapable}>
       <ThemeRuntime />
-      <RoutedShell offlineCapable={customerOfflineCapable}>{children}</RoutedShell>
+      <AppShell>{children}</AppShell>
     </BdbProvider>
   );
 }
