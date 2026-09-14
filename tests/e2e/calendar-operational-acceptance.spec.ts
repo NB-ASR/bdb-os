@@ -69,7 +69,7 @@ async function openAppointmentForm(
   await expect(page.getByLabel("Staff member", { exact: true })).toHaveValue(values.staffUserId);
   await page.getByLabel("Date", { exact: true }).fill(values.date);
   await page.getByLabel("Start time", { exact: true }).fill(values.time);
-  await page.getByLabel("Room", { exact: true }).selectOption({ label: new RegExp(values.roomName) });
+  await page.getByLabel("Room", { exact: true }).selectOption(values.roomName);
   await page.getByLabel("Appointment notes", { exact: true }).fill(values.notes);
   if (values.initialStatus) {
     await page.getByLabel("Initial status", { exact: true }).selectOption(values.initialStatus);
