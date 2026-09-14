@@ -1,5 +1,5 @@
 const CACHE_NAME = "bdb-os-static-v6";
-const ACCOUNTS_SHELL_CACHE = "bdb-os-accounts-shell-v1";
+const APP_SHELL_CACHE = "bdb-os-offline-shell-v2";
 const PRECACHE_ASSETS = ["/bdb-mark.svg"];
 
 function isCacheableStaticAsset(requestUrl) {
@@ -9,10 +9,36 @@ function isCacheableStaticAsset(requestUrl) {
   return /\.(?:css|js|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2)$/i.test(url.pathname);
 }
 
-function isAccountsNavigation(request) {
+function isOfflineShellUrl(url) {
+  return url.pathname === "/accounts"
+    || url.pathname.startsWith("/accounts/")
+    || url.pathname === "/customers"
+    || url.pathname.startsWith("/customers/");
+}
+
+function isOfflineShellNavigation(request) {
   if (request.method !== "GET" || request.mode !== "navigate") return false;
   const url = new URL(request.url);
-  return url.origin === self.location.origin && (url.pathname === "/accounts" || url.pathname.startsWith("/accounts/"));
+  if (url.origin !== self.location.origin) return false;
+  return isOfflineShellUrl(url);
+}
+
+async function cacheOfflineShell(path) {
+  if (typeof path !== "string") return;
+  const url = new URL(path, self.location.origin);
+  if (url.origin !== self.location.origin || !isOfflineShellUrl(url)) return;
+
+  const request = new Request(url.href, {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "text/html" },
+  });
+  const response = await fetch(request);
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || response.redirected || !contentType.includes("text/html")) return;
+
+  const cache = await caches.open(APP_SHELL_CACHE);
+  await cache.put(request, response.clone());
 }
 
 function safeNotificationUrl(value) {
@@ -34,29 +60,34 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== ACCOUNTS_SHELL_CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== APP_SHELL_CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CACHE_OFFLINE_SHELL") return;
+  event.waitUntil(cacheOfflineShell(event.data.path));
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
 
-  if (isAccountsNavigation(request)) {
+  if (isOfflineShellNavigation(request)) {
     event.respondWith(
       fetch(request)
         .then((response) => {
           const contentType = response.headers.get("content-type") ?? "";
           if (response.ok && !response.redirected && contentType.includes("text/html")) {
             const copy = response.clone();
-            void caches.open(ACCOUNTS_SHELL_CACHE).then((cache) => cache.put(request, copy));
+            void caches.open(APP_SHELL_CACHE).then((cache) => cache.put(request, copy));
           }
           return response;
         })
         .catch(async () => {
           const exact = await caches.match(request);
           if (exact) return exact;
-          throw new Error("No cached Accounts shell is available.");
+          throw new Error("No cached BDB OS shell is available.");
         }),
     );
     return;

@@ -91,10 +91,22 @@ test("Payment lifecycle has a detail workspace backed by existing command action
   assert.match(detailPage, /runtime\.dispatch\("payment-reverse"/);
 });
 
-test("service worker caches Accounts route shells but never financial API responses", async () => {
-  const worker = await source("public/sw.js");
+test("service worker caches offline application route shells but never API responses", async () => {
+  const [worker, providers] = await Promise.all([
+    source("public/sw.js"),
+    source("src/app/providers.tsx"),
+  ]);
   assert.match(worker, /request\.mode !== "navigate"/);
-  assert.match(worker, /url\.pathname === "\/accounts" \|\| url\.pathname\.startsWith\("\/accounts\/"\)/);
-  assert.match(worker, /ACCOUNTS_SHELL_CACHE/);
+  assert.match(worker, /pathname === "\/accounts"/);
+  assert.match(worker, /pathname\.startsWith\("\/accounts\/"\)/);
+  assert.match(worker, /pathname === "\/customers"/);
+  assert.match(worker, /pathname\.startsWith\("\/customers\/"\)/);
+  assert.match(worker, /APP_SHELL_CACHE/);
+  assert.match(worker, /CACHE_OFFLINE_SHELL/);
+  assert.match(worker, /credentials: "include"/);
   assert.doesNotMatch(worker, /cache\.put\([^\n]*\/api\//);
+  assert.match(providers, /navigator\.serviceWorker\.register\("\/sw\.js", \{ scope: "\/" \}\)/);
+  assert.match(providers, /navigator\.serviceWorker\.ready/);
+  assert.match(providers, /type: "CACHE_OFFLINE_SHELL"/);
+  assert.match(providers, /path: pathname/);
 });

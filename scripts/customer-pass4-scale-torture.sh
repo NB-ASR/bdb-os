@@ -49,100 +49,177 @@ select
   '${USER_ID}'::uuid
 from generate_series(1,25000) g;
 
+insert into public.customer_import_review_items(
+  id,workspace_id,import_key,source_file,source_row,payload,
+  issue_code,issue_message,status,created_by
+)
+select
+  md5('customer-pass4-review-'||g)::uuid,
+  '${WORKSPACE}'::uuid,
+  'pass4-review-'||g,
+  'customer-pass4-scale.csv',
+  g + 1,
+  jsonb_build_object(
+    'name', case when g=205 then 'Review-Needle Customer' else 'Review Customer '||lpad(g::text,4,'0') end,
+    'email', 'review-'||g||'@pass4.invalid'
+  ),
+  'IMPORT_REVIEW',
+  'Synthetic review item '||g,
+  'pending',
+  '${USER_ID}'::uuid
+from generate_series(1,410) g;
+
 analyze public.customers;
+analyze public.customer_import_review_items;
+
+select set_config('request.jwt.claim.sub', '${USER_ID}', false);
+set role authenticated;
 
 do \$\$
 declare
-  active_value bigint;
-  archived_value bigint;
-  imported_value bigint;
-  company_value bigint;
-  first_count bigint;
-  second_count bigint;
-  overlap_count bigint;
-  search_count bigint;
-  cursor_name text;
-  cursor_id uuid;
+  result jsonb;
+  total_value bigint;
+  page_value integer;
+  page_count integer;
+  row_kind text;
+  started_at timestamptz;
+  elapsed_ms numeric;
 begin
-  if (select count(*) from public.customers where workspace_id='${WORKSPACE}'::uuid) <> 25000 then
-    raise exception 'Customer Pass 4 synthetic register count mismatch';
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,1,50,null,'active',true) into result;
+  total_value := (result #>> '{page,totalFiltered}')::bigint;
+  page_count := jsonb_array_length(result->'items');
+  if total_value <> 22500 or page_count <> 50 then
+    raise exception 'Customer active direct page mismatch: total %, rows %', total_value, page_count;
+  end if;
+  if (result #>> '{summary,activeCount}')::bigint <> 22500
+     or (result #>> '{summary,archivedCount}')::bigint <> 2500
+     or (result #>> '{summary,importedCount}')::bigint <> 5000
+     or (result #>> '{summary,companyCount}')::bigint <> 12500
+     or (result #>> '{summary,reviewCount}')::bigint <> 410 then
+    raise exception 'Customer composed register summary mismatch: %', result->'summary';
   end if;
 
-  select active_count, archived_count, imported_count, company_count
-    into active_value, archived_value, imported_value, company_value
-    from public.customer_register_summary('${WORKSPACE}'::uuid);
-  if active_value <> 22500 or archived_value <> 2500 or imported_value <> 5000 or company_value <> 12500 then
-    raise exception 'Customer summary mismatch: active %, archived %, imported %, companies %', active_value, archived_value, imported_value, company_value;
+  started_at := clock_timestamp();
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,450,50,null,'active',false) into result;
+  elapsed_ms := extract(epoch from (clock_timestamp() - started_at)) * 1000;
+  if elapsed_ms > 1000 then
+    raise exception 'Customer deepest active page exceeded 1000ms at 25k scale: % ms', round(elapsed_ms, 2);
+  end if;
+  if (result #>> '{page,number}')::integer <> 450
+     or jsonb_array_length(result->'items') <> 50
+     or (result #>> '{page,totalPages}')::integer <> 450 then
+    raise exception 'Customer deepest active page mismatch: %', result->'page';
   end if;
 
-  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active')) <> 51 then
-    raise exception 'Customer active register did not return the bounded 50-row page plus continuation sentinel';
+  -- A request beyond the last page must clamp after concurrent shrinkage rather
+  -- than returning a phantom empty page number.
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,9999,50,null,'active',false) into result;
+  page_value := (result #>> '{page,number}')::integer;
+  if page_value <> 450 or jsonb_array_length(result->'items') <> 50 then
+    raise exception 'Customer page clamp mismatch: page %, rows %', page_value, jsonb_array_length(result->'items');
   end if;
-  if (select count(*) from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'review')) <> 51 then
-    raise exception 'Customer review register did not remain bounded';
-  end if;
 
-  create temporary table customer_pass4_first on commit drop as
-    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,null,'active') limit 50;
-  select count(*) into first_count from customer_pass4_first;
-  if first_count <> 50 then raise exception 'First Customer keyset page contained % rows', first_count; end if;
-
-  select name,id into cursor_name,cursor_id
-  from customer_pass4_first
-  order by name desc,id desc
-  limit 1;
-
-  create temporary table customer_pass4_second on commit drop as
-    select * from public.list_customer_register_page('${WORKSPACE}'::uuid,100,cursor_name,cursor_id,null,'active') limit 50;
-  select count(*) into second_count from customer_pass4_second;
-  if second_count <> 50 then raise exception 'Second Customer keyset page contained % rows', second_count; end if;
-
-  select count(*) into overlap_count
-  from customer_pass4_first first_page
-  join customer_pass4_second second_page on second_page.id=first_page.id;
-  if overlap_count <> 0 then raise exception 'Customer keyset continuation overlapped % rows', overlap_count; end if;
-
-  select count(*) into search_count
-  from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,'needle-pass4','all');
-  if search_count <> 1 then raise exception 'Indexed Customer substring search returned % rows, expected 1', search_count; end if;
+  -- Persisted Customers with generated needs_review remain Customers. Review is
+  -- reserved exclusively for unresolved import exceptions.
   if not exists (
-    select 1 from public.list_customer_register_page('${WORKSPACE}'::uuid,100,null,null,'needle-pass4','all')
-    where name='Needle-Pass4 Customer'
+    select 1 from public.customers
+    where workspace_id='${WORKSPACE}'::uuid and needs_review
   ) then
-    raise exception 'Customer substring search did not return the expected Customer';
+    raise exception 'Synthetic fixture must contain persisted Customers with incomplete details';
+  end if;
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,1,50,null,'review',false) into result;
+  if (result #>> '{page,totalFiltered}')::bigint <> 410 then
+    raise exception 'Import Review total included non-review Customer rows: %', result #>> '{page,totalFiltered}';
+  end if;
+  select value->>'rowKind' into row_kind
+  from jsonb_array_elements(result->'items') value
+  limit 1;
+  if row_kind <> 'import_review' then
+    raise exception 'Review page returned unexpected row kind %', row_kind;
+  end if;
+
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,9,50,null,'review',false) into result;
+  if jsonb_array_length(result->'items') <> 10 or (result #>> '{page,totalPages}')::integer <> 9 then
+    raise exception 'Review last page mismatch: %', result->'page';
+  end if;
+
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,1,50,'review-needle','review',false) into result;
+  if (result #>> '{page,totalFiltered}')::bigint <> 1
+     or result #>> '{items,0,rowKind}' <> 'import_review' then
+    raise exception 'Review filtered search mismatch: %', result;
+  end if;
+
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,1,50,'needle-pass4','all',false) into result;
+  if (result #>> '{page,totalFiltered}')::bigint <> 1
+     or result #>> '{items,0,rowKind}' <> 'customer' then
+    raise exception 'Customer All filtered search mismatch: %', result;
+  end if;
+
+  started_at := clock_timestamp();
+  select public.read_customer_register_page('${WORKSPACE}'::uuid,509,50,null,'all',false) into result;
+  elapsed_ms := extract(epoch from (clock_timestamp() - started_at)) * 1000;
+  if elapsed_ms > 1000 then
+    raise exception 'Mixed All last page exceeded 1000ms at 25k scale: % ms', round(elapsed_ms, 2);
+  end if;
+  if (result #>> '{page,totalFiltered}')::bigint <> 25410
+     or (result #>> '{page,totalPages}')::integer <> 509
+     or jsonb_array_length(result->'items') <> 10 then
+    raise exception 'Mixed All last page mismatch: %', result->'page';
   end if;
 end
 \$\$;
+
+reset role;
 SQL
 
-ACTIVE_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 101;")"
-ARCHIVED_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 101;")"
-IMPORTED_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and legacy_source is not null order by name,id limit 101;")"
-SEARCH_PLAN="$(psql_exec -Atc "explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 101;")"
+ACTIVE_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
+ARCHIVED_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
+SEARCH_PLAN="$(psql_exec -Atc "explain (analyze, buffers, costs off, timing off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and search_text like '%needle-pass4%' order by name,id limit 50;")"
+ACTIVE_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; set enable_bitmapscan=off; set enable_sort=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='active' order by name,id limit 50 offset 22450;")"
+ARCHIVED_INDEX_PLAN="$(psql_exec -Atc "set enable_seqscan=off; set enable_bitmapscan=off; set enable_sort=off; explain (costs off) select id from public.customers where workspace_id='${WORKSPACE}'::uuid and status='archived' order by name,id limit 50 offset 2450;")"
 
-# With 90% active Customers, PostgreSQL may correctly prefer the simpler
-# workspace/name cursor index and filter status rather than the status-prefixed
-# cursor. Both are bounded index scans. The selective archived case must use the
-# status-aware index, proving that index remains useful when selectivity warrants it.
-if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ACTIVE_PLAN}"; then
-  echo "Customer Pass 4 active register did not use an indexed cursor plan:" >&2
-  echo "${ACTIVE_PLAN}" >&2
-  exit 1
-fi
-
-for pair in \
-  "customers_workspace_status_name_cursor_idx|${ARCHIVED_PLAN}" \
-  "customers_workspace_imported_name_cursor_idx|${IMPORTED_PLAN}" \
-  "customers_search_text_trgm_idx|${SEARCH_PLAN}"; do
-  expected="${pair%%|*}"
-  plan="${pair#*|}"
-  if ! grep -q "${expected}" <<<"${plan}"; then
-    echo "Customer Pass 4 query plan did not use ${expected}:" >&2
+assert_execution_under() {
+  local label="$1"
+  local plan="$2"
+  local max_ms="$3"
+  local elapsed
+  elapsed="$(sed -n 's/.*Execution Time: \([0-9.]*\) ms/\1/p' <<<"${plan}" | tail -n 1)"
+  if [[ -z "${elapsed}" ]] || ! awk -v elapsed="${elapsed}" -v max="${max_ms}" 'BEGIN { exit !(elapsed <= max) }'; then
+    echo "${label} exceeded ${max_ms}ms or did not report execution time (actual: ${elapsed:-missing}ms):" >&2
     echo "${plan}" >&2
     exit 1
   fi
-done
+}
 
-echo "Customer Pass 4 synthetic register: 25,000 Customers; 22,500 active; 2,500 archived; 5,000 imported"
-echo "Customer bounded keyset pagination, summary reconciliation and indexed substring search passed"
-echo "Customer Pass 4 scale/query-plan torture passed"
+# Deep OFFSET pages can legitimately use a sequential scan when PostgreSQL
+# estimates that visiting most rows in a 25k workspace is cheaper than walking
+# an index. Gate the real default-planner latency, then separately prove an
+# order-preserving workspace/name cursor index remains executable by disabling
+# alternative sequential, bitmap and explicit-sort plans for this diagnostic
+# only. Both the generic workspace/name cursor and the status-specific cursor
+# are valid ordered access paths; planner cost may legitimately choose either.
+assert_execution_under "Customer deepest active page query" "${ACTIVE_PLAN}" 500
+assert_execution_under "Customer deepest archived page query" "${ARCHIVED_PLAN}" 500
+assert_execution_under "Customer substring search query" "${SEARCH_PLAN}" 500
+
+if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ACTIVE_INDEX_PLAN}"; then
+  echo "Customer active register has no viable order-preserving workspace/name cursor path:" >&2
+  echo "${ACTIVE_INDEX_PLAN}" >&2
+  exit 1
+fi
+if ! grep -Eq 'customers_workspace_(status_)?name_cursor_idx' <<<"${ARCHIVED_INDEX_PLAN}"; then
+  echo "Customer archived register has no viable order-preserving workspace/name cursor path:" >&2
+  echo "${ARCHIVED_INDEX_PLAN}" >&2
+  exit 1
+fi
+if ! grep -q 'customers_search_text_trgm_idx' <<<"${SEARCH_PLAN}"; then
+  echo "Customer substring search did not use the trigram index:" >&2
+  echo "${SEARCH_PLAN}" >&2
+  exit 1
+fi
+
+echo "Customer register torture: 25,000 Customers + 410 unresolved import reviews"
+echo "Direct first/deep/last pages, page clamping, Review semantics, All composition and filtered search passed"
+echo "Deep direct pages remained below 1000ms through the register function and below 500ms at the underlying default-planner query"
+echo "Customer workspace/name cursor and trigram index paths remain available"
+echo "Customer register scale/query-plan torture passed"

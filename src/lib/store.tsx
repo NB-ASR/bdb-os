@@ -86,7 +86,7 @@ function addActivity(
   ];
 }
 
-export function BdbProvider({ children }: { children: ReactNode }) {
+export function BdbProvider({ children, allowOfflineShell = false }: { children: ReactNode; allowOfflineShell?: boolean }) {
   const [state, setState] = useState<BdbState>(seedState);
   const stateRef = useRef(state);
   const [ready, setReady] = useState(false);
@@ -111,7 +111,12 @@ export function BdbProvider({ children }: { children: ReactNode }) {
           setRole(cloud.role);
           setSyncStatus("saved");
         } else if (cloudConfigured) {
-          setLoadError("Your account is signed in, but no active workspace could be opened. Contact a workspace owner or try signing in again.");
+          if (allowOfflineShell && typeof navigator !== "undefined" && !navigator.onLine) {
+            setWorkspaceId("offline-shell");
+            setSyncStatus("offline");
+          } else {
+            setLoadError("Your account is signed in, but no active workspace could be opened. Contact a workspace owner or try signing in again.");
+          }
         } else {
           try {
             const saved = window.localStorage.getItem(STORAGE_KEY);
@@ -122,7 +127,14 @@ export function BdbProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Workspace initialisation failed", error);
-        if (active) setLoadError("BDB OS could not load this workspace safely. No demo or cached records have been substituted. Refresh the page or contact support.");
+        if (active) {
+          if (allowOfflineShell && typeof navigator !== "undefined" && !navigator.onLine) {
+            setWorkspaceId("offline-shell");
+            setSyncStatus("offline");
+          } else {
+            setLoadError("BDB OS could not load this workspace safely. No demo or cached records have been substituted. Refresh the page or contact support.");
+          }
+        }
       } finally {
         if (active) setReady(true);
       }
@@ -131,7 +143,7 @@ export function BdbProvider({ children }: { children: ReactNode }) {
 
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
     return () => { active = false; };
-  }, []);
+  }, [allowOfflineShell]);
 
   useEffect(() => {
     if (ready && !workspaceId && !isSupabaseConfigured()) {
