@@ -519,7 +519,7 @@ export default function CalendarAvailabilityPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, marginTop: 18, alignItems: "start" }}>
         <Card className="settings-card">
           <SectionHeading title="Recurring breaks" description="A break blocks the full effective occupied time of an Appointment." />
-          <form onSubmit={(event) => void saveBreak(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Recurring breaks" onSubmit={(event) => void saveBreak(event)} style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label className="field"><span>Day</span><select value={breakWeekday} onChange={(event) => setBreakWeekday(Number(event.target.value))} disabled={disabled}>{weekdays.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label>
               <label className="field"><span>Label</span><input value={breakLabel} maxLength={120} onChange={(event) => setBreakLabel(event.target.value)} disabled={disabled} required /></label>
@@ -547,7 +547,7 @@ export default function CalendarAvailabilityPage() {
 
         <Card className="settings-card">
           <SectionHeading title="Leave and time off" description={`Date and time values use ${bundle.timezone}.`} />
-          <form onSubmit={(event) => void saveLeave(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Leave and time off" onSubmit={(event) => void saveLeave(event)} style={{ display: "grid", gap: 12 }}>
             <label className="field"><span>Starts</span><input type="datetime-local" value={leaveStart} onChange={(event) => setLeaveStart(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Ends</span><input type="datetime-local" value={leaveEnd} onChange={(event) => setLeaveEnd(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Reason</span><input value={leaveReason} maxLength={500} onChange={(event) => setLeaveReason(event.target.value)} disabled={disabled} required /></label>
@@ -574,7 +574,7 @@ export default function CalendarAvailabilityPage() {
       <Card className="settings-card" style={{ marginTop: 18 }}>
         <SectionHeading title="Rooms and resources" description="Active rooms can be assigned to Appointments and cannot overlap." />
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, .8fr) minmax(0, 1.5fr)", gap: 18, alignItems: "start" }}>
-          <form onSubmit={(event) => void saveRoom(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Rooms and resources" onSubmit={(event) => void saveRoom(event)} style={{ display: "grid", gap: 12 }}>
             <label className="field"><span>Code</span><input value={roomCode} maxLength={32} placeholder="TREATMENT-1" onChange={(event) => setRoomCode(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Name</span><input value={roomName} maxLength={120} placeholder="Treatment Room 1" onChange={(event) => setRoomName(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Description</span><textarea value={roomDescription} maxLength={1000} rows={3} onChange={(event) => setRoomDescription(event.target.value)} disabled={disabled} /></label>
