@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [standard, importer, xlsxImporter, customers, products, services] = await Promise.all([
+const [standard, importer, xlsxImporter, customers, products, services, calendarAcceptance, calendarLayout, calendarAvailability] = await Promise.all([
   readFile("docs/architecture/v1-engine-closure-standard.md", "utf8"),
   readFile("src/components/standard-data-import.tsx", "utf8"),
   readFile("src/lib/modules/xlsx-import.ts", "utf8"),
   readFile("src/app/customers/page.tsx", "utf8"),
   readFile("src/app/products/page.tsx", "utf8"),
   readFile("src/app/services/page.tsx", "utf8"),
+  readFile("tests/e2e/calendar-operational-acceptance.spec.ts", "utf8"),
+  readFile("src/app/calendar/layout.tsx", "utf8"),
+  readFile("src/app/calendar/availability/page.tsx", "utf8"),
 ]);
 
 assert.match(standard, /Customer Operational Acceptance Gate/i);
@@ -54,4 +57,24 @@ assert.doesNotMatch(products, /Import catalogue/i, "Products must not expose the
 assert.match(services, /StandardDataImport entity="services"/);
 assert.match(services, /<StandardDataImport[^>]*disabled=\{[^}]*!workspaceReady[^}]*\}/, "Service imports must wait for authenticated workspace readiness.");
 
-console.log("V1 closure requires customer-operational acceptance; Customer import supports generic CSV/XLSX up to the hardened 5,000-row boundary, invalidates stale register pages before the canonical refresh, and Catalogue imports use canonical write paths.");
+for (const proof of [
+  /New appointment/,
+  /Create appointment/,
+  /Confirm/,
+  /Reschedule/,
+  /Complete/,
+  /Cancel appointment/,
+  /Save offline/,
+  /Monday working hours saved/,
+  /Staff break created/,
+  /Staff leave recorded/,
+  /Room created/,
+  /can now perform/,
+]) {
+  assert.match(calendarAcceptance, proof, "Calendar V1 operational acceptance must exercise the visible customer workflow.");
+}
+assert.doesNotMatch(calendarLayout, /href: "\/calendar\/meetings"/, "Deferred Meetings must not be in the Calendar V1 action hierarchy.");
+assert.doesNotMatch(calendarLayout, /href: "\/calendar\/timesheets"/, "Deferred Timesheets must not be in the Calendar V1 action hierarchy.");
+assert.doesNotMatch(calendarAvailability, /eligibility remains the next Calendar integration/i, "Calendar guidance must not describe an already-live eligibility workflow as future work.");
+
+console.log("V1 closure requires customer-operational acceptance; Customer/Catalogue import paths and the Calendar customer-visible lifecycle are protected by exact-candidate acceptance contracts.");
