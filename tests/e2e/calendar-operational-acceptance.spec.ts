@@ -138,7 +138,9 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     await page.goto("/calendar/availability");
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
-    await page.getByLabel("Staff", { exact: true }).selectOption(ownerStaff.user_id);
+    const staffSelect = page.getByRole("combobox", { name: "Staff", exact: true });
+    await expect(staffSelect).toBeVisible();
+    await staffSelect.selectOption(ownerStaff.user_id);
 
     const hoursRow = page.getByText(currentWeekdayLabel, { exact: true }).locator("..");
     const working = hoursRow.locator('input[type="checkbox"]');
@@ -223,6 +225,8 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     await page.goto("/calendar");
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+    await expect(page.locator('a[href="/calendar/timesheets"]')).toHaveCount(0);
+    await expect(page.locator('a[href="/calendar/meetings"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New appointment" })).toBeEnabled();
 
     await openAppointmentForm(page, {
