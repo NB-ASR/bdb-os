@@ -151,7 +151,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await hoursRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(currentWeekdayLabel + " working hours saved.")).toBeVisible();
 
-    const breakForm = page.getByRole("button", { name: "Add break" }).locator("xpath=ancestor::form");
+    const breakForm = page.locator("form").filter({ has: page.getByLabel("Day", { exact: true }) });
     await breakForm.getByLabel("Day", { exact: true }).selectOption(String(currentWeekday));
     await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance temporary break");
     await breakForm.getByLabel("Starts", { exact: true }).fill("16:15");
@@ -175,7 +175,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await breakForm.getByRole("button", { name: "Add break" }).click();
     await expect(page.getByText("Staff break created.")).toBeVisible();
 
-    const leaveForm = page.getByRole("button", { name: "Record leave" }).locator("xpath=ancestor::form");
+    const leaveForm = page.locator("form").filter({ has: page.getByLabel("Reason", { exact: true }) });
     await leaveForm.getByLabel("Starts", { exact: true }).fill(leaveDate + "T09:00");
     await leaveForm.getByLabel("Ends", { exact: true }).fill(leaveDate + "T10:00");
     await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance leave");
@@ -191,7 +191,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await leaveRow.locator("button").nth(1).click();
     await expect(page.getByText("Staff leave cancelled.")).toBeVisible();
 
-    const roomForm = page.getByRole("button", { name: "Create room" }).locator("xpath=ancestor::form");
+    const roomForm = page.locator("form").filter({ has: page.getByLabel("Code", { exact: true }) });
     await roomForm.getByLabel("Code", { exact: true }).fill(roomCode);
     await roomForm.getByLabel("Name", { exact: true }).fill(roomName);
     await roomForm.getByLabel("Description", { exact: true }).fill("Calendar operational acceptance");
