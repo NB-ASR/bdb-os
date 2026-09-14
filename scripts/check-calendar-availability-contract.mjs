@@ -61,7 +61,7 @@ assert.match(page, /Recurring breaks/);
 assert.match(page, /Leave and time off/);
 assert.match(page, /Rooms and resources/);
 assert.match(page, /online-only because existing Appointments must be checked atomically/);
-assert.match(page, /Staff-to-Service eligibility remains the next Calendar integration/);
+assert.match(page, /Staff-to-Service eligibility is managed separately in Calendar/);
 
 assert.match(appointmentApi, /APPOINTMENT_CONFLICT/);
 assert.match(appointmentApi, /APPOINTMENT_ROOM_CONFLICT/);
