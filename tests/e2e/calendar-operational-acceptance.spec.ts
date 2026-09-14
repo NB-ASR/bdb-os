@@ -192,10 +192,10 @@ test.describe("Calendar V1 operational acceptance", () => {
     await roomForm.getByLabel("Description", { exact: true }).fill("Calendar acceptance updated");
     await roomForm.getByRole("button", { name: "Save room" }).click();
     await expect(page.getByText("Room updated.")).toBeVisible();
-    roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../..");
+    roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../../..");
     await roomRow.getByRole("button").nth(1).click();
     await expect(page.getByText("Room archived.")).toBeVisible();
-    roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../..");
+    roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../../..");
     await roomRow.getByRole("button").nth(1).click();
     await expect(page.getByText("Room restored.")).toBeVisible();
 
@@ -228,6 +228,8 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Create appointment" }).click();
     await expect(page.getByText(/does not fit inside the staff member's configured working hours/i)).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).last().click();
+    await page.getByRole("button", { name: "Discard rejected change", exact: true }).click();
+    await expect(page.getByText("The confirmed rejected Appointment change was discarded.")).toBeVisible();
 
     await openAppointmentForm(page, {
       customerId,
@@ -241,6 +243,8 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Create appointment" }).click();
     await expect(page.getByText(/overlaps a configured staff break/i)).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).last().click();
+    await page.getByRole("button", { name: "Discard rejected change", exact: true }).click();
+    await expect(page.getByText("The confirmed rejected Appointment change was discarded.")).toBeVisible();
 
     await openAppointmentForm(page, {
       customerId,
