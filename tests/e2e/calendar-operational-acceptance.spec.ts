@@ -187,7 +187,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await roomForm.getByRole("button", { name: "Create room" }).click();
     await expect(page.getByText("Room created.")).toBeVisible();
 
-    let roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../..");
+    let roomRow = page.getByText(roomName, { exact: true }).locator("xpath=../../..");
     await roomRow.getByRole("button").nth(0).click();
     await roomForm.getByLabel("Description", { exact: true }).fill("Calendar acceptance updated");
     await roomForm.getByRole("button", { name: "Save room" }).click();
@@ -202,7 +202,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.goto("/calendar/eligibility");
     await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
     await page.getByLabel("Active Service", { exact: true }).selectOption(serviceId);
-    const staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("xpath=../..");
+    const staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("xpath=../../..");
     await staffRow.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
     await staffRow.getByRole("button", { name: "Remove" }).click();
