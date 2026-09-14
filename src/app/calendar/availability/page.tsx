@@ -603,7 +603,7 @@ export default function CalendarAvailabilityPage() {
 
       <Card className="settings-note" style={{ marginTop: 18 }}>
         <strong>Scope boundary</strong>
-        <p>Staff-to-Service eligibility remains the next Calendar integration. Timesheets, Meetings, reminders and external calendar synchronisation are still deferred.</p>
+        <p>Staff-to-Service eligibility is managed separately in Calendar. Timesheets, Meetings, advanced reminders and external calendar synchronisation remain deferred from Calendar V1.</p>
       </Card>
     </>
   );
