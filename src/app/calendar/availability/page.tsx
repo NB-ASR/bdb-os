@@ -435,7 +435,7 @@ export default function CalendarAvailabilityPage() {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading availability…</main>;
   }
 
-  const disabled = !bundle.canManage || !online;
+  const disabled = !bundle.canManage || !online || loading || Boolean(busy);
 
   return (
     <>
@@ -475,7 +475,7 @@ export default function CalendarAvailabilityPage() {
           <SectionHeading title="Staff member" description={`Times are stored in ${bundle.timezone}.`} />
           <label className="field">
             <span>Staff</span>
-            <select value={selectedStaffId} onChange={(event) => chooseStaff(event.target.value)}>
+            <select value={selectedStaffId} onChange={(event) => chooseStaff(event.target.value)} disabled={disabled}>
               <option value="">Choose staff</option>
               {bundle.staff.map((staff) => <option key={staff.user_id} value={staff.user_id}>{staff.name}</option>)}
             </select>

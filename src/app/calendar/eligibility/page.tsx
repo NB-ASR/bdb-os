@@ -124,7 +124,7 @@ export default function CalendarEligibilityPage() {
     [bundle.eligibility, selectedServiceId],
   );
   const eligibleCount = serviceEligibility.filter((item) => item.status === "active").length;
-  const disabled = !bundle.canManage || !online;
+  const disabled = !bundle.canManage || !online || loading || Boolean(busy);
 
   function chooseService(serviceId: string) {
     selectedServiceRef.current = serviceId;
@@ -225,7 +225,7 @@ export default function CalendarEligibilityPage() {
             <SectionHeading title="Service" description="Assignments are maintained one Service at a time." />
             <label className="field">
               <span>Active Service</span>
-              <select value={selectedServiceId} onChange={(event) => chooseService(event.target.value)}>
+              <select value={selectedServiceId} onChange={(event) => chooseService(event.target.value)} disabled={disabled}>
                 {bundle.services.map((service) => (
                   <option key={service.id} value={service.id}>{service.name} · {service.code}</option>
                 ))}

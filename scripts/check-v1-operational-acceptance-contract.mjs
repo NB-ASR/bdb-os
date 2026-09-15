@@ -87,6 +87,10 @@ assert.doesNotMatch(calendarShell, /href: "\/calendar\/timesheets"/, "Deferred T
 for (const marker of [/Edit break/, /Archive break/, /Edit leave/, /Cancel leave/, /Edit room/, /Archive room/, /Restore room/]) {
   assert.match(calendarAvailability, marker, "Calendar availability lifecycle controls must retain stable accessible action names.");
 }
+assert.match(calendarAvailability, /const disabled = !bundle\.canManage \|\| !online \|\| loading \|\| Boolean\(busy\)/, "Calendar availability mutations must stay disabled while canonical refresh or a mutation is in flight.");
+assert.match(calendarAvailability, /onChange=\{\(event\) => chooseStaff\(event\.target\.value\)\} disabled=\{disabled\}/, "Calendar availability staff selection must not race an in-flight refresh or mutation.");
+assert.match(calendarEligibility, /const disabled = !bundle\.canManage \|\| !online \|\| loading \|\| Boolean\(busy\)/, "Calendar eligibility mutations must stay disabled while canonical refresh or a mutation is in flight.");
+assert.match(calendarEligibility, /onChange=\{\(event\) => chooseService\(event\.target\.value\)\} disabled=\{disabled\}/, "Calendar eligibility Service selection must not race an in-flight refresh or mutation.");
 for (const marker of [/Search appointments/, /Previous day/, />Today</, /Next day/, /Keep appointment/, /Retry sync/, /Discard rejected change/]) {
   assert.match(calendarPage, marker, "Calendar daily-operation and recovery controls must remain visible and operational.");
 }
