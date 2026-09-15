@@ -62,6 +62,13 @@ async function discardRejectedCalendarCommand(page: Page) {
   await expect(page.getByRole("button", { name: "Discard rejected change", exact: true })).toHaveCount(0);
 }
 
+async function refreshAndWait(page: Page) {
+  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  await expect(refresh).toBeEnabled({ timeout: 15_000 });
+}
+
 async function openAppointmentForm(
   page: Page,
   values: {
@@ -176,7 +183,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
     await page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true }).click();
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
     const staffSelect = page.getByRole("combobox", { name: "Staff", exact: true });
     await expect(staffSelect).toBeVisible();
@@ -255,7 +262,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: `Restore room ${roomName}`, exact: true }).click();
     await expect(page.getByText("Room restored.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
     await expect(page.getByText("Acceptance lunch", { exact: true })).toBeVisible();
     await expect(page.getByText(roomName, { exact: true })).toBeVisible();
     await expect(page.getByText("No active leave recorded.", { exact: true })).toBeVisible();
@@ -272,7 +279,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
     await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
     let staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Assign" }).click();
@@ -291,7 +298,7 @@ test.describe("Calendar V1 operational acceptance", () => {
       await context.setOffline(false);
     }
     await expect(page.getByText("Online connection required", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
     await expect(page.getByText(ownerStaff.name, { exact: true }).locator("../..").getByRole("button", { name: "Remove", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
@@ -299,7 +306,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.locator('a[href="/calendar/meetings"]')).toHaveCount(0);
     await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true })).toBeVisible();
     await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
     const agendaHeading = page.getByText("Day agenda", { exact: true }).locator("..").getByRole("heading", { level: 2 });
     const todayAgenda = (await agendaHeading.textContent())?.trim() ?? "";
     await page.getByRole("button", { name: "Next day", exact: true }).click();
@@ -428,7 +435,7 @@ test.describe("Calendar V1 operational acceptance", () => {
       { timeout: 30_000 },
     ).toBe(0);
     await expect(page.getByText(/queued Appointment change synced/i)).toBeVisible();
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await refreshAndWait(page);
 
     const appointmentsResponse = await page.request.get("/api/appointments?workspaceId=" + encodeURIComponent(workspaceId));
     expect(appointmentsResponse.ok()).toBeTruthy();
