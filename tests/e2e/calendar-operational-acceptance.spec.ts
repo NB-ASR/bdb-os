@@ -250,11 +250,11 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText("Room created.")).toBeVisible();
 
     await page.getByRole("button", { name: `Edit room ${roomName}`, exact: true }).click();
-    await roomForm.getByLabel("Description", { exact: true }).fill("Calendar cancelled room edit");
+    await page.getByRole("textbox", { name: "Description", exact: true }).fill("Calendar cancelled room edit");
     await roomForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
     await expect(page.getByText(roomName, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Edit room ${roomName}`, exact: true }).click();
-    await roomForm.getByLabel("Description", { exact: true }).fill("Calendar acceptance updated");
+    await page.getByRole("textbox", { name: "Description", exact: true }).fill("Calendar acceptance updated");
     await roomForm.getByRole("button", { name: "Save room", exact: true }).click();
     await expect(page.getByText("Room updated.")).toBeVisible();
     await page.getByRole("button", { name: `Archive room ${roomName}`, exact: true }).click();
