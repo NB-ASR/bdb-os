@@ -93,10 +93,27 @@ async function openAppointmentForm(
   }
 }
 
+test.describe("Calendar V1 empty-state navigation", () => {
+  test.describe.configure({ retries: 0 });
+  test.skip(!email || !password, "Dedicated E2E owner credentials are not configured.");
+
+  test("empty Service eligibility routes to the Service catalogue", async ({ page }) => {
+    await signIn(page);
+    if (workspaceName) {
+      await expect(page.getByRole("heading", { name: new RegExp(workspaceName, "i") })).toBeVisible();
+    }
+    await page.goto("/calendar/eligibility");
+    await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
+    await expect(page.getByText("No active Services", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open Services", exact: true }).click();
+    await expect(page).toHaveURL(/\/services$/);
+  });
+});
+
 test.describe("Calendar V1 operational acceptance", () => {
   test.skip(!email || !password, "Dedicated E2E owner credentials are not configured.");
 
-  test("authenticated owner can operate the complete Calendar V1 launch workflow", async ({ page, context }) => {
+  test("authenticated owner can operate the complete Calendar V1 launch workflow", async ({ page, context }, testInfo) => {
     test.setTimeout(300_000);
     await signIn(page);
     if (workspaceName) {
@@ -112,11 +129,6 @@ test.describe("Calendar V1 operational acceptance", () => {
     const serviceCode = "CAL-" + String(unique).slice(-8);
     const roomCode = "ROOM-" + String(unique).slice(-6);
     const roomName = "Calendar Acceptance Room " + unique;
-    await page.goto("/calendar/eligibility");
-    await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
-    await expect(page.getByText("No active Services", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Open Services", exact: true }).click();
-    await expect(page).toHaveURL(/\/services$/);
 
     await postCommand(page, "/api/customers", {
       workspaceId,
@@ -149,8 +161,9 @@ test.describe("Calendar V1 operational acceptance", () => {
     expect(ownerStaff?.user_id).toBeTruthy();
     const timezone = String(availabilityPayload.result?.timezone ?? "");
     expect(timezone).toBeTruthy();
-    const target = workspaceLocalDate(timezone, 8);
-    const leave = workspaceLocalDate(timezone, 9);
+    const attemptOffset = testInfo.retry;
+    const target = workspaceLocalDate(timezone, 8 + attemptOffset);
+    const leave = workspaceLocalDate(timezone, 9 + attemptOffset);
     const targetDate = target.iso;
     const leaveDate = leave.iso;
     const currentWeekday = target.weekday;
@@ -158,11 +171,11 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     await page.goto("/calendar");
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Availability", exact: true }).click();
+    await page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
-    await page.getByRole("link", { name: "Availability", exact: true }).click();
+    await page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true }).click();
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
     const staffSelect = page.getByRole("combobox", { name: "Staff", exact: true });
@@ -257,7 +270,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText("Online connection required", { exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
-    await page.getByRole("link", { name: "Service eligibility", exact: true }).click();
+    await page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
@@ -284,8 +297,8 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
     await expect(page.locator('a[href="/calendar/timesheets"]')).toHaveCount(0);
     await expect(page.locator('a[href="/calendar/meetings"]')).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Availability", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Service eligibility", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     const agendaHeading = page.getByText("Day agenda", { exact: true }).locator("..").getByRole("heading", { level: 2 });
     const todayAgenda = (await agendaHeading.textContent())?.trim() ?? "";
@@ -346,7 +359,7 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText(/already has an Appointment|room already has an Appointment/i)).toBeVisible();
     await discardRejectedCalendarCommand(page);
 
-    await page.getByRole("link", { name: "Service eligibility", exact: true }).click();
+    await page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true }).click();
     await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
     staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Remove" }).click();
