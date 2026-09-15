@@ -95,11 +95,11 @@ Deferred. Version 1 uses one working interval plus multiple breaks, which covers
 - The current model does not support overnight shifts.
 - Working-hour changes apply to every matching weekday, including future dates.
 - Room assignment on the existing Appointment form must use an active room name or code until the form is promoted to a canonical selector.
-- Staff-to-Service eligibility is not part of this slice.
+- Staff-to-Service eligibility is part of Calendar V1 through the canonical `calendar_staff_service_eligibility` relationship and remains separate from working-hour data.
 
 ## Future implications
 
-The next Calendar integration is staff-to-Service eligibility. It should reference the existing `services` and workspace staff records and must not duplicate Service definitions or working-hour data.
+Calendar V1 already includes staff-to-Service eligibility by referencing the existing `services` and workspace staff records without duplicating Service definitions or working-hour data.
 
 Later layers may add:
 
