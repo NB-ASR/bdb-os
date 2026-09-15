@@ -536,8 +536,8 @@ export default function CalendarAvailabilityPage() {
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.label}</strong><small style={{ display: "block" }}>{dayName(item.weekday)} · {timeValue(item.start_time)}–{timeValue(item.end_time)}</small></div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Button variant="quiet" onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Edit break ${item.label}`} onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Archive break ${item.label}`} onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button>
                 </div>
               </div>
             ))}
@@ -561,8 +561,8 @@ export default function CalendarAvailabilityPage() {
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.reason}</strong><small style={{ display: "block" }}>{localInput(item.starts_at).replace("T", " ")} → {localInput(item.ends_at).replace("T", " ")}</small></div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Button variant="quiet" onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Edit leave ${item.reason}`} onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Cancel leave ${item.reason}`} onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button>
                 </div>
               </div>
             ))}
@@ -589,8 +589,14 @@ export default function CalendarAvailabilityPage() {
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}><DoorOpen size={18} /><div><strong>{room.name}</strong><small style={{ display: "block" }}>{String(room.code)} · {room.description || "No description"}</small></div></div>
                 <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
                   <Badge tone={room.status === "active" ? "green" : "neutral"}>{room.status}</Badge>
-                  <Button variant="quiet" onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void changeRoomStatus(room)} disabled={disabled || busy === `room-${room.id}`}>
+                  <Button type="button" variant="quiet" aria-label={`Edit room ${room.name}`} onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    aria-label={room.status === "active" ? `Archive room ${room.name}` : `Restore room ${room.name}`}
+                    onClick={() => void changeRoomStatus(room)}
+                    disabled={disabled || busy === `room-${room.id}`}
+                  >
                     {room.status === "active" ? <Archive size={15} /> : <RotateCcw size={15} />}
                   </Button>
                 </div>

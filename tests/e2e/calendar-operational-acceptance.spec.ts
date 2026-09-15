@@ -35,25 +35,31 @@ async function postCommand(page: Page, path: string, data: Record<string, unknow
   return result.result as Record<string, unknown>;
 }
 
-function weekdayLabel(date = new Date()) {
-  return new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(date);
-}
+const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
 
-function isoDate(date = new Date()) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(value: string, days: number) {
-  const date = new Date(value + "T12:00:00Z");
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+function workspaceLocalDate(timeZone: string, daysAhead: number) {
+  const target = new Date(Date.now() + daysAhead * 86_400_000);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(target);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const iso = `${value("year")}-${value("month")}-${value("day")}`;
+  const weekday = new Date(iso + "T12:00:00Z").getUTCDay();
+  return { iso, weekday, weekdayLabel: weekdayNames[weekday] };
 }
 
 async function discardRejectedCalendarCommand(page: Page) {
   await page.getByRole("button", { name: "Close", exact: true }).last().click();
-  await expect(page.getByRole("button", { name: "Discard rejected change" })).toBeVisible();
-  await page.getByRole("button", { name: "Discard rejected change" }).click();
-  await expect(page.getByRole("button", { name: "Discard rejected change" })).toHaveCount(0);
+  const retry = page.getByRole("button", { name: "Retry sync", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(page.getByRole("button", { name: "Discard rejected change", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Discard rejected change", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Discard rejected change", exact: true })).toHaveCount(0);
 }
 
 async function openAppointmentForm(
@@ -67,18 +73,23 @@ async function openAppointmentForm(
     roomName: string;
     notes: string;
     initialStatus?: "pending" | "confirmed";
+    channel?: "staff" | "phone" | "walk_in" | "online";
   },
 ) {
   await page.getByRole("button", { name: "New appointment" }).click();
-  await page.getByLabel("Customer", { exact: true }).selectOption(values.customerId);
-  await page.getByLabel("Service", { exact: true }).selectOption(values.serviceId);
-  await expect(page.getByLabel("Staff member", { exact: true })).toHaveValue(values.staffUserId);
-  await page.getByLabel("Date", { exact: true }).fill(values.date);
-  await page.getByLabel("Start time", { exact: true }).fill(values.time);
-  await page.getByLabel("Room", { exact: true }).selectOption({ label: new RegExp(values.roomName) });
-  await page.getByLabel("Appointment notes", { exact: true }).fill(values.notes);
+  const appointmentDialog = page.getByRole("dialog", { name: "New appointment", exact: true });
+  await appointmentDialog.getByRole("combobox", { name: "Customer", exact: true }).selectOption(values.customerId);
+  if (values.channel) {
+    await appointmentDialog.getByRole("combobox", { name: "Booking source", exact: true }).selectOption(values.channel);
+  }
+  await appointmentDialog.getByRole("combobox", { name: "Service", exact: true }).selectOption(values.serviceId);
+  await expect(appointmentDialog.getByRole("combobox", { name: "Staff member", exact: true })).toHaveValue(values.staffUserId);
+  await appointmentDialog.getByLabel("Date", { exact: true }).fill(values.date);
+  await appointmentDialog.getByLabel("Start time", { exact: true }).fill(values.time);
+  await appointmentDialog.getByRole("combobox", { name: "Room", exact: true }).selectOption(values.roomName);
+  await appointmentDialog.getByLabel("Appointment notes", { exact: true }).fill(values.notes);
   if (values.initialStatus) {
-    await page.getByLabel("Initial status", { exact: true }).selectOption(values.initialStatus);
+    await appointmentDialog.getByRole("combobox", { name: "Initial status", exact: true }).selectOption(values.initialStatus);
   }
 }
 
@@ -101,10 +112,11 @@ test.describe("Calendar V1 operational acceptance", () => {
     const serviceCode = "CAL-" + String(unique).slice(-8);
     const roomCode = "ROOM-" + String(unique).slice(-6);
     const roomName = "Calendar Acceptance Room " + unique;
-    const targetDate = isoDate();
-    const leaveDate = addDays(targetDate, 1);
-    const currentWeekday = new Date(targetDate + "T12:00:00Z").getUTCDay();
-    const currentWeekdayLabel = weekdayLabel(new Date(targetDate + "T12:00:00Z"));
+    await page.goto("/calendar/eligibility");
+    await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
+    await expect(page.getByText("No active Services", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open Services", exact: true }).click();
+    await expect(page).toHaveURL(/\/services$/);
 
     await postCommand(page, "/api/customers", {
       workspaceId,
@@ -135,8 +147,23 @@ test.describe("Calendar V1 operational acceptance", () => {
     const staff = (availabilityPayload.result?.staff ?? []) as Array<{ user_id: string; name: string }>;
     const ownerStaff = staff.find((item) => item.user_id === actorUserId) ?? staff[0];
     expect(ownerStaff?.user_id).toBeTruthy();
+    const timezone = String(availabilityPayload.result?.timezone ?? "");
+    expect(timezone).toBeTruthy();
+    const target = workspaceLocalDate(timezone, 8);
+    const leave = workspaceLocalDate(timezone, 9);
+    const targetDate = target.iso;
+    const leaveDate = leave.iso;
+    const currentWeekday = target.weekday;
+    const currentWeekdayLabel = target.weekdayLabel;
 
-    await page.goto("/calendar/availability");
+    await page.goto("/calendar");
+    await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Availability", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Availability", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
     const staffSelect = page.getByRole("combobox", { name: "Staff", exact: true });
     await expect(staffSelect).toBeVisible();
@@ -152,23 +179,25 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText(currentWeekdayLabel + " working hours saved.")).toBeVisible();
 
     const breakForm = page.getByRole("form", { name: "Recurring breaks", exact: true });
-    await breakForm.getByLabel("Day", { exact: true }).selectOption(String(currentWeekday));
+    await breakForm.getByRole("combobox", { name: "Day", exact: true }).selectOption(String(currentWeekday));
     await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance temporary break");
     await breakForm.getByLabel("Starts", { exact: true }).fill("16:15");
     await breakForm.getByLabel("Ends", { exact: true }).fill("16:30");
     await breakForm.getByRole("button", { name: "Add break" }).click();
     await expect(page.getByText("Staff break created.")).toBeVisible();
 
-    let breakRow = page.getByText("Acceptance temporary break", { exact: true }).locator("../..");
-    await breakRow.locator("button").nth(0).click();
+    await page.getByRole("button", { name: "Edit break Acceptance temporary break", exact: true }).click();
+    await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance cancelled break edit");
+    await breakForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
+    await expect(page.getByText("Acceptance temporary break", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Edit break Acceptance temporary break", exact: true }).click();
     await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance edited break");
-    await breakForm.getByRole("button", { name: "Save break" }).click();
+    await breakForm.getByRole("button", { name: "Save break", exact: true }).click();
     await expect(page.getByText("Staff break updated.")).toBeVisible();
-    breakRow = page.getByText("Acceptance edited break", { exact: true }).locator("../..");
-    await breakRow.locator("button").nth(1).click();
+    await page.getByRole("button", { name: "Archive break Acceptance edited break", exact: true }).click();
     await expect(page.getByText("Staff break archived.")).toBeVisible();
 
-    await breakForm.getByLabel("Day", { exact: true }).selectOption(String(currentWeekday));
+    await breakForm.getByRole("combobox", { name: "Day", exact: true }).selectOption(String(currentWeekday));
     await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance lunch");
     await breakForm.getByLabel("Starts", { exact: true }).fill("12:00");
     await breakForm.getByLabel("Ends", { exact: true }).fill("13:00");
@@ -182,13 +211,15 @@ test.describe("Calendar V1 operational acceptance", () => {
     await leaveForm.getByRole("button", { name: "Record leave" }).click();
     await expect(page.getByText("Staff leave recorded.")).toBeVisible();
 
-    let leaveRow = page.getByText("Acceptance leave", { exact: true }).locator("../..");
-    await leaveRow.locator("button").nth(0).click();
+    await page.getByRole("button", { name: "Edit leave Acceptance leave", exact: true }).click();
+    await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance cancelled leave edit");
+    await leaveForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
+    await expect(page.getByText("Acceptance leave", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Edit leave Acceptance leave", exact: true }).click();
     await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance leave updated");
-    await leaveForm.getByRole("button", { name: "Save leave" }).click();
+    await leaveForm.getByRole("button", { name: "Save leave", exact: true }).click();
     await expect(page.getByText("Staff leave updated.")).toBeVisible();
-    leaveRow = page.getByText("Acceptance leave updated", { exact: true }).locator("../..");
-    await leaveRow.locator("button").nth(1).click();
+    await page.getByRole("button", { name: "Cancel leave Acceptance leave updated", exact: true }).click();
     await expect(page.getByText("Staff leave cancelled.")).toBeVisible();
 
     const roomForm = page.getByRole("form", { name: "Rooms and resources", exact: true });
@@ -198,21 +229,38 @@ test.describe("Calendar V1 operational acceptance", () => {
     await roomForm.getByRole("button", { name: "Create room" }).click();
     await expect(page.getByText("Room created.")).toBeVisible();
 
-    let roomRow = page.getByText(roomName, { exact: true }).locator("../..");
-    await roomRow.locator("button").nth(0).click();
+    await page.getByRole("button", { name: `Edit room ${roomName}`, exact: true }).click();
+    await roomForm.getByLabel("Description", { exact: true }).fill("Calendar cancelled room edit");
+    await roomForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
+    await expect(page.getByText(roomName, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Edit room ${roomName}`, exact: true }).click();
     await roomForm.getByLabel("Description", { exact: true }).fill("Calendar acceptance updated");
-    await roomForm.getByRole("button", { name: "Save room" }).click();
+    await roomForm.getByRole("button", { name: "Save room", exact: true }).click();
     await expect(page.getByText("Room updated.")).toBeVisible();
-    roomRow = page.getByText(roomName, { exact: true }).locator("../..");
-    await roomRow.locator("button").nth(1).click();
+    await page.getByRole("button", { name: `Archive room ${roomName}`, exact: true }).click();
     await expect(page.getByText("Room archived.")).toBeVisible();
-    roomRow = page.getByText(roomName, { exact: true }).locator("../..");
-    await roomRow.locator("button").nth(1).click();
+    await page.getByRole("button", { name: `Restore room ${roomName}`, exact: true }).click();
     await expect(page.getByText("Room restored.")).toBeVisible();
 
-    await page.goto("/calendar/eligibility");
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByText("Acceptance lunch", { exact: true })).toBeVisible();
+    await expect(page.getByText(roomName, { exact: true })).toBeVisible();
+    await expect(page.getByText("No active leave recorded.", { exact: true })).toBeVisible();
+
+    try {
+      await context.setOffline(true);
+      await expect(page.getByText("Online connection required", { exact: true })).toBeVisible();
+      await expect(breakForm.getByRole("button", { name: "Add break", exact: true })).toBeDisabled();
+    } finally {
+      await context.setOffline(false);
+    }
+    await expect(page.getByText("Online connection required", { exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
+    await page.getByRole("link", { name: "Service eligibility", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
-    await page.getByLabel("Active Service", { exact: true }).selectOption(serviceId);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
     let staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Assign" }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
@@ -220,14 +268,34 @@ test.describe("Calendar V1 operational acceptance", () => {
     await staffRow.getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText(ownerStaff.name + " was removed from " + serviceName + ".")).toBeVisible();
     staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
-    await staffRow.getByRole("button", { name: "Assign" }).click();
+    await staffRow.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
-
-    await page.goto("/calendar");
+    try {
+      await context.setOffline(true);
+      await expect(page.getByText("Online connection required", { exact: true })).toBeVisible();
+      await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeDisabled();
+    } finally {
+      await context.setOffline(false);
+    }
+    await expect(page.getByText("Online connection required", { exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByText(ownerStaff.name, { exact: true }).locator("../..").getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
     await expect(page.locator('a[href="/calendar/timesheets"]')).toHaveCount(0);
     await expect(page.locator('a[href="/calendar/meetings"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "New appointment" })).toBeEnabled();
+    await expect(page.getByRole("link", { name: "Availability", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Service eligibility", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    const agendaHeading = page.getByText("Day agenda", { exact: true }).locator("..").getByRole("heading", { level: 2 });
+    const todayAgenda = (await agendaHeading.textContent())?.trim() ?? "";
+    await page.getByRole("button", { name: "Next day", exact: true }).click();
+    expect((await agendaHeading.textContent())?.trim()).not.toBe(todayAgenda);
+    await page.getByRole("button", { name: "Previous day", exact: true }).click();
+    expect((await agendaHeading.textContent())?.trim()).toBe(todayAgenda);
+    await page.getByRole("button", { name: "Today", exact: true }).click();
+    expect((await agendaHeading.textContent())?.trim()).toBe(todayAgenda);
+    await expect(page.getByRole("button", { name: "New appointment", exact: true })).toBeEnabled();
 
     await openAppointmentForm(page, {
       customerId, serviceId, staffUserId: ownerStaff.user_id, date: targetDate,
@@ -247,12 +315,27 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     await openAppointmentForm(page, {
       customerId, serviceId, staffUserId: ownerStaff.user_id, date: targetDate,
-      time: "10:00", roomName, notes: "Lifecycle acceptance", initialStatus: "pending",
+      time: "10:00", roomName, notes: "Lifecycle acceptance", initialStatus: "pending", channel: "phone",
     });
-    await page.getByRole("button", { name: "Create appointment" }).click();
+    await page.getByRole("button", { name: "Create appointment", exact: true }).click();
     await expect(page.getByText("Appointment created.")).toBeVisible();
 
-    let lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" }).first();
+    const search = page.getByRole("textbox", { name: "Search appointments", exact: true });
+    let lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
+    await search.fill(customerName);
+    await expect(lifecycleAppointment).toBeVisible();
+    await search.fill("no-such-calendar-record");
+    await expect(page.getByText("No Appointments match", { exact: true })).toBeVisible();
+    await search.fill("");
+    await page.getByRole("button", { name: "Pending", exact: true }).click();
+    await expect(lifecycleAppointment).toBeVisible();
+    await page.getByRole("button", { name: "Confirmed", exact: true }).click();
+    await expect(lifecycleAppointment).toHaveCount(0);
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
+    await lifecycleAppointment.click();
+    await expect(page.getByRole("dialog", { name: new RegExp(customerName) })).toBeVisible();
+    await page.getByRole("button", { name: "Close", exact: true }).last().click();
     await expect(lifecycleAppointment).toBeVisible();
 
     await openAppointmentForm(page, {
@@ -263,19 +346,22 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText(/already has an Appointment|room already has an Appointment/i)).toBeVisible();
     await discardRejectedCalendarCommand(page);
 
-    await page.goto("/calendar/eligibility");
-    await page.getByLabel("Active Service", { exact: true }).selectOption(serviceId);
+    await page.getByRole("link", { name: "Service eligibility", exact: true }).click();
+    await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
     staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText(/Reschedule or cancel existing Appointments/i)).toBeVisible();
 
-    await page.goto("/calendar");
-    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" }).first();
+    await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
+    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
     await lifecycleAppointment.click();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("Appointment confirmed.")).toBeVisible();
+    await page.getByRole("button", { name: "Confirmed", exact: true }).click();
+    await expect(page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" })).toBeVisible();
+    await page.getByRole("button", { name: "All", exact: true }).click();
 
-    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" }).first();
+    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
     await lifecycleAppointment.click();
     await page.getByRole("button", { name: "Reschedule", exact: true }).click();
     await page.getByLabel("Start time", { exact: true }).fill("11:00");
@@ -288,17 +374,26 @@ test.describe("Calendar V1 operational acceptance", () => {
     });
     await page.getByRole("button", { name: "Create appointment" }).click();
     await expect(page.getByText("Appointment created.")).toBeVisible();
-    const cancellationAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "14:00" }).first();
+    const cancellationAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "14:00" });
+    await cancellationAppointment.click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.getByRole("button", { name: "Keep appointment", exact: true }).click();
+    await expect(page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "14:00" })).toBeVisible();
     await cancellationAppointment.click();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByLabel("Cancellation reason", { exact: true }).fill("Operational acceptance cancellation");
     await page.getByRole("button", { name: "Cancel appointment", exact: true }).click();
     await expect(page.getByText("Appointment cancelled.")).toBeVisible();
 
-    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "11:00" }).first();
+    lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "11:00" });
     await lifecycleAppointment.click();
     await page.getByRole("button", { name: "Complete", exact: true }).click();
     await expect(page.getByText("Appointment completed.")).toBeVisible();
+    await page.getByRole("button", { name: "Completed", exact: true }).click();
+    await expect(page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "11:00" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancelled", exact: true }).click();
+    await expect(page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "14:00" })).toBeVisible();
+    await page.getByRole("button", { name: "All", exact: true }).click();
 
     const queueKey = "bdb-appointment-queue-v2:" + actorUserId + ":" + workspaceId;
     try {
@@ -320,6 +415,7 @@ test.describe("Calendar V1 operational acceptance", () => {
       { timeout: 30_000 },
     ).toBe(0);
     await expect(page.getByText(/queued Appointment change synced/i)).toBeVisible();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
 
     const appointmentsResponse = await page.request.get("/api/appointments?workspaceId=" + encodeURIComponent(workspaceId));
     expect(appointmentsResponse.ok()).toBeTruthy();

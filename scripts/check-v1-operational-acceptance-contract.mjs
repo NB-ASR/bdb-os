@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [standard, importer, xlsxImporter, customers, products, services] = await Promise.all([
+const [standard, importer, xlsxImporter, customers, products, services, calendarAcceptance, calendarShell, calendarPage, calendarAvailability, calendarEligibility, calendarAcceptanceDoc, calendarArchitecture] = await Promise.all([
   readFile("docs/architecture/v1-engine-closure-standard.md", "utf8"),
   readFile("src/components/standard-data-import.tsx", "utf8"),
   readFile("src/lib/modules/xlsx-import.ts", "utf8"),
   readFile("src/app/customers/page.tsx", "utf8"),
   readFile("src/app/products/page.tsx", "utf8"),
   readFile("src/app/services/page.tsx", "utf8"),
+  readFile("tests/e2e/calendar-operational-acceptance.spec.ts", "utf8"),
+  readFile("src/components/app-shell.tsx", "utf8"),
+  readFile("src/app/calendar/page.tsx", "utf8"),
+  readFile("src/app/calendar/availability/page.tsx", "utf8"),
+  readFile("src/app/calendar/eligibility/page.tsx", "utf8"),
+  readFile("docs/acceptance/calendar-v1-operational-acceptance.md", "utf8"),
+  readFile("docs/architecture/calendar-availability.md", "utf8"),
 ]);
 
 assert.match(standard, /Customer Operational Acceptance Gate/i);
@@ -54,4 +61,42 @@ assert.doesNotMatch(products, /Import catalogue/i, "Products must not expose the
 assert.match(services, /StandardDataImport entity="services"/);
 assert.match(services, /<StandardDataImport[^>]*disabled=\{[^}]*!workspaceReady[^}]*\}/, "Service imports must wait for authenticated workspace readiness.");
 
-console.log("V1 closure requires customer-operational acceptance; Customer import supports generic CSV/XLSX up to the hardened 5,000-row boundary, invalidates stale register pages before the canonical refresh, and Catalogue imports use canonical write paths.");
+for (const proof of [
+  /getByRole\("combobox", \{ name: "Day", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Customer", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Service", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Staff member", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Room", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Initial status", exact: true \}\)/,
+  /getByRole\("combobox", \{ name: "Active Service", exact: true \}\)/,
+  /Search appointments/,
+  /Previous day/,
+  /Next day/,
+  /Keep appointment/,
+  /Retry sync/,
+  /Discard rejected change/,
+  /Cancel edit/,
+  /Open Services/,
+  /Save offline/,
+]) {
+  assert.match(calendarAcceptance, proof, "Calendar V1 operational acceptance must prove the visible customer workflow with stable accessible controls.");
+}
+assert.match(calendarShell, /href: "\/calendar\/eligibility"/, "Service eligibility must be reachable from the Calendar V1 navigation.");
+assert.doesNotMatch(calendarShell, /href: "\/calendar\/meetings"/, "Deferred Meetings must not be in the Calendar V1 action hierarchy.");
+assert.doesNotMatch(calendarShell, /href: "\/calendar\/timesheets"/, "Deferred Timesheets must not be in the Calendar V1 action hierarchy.");
+for (const marker of [/Edit break/, /Archive break/, /Edit leave/, /Cancel leave/, /Edit room/, /Archive room/, /Restore room/]) {
+  assert.match(calendarAvailability, marker, "Calendar availability lifecycle controls must retain stable accessible action names.");
+}
+for (const marker of [/Search appointments/, /Previous day/, />Today</, /Next day/, /Keep appointment/, /Retry sync/, /Discard rejected change/]) {
+  assert.match(calendarPage, marker, "Calendar daily-operation and recovery controls must remain visible and operational.");
+}
+for (const marker of [/Open Services/, /Active Service/, />Assign</, />Remove</]) {
+  assert.match(calendarEligibility, marker, "Calendar Service eligibility operational controls must remain present.");
+}
+assert.match(calendarAcceptanceDoc, /Visible-action inventory/i);
+assert.match(calendarAcceptanceDoc, /Operational V1/i);
+assert.match(calendarAcceptanceDoc, /Service eligibility/i);
+assert.doesNotMatch(calendarArchitecture, /eligibility is not part of this slice/i, "Authoritative Calendar architecture must not describe live eligibility as future work.");
+assert.doesNotMatch(calendarArchitecture, /next Calendar integration is staff-to-Service eligibility/i, "Authoritative Calendar architecture must align with the frozen V1 closure decision.");
+
+console.log("V1 closure requires customer-operational acceptance; Customer/Catalogue import paths and the complete Calendar V1 visible-action boundary are protected by exact-candidate acceptance contracts.");
