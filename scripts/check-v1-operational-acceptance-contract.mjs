@@ -90,7 +90,7 @@ for (const marker of [/Edit break/, /Archive break/, /Edit leave/, /Cancel leave
 for (const marker of [/Search appointments/, /Previous day/, />Today</, /Next day/, /Keep appointment/, /Retry sync/, /Discard rejected change/]) {
   assert.match(calendarPage, marker, "Calendar daily-operation and recovery controls must remain visible and operational.");
 }
-for (const marker of [/Open Services/, /Active Service/, />Assign</, />Remove</]) {
+for (const marker of [/Open Services/, /Active Service/, /"Assign"/, /"Remove"/]) {
   assert.match(calendarEligibility, marker, "Calendar Service eligibility operational controls must remain present.");
 }
 assert.match(calendarAcceptanceDoc, /Visible-action inventory/i);
