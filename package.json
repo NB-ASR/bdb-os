@@ -15,6 +15,7 @@
     "test:vanita": "npm --prefix projects/vanita-stock run check",
     "test:e2e": "playwright test",
     "smoke": "node scripts/smoke-production.mjs",
+    "cron:appointment-reminders": "node scripts/run-appointment-reminders.mjs",
     "repair:founder-identities": "node scripts/repair-founder-identity-names.mjs"
   },
   "dependencies": {
