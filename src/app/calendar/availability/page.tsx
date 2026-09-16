@@ -494,7 +494,12 @@ export default function CalendarAvailabilityPage() {
             {weekdays.map((day) => {
               const draft = hours[day.value] ?? { isWorking: false, startTime: "09:00", endTime: "17:00", version: null };
               return (
-                <div key={day.value} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1fr) auto 110px 110px auto", gap: 10, alignItems: "center", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
+                <div
+                  key={day.value}
+                  role="group"
+                  aria-label={`${day.label} working hours`}
+                  style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1fr) auto 110px 110px auto", gap: 10, alignItems: "center", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}
+                >
                   <strong>{day.label}</strong>
                   <label style={{ display: "flex", gap: 7, alignItems: "center" }}>
                     <input
@@ -504,8 +509,8 @@ export default function CalendarAvailabilityPage() {
                       disabled={disabled}
                     /> Working
                   </label>
-                  <input type="time" value={draft.startTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, startTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
-                  <input type="time" value={draft.endTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, endTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
+                  <input type="time" aria-label={`${day.label} start time`} value={draft.startTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, startTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
+                  <input type="time" aria-label={`${day.label} end time`} value={draft.endTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, endTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
                   <Button variant="secondary" onClick={() => void saveHours(day.value)} disabled={disabled || busy === `hours-${day.value}`}>
                     {busy === `hours-${day.value}` ? "Saving…" : "Save"}
                   </Button>

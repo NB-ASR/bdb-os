@@ -259,6 +259,8 @@ export default function CalendarEligibilityPage() {
                 return (
                   <div
                     key={staff.user_id}
+                    role="group"
+                    aria-label={`Service eligibility for ${staff.name}`}
                     style={{
                       display: "flex",
                       justifyContent: "space-between",

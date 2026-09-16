@@ -52,7 +52,8 @@ function workspaceLocalDate(timeZone: string, daysAhead: number) {
 }
 
 async function discardRejectedCalendarCommand(page: Page) {
-  await page.getByRole("button", { name: "Close", exact: true }).last().click();
+  const formDialog = page.getByRole("dialog", { name: "New appointment", exact: true });
+  await formDialog.getByRole("button", { name: "Close", exact: true }).click();
   const retry = page.getByRole("button", { name: "Retry sync", exact: true });
   await expect(retry).toBeVisible();
   await expect(retry).toBeEnabled();
@@ -62,10 +63,16 @@ async function discardRejectedCalendarCommand(page: Page) {
   await expect(page.getByRole("button", { name: "Discard rejected change", exact: true })).toHaveCount(0);
 }
 
-async function refreshAndWait(page: Page) {
+async function refreshAndWait(page: Page, endpoint: RegExp) {
   const refresh = page.getByRole("button", { name: "Refresh", exact: true });
   await expect(refresh).toBeEnabled();
+  const loaded = page.waitForResponse((response) =>
+    response.request().method() === "GET"
+    && endpoint.test(response.url())
+    && response.ok(),
+  );
   await refresh.click();
+  await loaded;
   await expect(refresh).toBeEnabled({ timeout: 15_000 });
 }
 
@@ -129,6 +136,14 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     const { workspaceId, actorUserId } = await workspaceContext(page);
     const unique = Date.now();
+    const runToken = `${Date.now()}-${testInfo.retry}-${crypto.randomUUID().slice(0, 8)}`;
+    const temporaryBreak = `Acceptance temporary break ${runToken}`;
+    const cancelledBreakEdit = `Acceptance cancelled break edit ${runToken}`;
+    const editedBreak = `Acceptance edited break ${runToken}`;
+    const lunchBreak = `Acceptance lunch ${runToken}`;
+    const leaveReason = `Acceptance leave ${runToken}`;
+    const cancelledLeaveReason = `Acceptance cancelled leave edit ${runToken}`;
+    const updatedLeaveReason = `Acceptance leave updated ${runToken}`;
     const customerId = crypto.randomUUID();
     const serviceId = crypto.randomUUID();
     const customerName = "Calendar Acceptance Customer " + unique;
@@ -183,42 +198,44 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
     await page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true }).click();
-    await refreshAndWait(page);
+    await refreshAndWait(page, /\/api\/calendar\/availability(?:\?|$)/);
     await expect(page.getByRole("heading", { name: "Availability", exact: true })).toBeVisible();
     const staffSelect = page.getByRole("combobox", { name: "Staff", exact: true });
     await expect(staffSelect).toBeVisible();
     await staffSelect.selectOption(ownerStaff.user_id);
 
-    const hoursRow = page.getByText(currentWeekdayLabel, { exact: true }).locator("..");
-    const working = hoursRow.locator('input[type="checkbox"]');
+    const hoursRow = page.getByRole("group", {
+      name: `${currentWeekdayLabel} working hours`,
+      exact: true,
+    });
+    const working = hoursRow.getByRole("checkbox", { name: "Working", exact: true });
     if (!(await working.isChecked())) await working.check();
-    const times = hoursRow.locator('input[type="time"]');
-    await times.nth(0).fill("08:00");
-    await times.nth(1).fill("18:00");
+    await hoursRow.getByLabel(`${currentWeekdayLabel} start time`, { exact: true }).fill("08:00");
+    await hoursRow.getByLabel(`${currentWeekdayLabel} end time`, { exact: true }).fill("18:00");
     await hoursRow.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByText(currentWeekdayLabel + " working hours saved.")).toBeVisible();
 
     const breakForm = page.getByRole("form", { name: "Recurring breaks", exact: true });
     await breakForm.getByRole("combobox", { name: "Day", exact: true }).selectOption(String(currentWeekday));
-    await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance temporary break");
+    await breakForm.getByLabel("Label", { exact: true }).fill(temporaryBreak);
     await breakForm.getByLabel("Starts", { exact: true }).fill("16:15");
     await breakForm.getByLabel("Ends", { exact: true }).fill("16:30");
     await breakForm.getByRole("button", { name: "Add break" }).click();
     await expect(page.getByText("Staff break created.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Edit break Acceptance temporary break", exact: true }).click();
-    await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance cancelled break edit");
+    await page.getByRole("button", { name: `Edit break ${temporaryBreak}`, exact: true }).click();
+    await breakForm.getByLabel("Label", { exact: true }).fill(cancelledBreakEdit);
     await breakForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
-    await expect(page.getByText("Acceptance temporary break", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Edit break Acceptance temporary break", exact: true }).click();
-    await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance edited break");
+    await expect(page.getByText(temporaryBreak, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Edit break ${temporaryBreak}`, exact: true }).click();
+    await breakForm.getByLabel("Label", { exact: true }).fill(editedBreak);
     await breakForm.getByRole("button", { name: "Save break", exact: true }).click();
     await expect(page.getByText("Staff break updated.")).toBeVisible();
-    await page.getByRole("button", { name: "Archive break Acceptance edited break", exact: true }).click();
+    await page.getByRole("button", { name: `Archive break ${editedBreak}`, exact: true }).click();
     await expect(page.getByText("Staff break archived.")).toBeVisible();
 
     await breakForm.getByRole("combobox", { name: "Day", exact: true }).selectOption(String(currentWeekday));
-    await breakForm.getByLabel("Label", { exact: true }).fill("Acceptance lunch");
+    await breakForm.getByLabel("Label", { exact: true }).fill(lunchBreak);
     await breakForm.getByLabel("Starts", { exact: true }).fill("12:00");
     await breakForm.getByLabel("Ends", { exact: true }).fill("13:00");
     await breakForm.getByRole("button", { name: "Add break" }).click();
@@ -227,19 +244,19 @@ test.describe("Calendar V1 operational acceptance", () => {
     const leaveForm = page.getByRole("form", { name: "Leave and time off", exact: true });
     await leaveForm.getByLabel("Starts", { exact: true }).fill(leaveDate + "T09:00");
     await leaveForm.getByLabel("Ends", { exact: true }).fill(leaveDate + "T10:00");
-    await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance leave");
+    await leaveForm.getByLabel("Reason", { exact: true }).fill(leaveReason);
     await leaveForm.getByRole("button", { name: "Record leave" }).click();
     await expect(page.getByText("Staff leave recorded.")).toBeVisible();
 
-    await page.getByRole("button", { name: "Edit leave Acceptance leave", exact: true }).click();
-    await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance cancelled leave edit");
+    await page.getByRole("button", { name: `Edit leave ${leaveReason}`, exact: true }).click();
+    await leaveForm.getByLabel("Reason", { exact: true }).fill(cancelledLeaveReason);
     await leaveForm.getByRole("button", { name: "Cancel edit", exact: true }).click();
-    await expect(page.getByText("Acceptance leave", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Edit leave Acceptance leave", exact: true }).click();
-    await leaveForm.getByLabel("Reason", { exact: true }).fill("Acceptance leave updated");
+    await expect(page.getByText(leaveReason, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Edit leave ${leaveReason}`, exact: true }).click();
+    await leaveForm.getByLabel("Reason", { exact: true }).fill(updatedLeaveReason);
     await leaveForm.getByRole("button", { name: "Save leave", exact: true }).click();
     await expect(page.getByText("Staff leave updated.")).toBeVisible();
-    await page.getByRole("button", { name: "Cancel leave Acceptance leave updated", exact: true }).click();
+    await page.getByRole("button", { name: `Cancel leave ${updatedLeaveReason}`, exact: true }).click();
     await expect(page.getByText("Staff leave cancelled.")).toBeVisible();
 
     const roomForm = page.getByRole("form", { name: "Rooms and resources", exact: true });
@@ -262,8 +279,8 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: `Restore room ${roomName}`, exact: true }).click();
     await expect(page.getByText("Room restored.")).toBeVisible();
 
-    await refreshAndWait(page);
-    await expect(page.getByText("Acceptance lunch", { exact: true })).toBeVisible();
+    await refreshAndWait(page, /\/api\/calendar\/availability(?:\?|$)/);
+    await expect(page.getByText(lunchBreak, { exact: true })).toBeVisible();
     await expect(page.getByText(roomName, { exact: true })).toBeVisible();
     await expect(page.getByText("No active leave recorded.", { exact: true })).toBeVisible();
 
@@ -279,15 +296,16 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Service eligibility", exact: true })).toBeVisible();
-    await refreshAndWait(page);
+    await refreshAndWait(page, /\/api\/calendar\/eligibility(?:\?|$)/);
     await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
-    let staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
-    await staffRow.getByRole("button", { name: "Assign" }).click();
+    const staffRow = page.getByRole("group", {
+      name: `Service eligibility for ${ownerStaff.name}`,
+      exact: true,
+    });
+    await staffRow.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
-    staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
-    await staffRow.getByRole("button", { name: "Remove" }).click();
+    await staffRow.getByRole("button", { name: "Remove", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " was removed from " + serviceName + ".")).toBeVisible();
-    staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
     try {
@@ -298,16 +316,18 @@ test.describe("Calendar V1 operational acceptance", () => {
       await context.setOffline(false);
     }
     await expect(page.getByText("Online connection required", { exact: true })).toHaveCount(0);
-    await refreshAndWait(page);
-    await expect(page.getByText(ownerStaff.name, { exact: true }).locator("../..").getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    await refreshAndWait(page, /\/api\/calendar\/eligibility(?:\?|$)/);
+    await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
     await expect(page.locator('a[href="/calendar/timesheets"]')).toHaveCount(0);
     await expect(page.locator('a[href="/calendar/meetings"]')).toHaveCount(0);
     await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Availability", exact: true })).toBeVisible();
     await expect(page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true })).toBeVisible();
-    await refreshAndWait(page);
-    const agendaHeading = page.getByText("Day agenda", { exact: true }).locator("..").getByRole("heading", { level: 2 });
+    await refreshAndWait(page, /\/api\/appointments(?:\?|$)/);
+    const agendaHeading = page
+      .getByRole("group", { name: "Day agenda", exact: true })
+      .getByRole("heading", { level: 2 });
     const todayAgenda = (await agendaHeading.textContent())?.trim() ?? "";
     await page.getByRole("button", { name: "Next day", exact: true }).click();
     expect((await agendaHeading.textContent())?.trim()).not.toBe(todayAgenda);
@@ -354,8 +374,9 @@ test.describe("Calendar V1 operational acceptance", () => {
     await page.getByRole("button", { name: "All", exact: true }).click();
     lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
     await lifecycleAppointment.click();
-    await expect(page.getByRole("dialog", { name: new RegExp(customerName) })).toBeVisible();
-    await page.getByRole("button", { name: "Close", exact: true }).last().click();
+    const detailDialog = page.getByRole("dialog", { name: new RegExp(customerName) });
+    await expect(detailDialog).toBeVisible();
+    await detailDialog.getByRole("button", { name: "Close", exact: true }).click();
     await expect(lifecycleAppointment).toBeVisible();
 
     await openAppointmentForm(page, {
@@ -368,7 +389,6 @@ test.describe("Calendar V1 operational acceptance", () => {
 
     await page.getByLabel("Main navigation").getByRole("link", { name: "Service eligibility", exact: true }).click();
     await page.getByRole("combobox", { name: "Active Service", exact: true }).selectOption(serviceId);
-    staffRow = page.getByText(ownerStaff.name, { exact: true }).locator("../..");
     await staffRow.getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText(/Reschedule or cancel existing Appointments/i)).toBeVisible();
 
@@ -435,7 +455,7 @@ test.describe("Calendar V1 operational acceptance", () => {
       { timeout: 30_000 },
     ).toBe(0);
     await expect(page.getByText(/queued Appointment change synced/i)).toBeVisible();
-    await refreshAndWait(page);
+    await refreshAndWait(page, /\/api\/appointments(?:\?|$)/);
 
     const appointmentsResponse = await page.request.get("/api/appointments?workspaceId=" + encodeURIComponent(workspaceId));
     expect(appointmentsResponse.ok()).toBeTruthy();

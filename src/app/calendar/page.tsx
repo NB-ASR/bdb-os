@@ -796,7 +796,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className={styles.scheduleHeader}>
+          <div className={styles.scheduleHeader} role="group" aria-label="Day agenda">
             <div>
               <p className="eyebrow">Day agenda</p>
               <h2>{formatDate(selectedDate, { weekday: "long", day: "numeric", month: "long" })}</h2>

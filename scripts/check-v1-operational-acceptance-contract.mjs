@@ -91,6 +91,13 @@ assert.match(calendarAvailability, /const disabled = !bundle\.canManage \|\| !on
 assert.match(calendarAvailability, /onChange=\{\(event\) => chooseStaff\(event\.target\.value\)\} disabled=\{disabled\}/, "Calendar availability staff selection must not race an in-flight refresh or mutation.");
 assert.match(calendarEligibility, /const disabled = !bundle\.canManage \|\| !online \|\| loading \|\| Boolean\(busy\)/, "Calendar eligibility mutations must stay disabled while canonical refresh or a mutation is in flight.");
 assert.match(calendarEligibility, /onChange=\{\(event\) => chooseService\(event\.target\.value\)\} disabled=\{disabled\}/, "Calendar eligibility Service selection must not race an in-flight refresh or mutation.");
+assert.doesNotMatch(calendarAcceptance, /\.locator\("\.\.(?:\/\.\.)?"\)/, "Calendar acceptance must not walk DOM parents.");
+assert.doesNotMatch(calendarAcceptance, /\.(?:nth|first|last)\(/, "Calendar acceptance must not use positional selectors for operational actions.");
+assert.match(calendarEligibility, /Service eligibility for \$\{staff\.name\}/, "Eligibility staff rows must expose a stable accessible group identity.");
+assert.match(calendarAvailability, /\$\{day\.label\} working hours/, "Weekly working-hours rows must expose a stable accessible group identity.");
+assert.match(calendarAvailability, /\$\{day\.label\} start time/, "Weekly working-hours start fields must expose explicit accessible names.");
+assert.match(calendarAvailability, /\$\{day\.label\} end time/, "Weekly working-hours end fields must expose explicit accessible names.");
+assert.match(calendarPage, /aria-label="Day agenda"/, "Calendar Day agenda must expose a stable accessible boundary.");
 for (const marker of [/Search appointments/, /Previous day/, />Today</, /Next day/, /Keep appointment/, /Retry sync/, /Discard rejected change/]) {
   assert.match(calendarPage, marker, "Calendar daily-operation and recovery controls must remain visible and operational.");
 }
