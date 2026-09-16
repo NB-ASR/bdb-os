@@ -304,10 +304,16 @@ test.describe("Calendar V1 operational acceptance", () => {
     });
     await staffRow.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeEnabled();
     await staffRow.getByRole("button", { name: "Remove", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " was removed from " + serviceName + ".")).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Assign", exact: true })).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Assign", exact: true })).toBeEnabled();
     await staffRow.getByRole("button", { name: "Assign", exact: true }).click();
     await expect(page.getByText(ownerStaff.name + " can now perform " + serviceName + ".")).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeVisible();
+    await expect(staffRow.getByRole("button", { name: "Remove", exact: true })).toBeEnabled();
     try {
       await context.setOffline(true);
       await expect(page.getByText("Online connection required", { exact: true })).toBeVisible();
