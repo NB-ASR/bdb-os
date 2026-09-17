@@ -184,7 +184,8 @@ test.describe("Calendar V1 operational acceptance", () => {
     const timezone = String(availabilityPayload.result?.timezone ?? "");
     expect(timezone).toBeTruthy();
     const attemptOffset = testInfo.retry;
-    const target = workspaceLocalDate(timezone, 8 + attemptOffset);
+    const targetDaysAhead = 8 + attemptOffset;
+    const target = workspaceLocalDate(timezone, targetDaysAhead);
     const leave = workspaceLocalDate(timezone, 9 + attemptOffset);
     const targetDate = target.iso;
     const leaveDate = leave.iso;
@@ -399,7 +400,12 @@ test.describe("Calendar V1 operational acceptance", () => {
     await expect(page.getByText(/Reschedule or cancel existing Appointments/i)).toBeVisible();
 
     await page.getByRole("button", { name: "Back to Calendar", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+    for (let day = 0; day < targetDaysAhead; day += 1) {
+      await page.getByRole("button", { name: "Next day", exact: true }).click();
+    }
     lifecycleAppointment = page.getByRole("button").filter({ hasText: customerName }).filter({ hasText: "10:00" });
+    await expect(lifecycleAppointment).toBeVisible();
     await lifecycleAppointment.click();
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
     await expect(page.getByText("Appointment confirmed.")).toBeVisible();
