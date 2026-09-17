@@ -435,7 +435,7 @@ export default function CalendarAvailabilityPage() {
     return <main className="admin-loading"><RefreshCw className="spin" size={20} /> Loading availability…</main>;
   }
 
-  const disabled = !bundle.canManage || !online;
+  const disabled = !bundle.canManage || !online || loading || Boolean(busy);
 
   return (
     <>
@@ -475,7 +475,7 @@ export default function CalendarAvailabilityPage() {
           <SectionHeading title="Staff member" description={`Times are stored in ${bundle.timezone}.`} />
           <label className="field">
             <span>Staff</span>
-            <select value={selectedStaffId} onChange={(event) => chooseStaff(event.target.value)}>
+            <select value={selectedStaffId} onChange={(event) => chooseStaff(event.target.value)} disabled={disabled}>
               <option value="">Choose staff</option>
               {bundle.staff.map((staff) => <option key={staff.user_id} value={staff.user_id}>{staff.name}</option>)}
             </select>
@@ -494,7 +494,12 @@ export default function CalendarAvailabilityPage() {
             {weekdays.map((day) => {
               const draft = hours[day.value] ?? { isWorking: false, startTime: "09:00", endTime: "17:00", version: null };
               return (
-                <div key={day.value} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1fr) auto 110px 110px auto", gap: 10, alignItems: "center", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}>
+                <div
+                  key={day.value}
+                  role="group"
+                  aria-label={`${day.label} working hours`}
+                  style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1fr) auto 110px 110px auto", gap: 10, alignItems: "center", padding: 12, border: "1px solid var(--border)", borderRadius: 14 }}
+                >
                   <strong>{day.label}</strong>
                   <label style={{ display: "flex", gap: 7, alignItems: "center" }}>
                     <input
@@ -504,8 +509,8 @@ export default function CalendarAvailabilityPage() {
                       disabled={disabled}
                     /> Working
                   </label>
-                  <input type="time" value={draft.startTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, startTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
-                  <input type="time" value={draft.endTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, endTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
+                  <input type="time" aria-label={`${day.label} start time`} value={draft.startTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, startTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
+                  <input type="time" aria-label={`${day.label} end time`} value={draft.endTime} onChange={(event) => setHours((current) => ({ ...current, [day.value]: { ...draft, endTime: event.target.value } }))} disabled={disabled || !draft.isWorking} />
                   <Button variant="secondary" onClick={() => void saveHours(day.value)} disabled={disabled || busy === `hours-${day.value}`}>
                     {busy === `hours-${day.value}` ? "Saving…" : "Save"}
                   </Button>
@@ -519,7 +524,7 @@ export default function CalendarAvailabilityPage() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, marginTop: 18, alignItems: "start" }}>
         <Card className="settings-card">
           <SectionHeading title="Recurring breaks" description="A break blocks the full effective occupied time of an Appointment." />
-          <form onSubmit={(event) => void saveBreak(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Recurring breaks" onSubmit={(event) => void saveBreak(event)} style={{ display: "grid", gap: 12 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label className="field"><span>Day</span><select value={breakWeekday} onChange={(event) => setBreakWeekday(Number(event.target.value))} disabled={disabled}>{weekdays.map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}</select></label>
               <label className="field"><span>Label</span><input value={breakLabel} maxLength={120} onChange={(event) => setBreakLabel(event.target.value)} disabled={disabled} required /></label>
@@ -536,8 +541,8 @@ export default function CalendarAvailabilityPage() {
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.label}</strong><small style={{ display: "block" }}>{dayName(item.weekday)} · {timeValue(item.start_time)}–{timeValue(item.end_time)}</small></div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Button variant="quiet" onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Edit break ${item.label}`} onClick={() => editBreak(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Archive break ${item.label}`} onClick={() => void archiveBreak(item)} disabled={disabled || busy === `break-${item.id}`}><Archive size={15} /></Button>
                 </div>
               </div>
             ))}
@@ -547,7 +552,7 @@ export default function CalendarAvailabilityPage() {
 
         <Card className="settings-card">
           <SectionHeading title="Leave and time off" description={`Date and time values use ${bundle.timezone}.`} />
-          <form onSubmit={(event) => void saveLeave(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Leave and time off" onSubmit={(event) => void saveLeave(event)} style={{ display: "grid", gap: 12 }}>
             <label className="field"><span>Starts</span><input type="datetime-local" value={leaveStart} onChange={(event) => setLeaveStart(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Ends</span><input type="datetime-local" value={leaveEnd} onChange={(event) => setLeaveEnd(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Reason</span><input value={leaveReason} maxLength={500} onChange={(event) => setLeaveReason(event.target.value)} disabled={disabled} required /></label>
@@ -561,8 +566,8 @@ export default function CalendarAvailabilityPage() {
               <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between", padding: 10, border: "1px solid var(--border)", borderRadius: 12 }}>
                 <div><strong>{item.reason}</strong><small style={{ display: "block" }}>{localInput(item.starts_at).replace("T", " ")} → {localInput(item.ends_at).replace("T", " ")}</small></div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <Button variant="quiet" onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Edit leave ${item.reason}`} onClick={() => editLeave(item)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button type="button" variant="quiet" aria-label={`Cancel leave ${item.reason}`} onClick={() => void cancelLeave(item)} disabled={disabled || busy === `leave-${item.id}`}><Archive size={15} /></Button>
                 </div>
               </div>
             ))}
@@ -574,7 +579,7 @@ export default function CalendarAvailabilityPage() {
       <Card className="settings-card" style={{ marginTop: 18 }}>
         <SectionHeading title="Rooms and resources" description="Active rooms can be assigned to Appointments and cannot overlap." />
         <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, .8fr) minmax(0, 1.5fr)", gap: 18, alignItems: "start" }}>
-          <form onSubmit={(event) => void saveRoom(event)} style={{ display: "grid", gap: 12 }}>
+          <form aria-label="Rooms and resources" onSubmit={(event) => void saveRoom(event)} style={{ display: "grid", gap: 12 }}>
             <label className="field"><span>Code</span><input value={roomCode} maxLength={32} placeholder="TREATMENT-1" onChange={(event) => setRoomCode(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Name</span><input value={roomName} maxLength={120} placeholder="Treatment Room 1" onChange={(event) => setRoomName(event.target.value)} disabled={disabled} required /></label>
             <label className="field"><span>Description</span><textarea value={roomDescription} maxLength={1000} rows={3} onChange={(event) => setRoomDescription(event.target.value)} disabled={disabled} /></label>
@@ -589,8 +594,14 @@ export default function CalendarAvailabilityPage() {
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}><DoorOpen size={18} /><div><strong>{room.name}</strong><small style={{ display: "block" }}>{String(room.code)} · {room.description || "No description"}</small></div></div>
                 <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
                   <Badge tone={room.status === "active" ? "green" : "neutral"}>{room.status}</Badge>
-                  <Button variant="quiet" onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button>
-                  <Button variant="quiet" onClick={() => void changeRoomStatus(room)} disabled={disabled || busy === `room-${room.id}`}>
+                  <Button type="button" variant="quiet" aria-label={`Edit room ${room.name}`} onClick={() => editRoom(room)} disabled={disabled}><Pencil size={15} /></Button>
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    aria-label={room.status === "active" ? `Archive room ${room.name}` : `Restore room ${room.name}`}
+                    onClick={() => void changeRoomStatus(room)}
+                    disabled={disabled || busy === `room-${room.id}`}
+                  >
                     {room.status === "active" ? <Archive size={15} /> : <RotateCcw size={15} />}
                   </Button>
                 </div>
@@ -603,7 +614,7 @@ export default function CalendarAvailabilityPage() {
 
       <Card className="settings-note" style={{ marginTop: 18 }}>
         <strong>Scope boundary</strong>
-        <p>Staff-to-Service eligibility remains the next Calendar integration. Timesheets, Meetings, reminders and external calendar synchronisation are still deferred.</p>
+        <p>Staff-to-Service eligibility is already managed within Calendar. Timesheets, Meetings, advanced reminders and external calendar synchronisation remain deferred from Calendar V1.</p>
       </Card>
     </>
   );
